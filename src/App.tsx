@@ -11,7 +11,7 @@ import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
 import { normalizeLines } from './lib/normalizeLines';
 
-const MATCH_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/match-products`;
+const MATCH_URL = `https://sfwblexfjrctgokscuqz.supabase.co/functions/v1/match-products`;
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 type Screen = 'home' | 'upload' | 'preview' | 'processing' | 'review' | 'generate' | 'admin';
