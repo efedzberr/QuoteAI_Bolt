@@ -11,8 +11,13 @@ import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
 import { normalizeLines } from './lib/normalizeLines';
 
-const MATCH_URL = `https://sfwblexfjrctgokscuqz.supabase.co/functions/v1/match-products`;
-const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+const WEBHOOK_URL = 'https://hook.us2.make.com/3p4n696w3n2jpplghxvnaa21t3ihselx';
+
+const PROCESSING_RULES = [
+  'If the row does not contain a clear product request with a quantity, it is likely a header, title, or section label. In that case return: { "original_text": "<the row text>", "quantity": null, "unit_of_measure": null, "product_code_hint": null, "description": null, "keywords": [], "attributes": { "material": null, "size": null, "color": null, "other": null }, "notes": "SKIP - this row is a header or label, not a product" }',
+  'If the original_text looks like a JSON object or contains multiple products concatenated together, extract only the FIRST product mentioned and ignore the rest.',
+  'A valid product row must have at least a description and ideally a quantity.',
+];
 
 type Screen = 'home' | 'upload' | 'preview' | 'processing' | 'review' | 'generate' | 'admin';
 
@@ -238,7 +243,7 @@ function diagnoseResponse(parsed: any): { valid: boolean; message: string } {
         '',
         `Other top-level keys: ${topKeys.filter(k => k !== 'lines').join(', ') || '(none)'}`,
         '',
-        'The matching service returned zero results. Check the match-products edge function logs for details.',
+        'The orchestration layer returned zero results. Check that your Make scenario is processing rows and producing output.',
       ].join('\n'),
     };
   }
@@ -329,16 +334,13 @@ function App() {
           return { ...row, Cant: String(cantInt) };
         });
 
-        const response = await fetch(MATCH_URL, {
+        const response = await fetch(WEBHOOK_URL, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${ANON_KEY}`,
-            'apikey': ANON_KEY,
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             customerName: uploadData.customerName,
             rows: sanitizedRows,
+            processingRules: PROCESSING_RULES,
           }),
           signal: controller.signal,
         });
@@ -420,7 +422,7 @@ function App() {
           `Network error: ${error.message || 'Unknown error'}`,
           error.cause ? `Cause: ${String(error.cause)}` : null,
           '',
-          'This usually means the Supabase Edge Function is unreachable or there is a network issue.',
+          'This usually means the webhook URL is unreachable, CORS is blocking the request, or there is a network issue.',
         ]
           .filter(Boolean)
           .join('\n');
@@ -511,7 +513,7 @@ function App() {
         <PayloadPreviewScreen
           customerName={uploadData.customerName}
           rows={uploadData.rows}
-          processingRules={[]}
+          processingRules={PROCESSING_RULES}
           rawDoclingResponse={uploadData.rawDoclingResponse}
           notice={uploadData.mappingNotice}
           onConfirmSend={handleConfirmSend}
