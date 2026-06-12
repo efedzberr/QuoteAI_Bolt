@@ -11,12 +11,12 @@ export default function ConfidenceBadge({ value, isApproved, badgeType }: Confid
 
   if (badgeType === 'manual') {
     label = 'Manual';
-    bgColor = '#EAF5FE';
+    bgColor = '#DBEAFE';
     textColor = '#0176D3';
   } else if (badgeType === 'producto_nuevo') {
     label = 'Producto nuevo';
-    bgColor = '#FEF1DC';
-    textColor = '#B86C00';
+    bgColor = '#E0E7FF';
+    textColor = '#4338CA';
   } else if (isApproved) {
     label = 'OK';
     bgColor = '#DEF5E5';

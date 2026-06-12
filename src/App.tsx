@@ -10,6 +10,7 @@ import AuthScreen from './components/AuthScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
 import { normalizeLines } from './lib/normalizeLines';
+import { createJob, updateJobPayload, updateJobStatus } from './lib/jobs';
 
 const WEBHOOK_URL = 'https://hook.us2.make.com/3p4n696w3n2jpplghxvnaa21t3ihselx';
 
@@ -283,6 +284,7 @@ function App() {
   const [approvedData, setApprovedData] = useState<{ lines: any[]; quoteData: any } | null>(null);
   const [editedQuoteData, setEditedQuoteData] = useState<any>(null);
   const [manualQuoteData, setManualQuoteData] = useState<any>(null);
+  const [jobReferencia, setJobReferencia] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const onProcessingError = useCallback((message: string, rawText?: string) => {
@@ -294,7 +296,10 @@ function App() {
     setWebhookResponse(data);
     setRawResponse(rawText);
     setCurrentScreen('review');
-  }, []);
+    if (jobReferencia) {
+      updateJobStatus(jobReferencia, 'en_revision', { payload: data });
+    }
+  }, [jobReferencia]);
 
   const handleFileReady = useCallback((data: UploadData) => {
     setUploadData(data);
@@ -302,6 +307,14 @@ function App() {
     setRawResponse('');
     setWebhookError(null);
     setCurrentScreen('preview');
+
+    const ref = `QAI-${Date.now()}`;
+    setJobReferencia(ref);
+    createJob(ref, data.customerName).then((job) => {
+      if (job) {
+        updateJobPayload(ref, data.rows, data.rows.length);
+      }
+    });
   }, []);
 
   const handleCreateManualQuote = useCallback((customerName: string) => {
@@ -320,16 +333,23 @@ function App() {
     setCurrentScreen('review');
   }, []);
 
-  const handleConfirmSend = useCallback(() => {
+  const handleConfirmSend = useCallback((editedRows: Record<string, any>[]) => {
     if (!uploadData) return;
+
+    // Update uploadData rows with the edited version
+    setUploadData((prev) => prev ? { ...prev, rows: editedRows } : prev);
     setCurrentScreen('processing');
+
+    if (jobReferencia) {
+      updateJobStatus(jobReferencia, 'procesando');
+    }
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     (async () => {
       try {
-        const sanitizedRows = uploadData.rows.map((row: any) => {
+        const sanitizedRows = editedRows.map((row: any) => {
           const cantInt = Math.max(1, Math.round(parseFloat(row?.Cant) || 1));
           return { ...row, Cant: String(cantInt) };
         });
@@ -429,7 +449,7 @@ function App() {
         setWebhookError(detail);
       }
     })();
-  }, [uploadData, onProcessingError, onProcessingComplete]);
+  }, [uploadData, jobReferencia, onProcessingError, onProcessingComplete]);
 
   const handleCancel = useCallback(() => {
     if (abortControllerRef.current) {
@@ -441,6 +461,7 @@ function App() {
     setWebhookResponse(null);
     setRawResponse('');
     setWebhookError(null);
+    setJobReferencia(null);
   }, []);
 
   const handleApproved = useCallback((approvedLines: any[], quoteData: any) => {
@@ -448,7 +469,10 @@ function App() {
     setApprovedData({ lines: approvedLines, quoteData: edited });
     setEditedQuoteData(edited);
     setCurrentScreen('generate');
-  }, []);
+    if (jobReferencia) {
+      updateJobStatus(jobReferencia, 'completado', { payload: edited });
+    }
+  }, [jobReferencia]);
 
   const handleBackToUpload = useCallback(() => {
     setCurrentScreen('upload');
@@ -459,6 +483,7 @@ function App() {
     setApprovedData(null);
     setEditedQuoteData(null);
     setManualQuoteData(null);
+    setJobReferencia(null);
   }, []);
 
   if (auth.loading) {
@@ -494,6 +519,16 @@ function App() {
           setCurrentScreen('upload');
         }}
         onOpenAdmin={() => setCurrentScreen('admin')}
+        onResumeJob={(job) => {
+          const ref = job.referencia;
+          setJobReferencia(ref);
+          if (job.status === 'en_revision' && job.payload) {
+            const normalized = normalizeResponse(job.payload, job.cliente || '');
+            setWebhookResponse(normalized);
+            setRawResponse(JSON.stringify(job.payload));
+            setCurrentScreen('review');
+          }
+        }}
       />
     );
   }
@@ -516,6 +551,7 @@ function App() {
           processingRules={PROCESSING_RULES}
           rawDoclingResponse={uploadData.rawDoclingResponse}
           notice={uploadData.mappingNotice}
+          jobReferencia={jobReferencia || undefined}
           onConfirmSend={handleConfirmSend}
           onBack={handleBackToUpload}
         />
