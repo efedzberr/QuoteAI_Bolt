@@ -1,4 +1,4 @@
-import { Pencil, XCircle, RotateCcw, X, Trash2, Check } from 'lucide-react';
+import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle } from 'lucide-react';
 import ConfidenceBadge from './ConfidenceBadge';
 import InlineProductSearch, { type SearchProduct } from './InlineProductSearch';
 import InlineProductLineRow from './InlineProductLineRow';
@@ -15,6 +15,7 @@ export interface QuoteLine {
   needs_review: boolean;
   ignored?: boolean;
   approved?: boolean;
+  badgeType?: 'auto' | 'manual' | 'producto_nuevo';
 }
 
 export interface EditValues {
@@ -41,6 +42,8 @@ interface QuoteReviewTableProps {
   onQuantityChange?: (index: number, qty: number) => void;
   onProductSelect?: (product: SearchProduct) => void;
   onApprove?: (index: number) => void;
+  onReplaceLine?: (index: number) => void;
+  onAddLine?: () => void;
   showInlineAddRow?: boolean;
   onInlineAddProduct?: (product: SearchProduct) => void;
   onCancelInlineAdd?: () => void;
@@ -72,6 +75,8 @@ export default function QuoteReviewTable({
   onQuantityChange,
   onProductSelect,
   onApprove,
+  onReplaceLine,
+  onAddLine,
   showInlineAddRow,
   onInlineAddProduct,
   onCancelInlineAdd,
@@ -96,8 +101,8 @@ export default function QuoteReviewTable({
                 <th className="py-3 px-4 w-16 text-center">Cant.</th>
                 <th className="py-3 px-4 w-20 text-center">U.M.</th>
                 <th className="py-3 px-4 w-28 text-right">Precio unit.</th>
-                <th className="py-3 px-4 w-28 text-right">Total línea</th>
-                <th className="py-3 px-4 w-32 text-center">Acciones</th>
+                <th className="py-3 px-4 w-28 text-right">Total linea</th>
+                <th className="py-3 px-4 w-36 text-center">Acciones</th>
               </tr>
             </thead>
             <tbody>
@@ -154,10 +159,10 @@ export default function QuoteReviewTable({
                               Buscar producto
                             </label>
                             <InlineProductSearch
-                              placeholder="Nombre, código o marca…"
+                              placeholder="Nombre, codigo o marca..."
                               initialValue={line.matched_product_name || ''}
                               autoFocus={true}
-                              onSelect={onProductSelect}
+                              onSelect={onProductSelect!}
                               onCancel={onEditCancel}
                             />
                           </div>
@@ -301,7 +306,13 @@ export default function QuoteReviewTable({
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
-                      {!isIgnored && <ConfidenceBadge value={line.confidence} isApproved={line.approved} />}
+                      {!isIgnored && (
+                        <ConfidenceBadge
+                          value={line.confidence}
+                          isApproved={line.approved}
+                          badgeType={line.badgeType}
+                        />
+                      )}
                     </td>
                     <td
                       className="py-3.5 px-4 text-center text-[#181818]"
@@ -385,6 +396,15 @@ export default function QuoteReviewTable({
                               <Pencil className="w-3.5 h-3.5" />
                               Editar
                             </button>
+                            {onReplaceLine && (
+                              <button
+                                onClick={() => onReplaceLine(index)}
+                                className="inline-flex items-center px-2 py-1.5 border border-[#E5E5E5] text-[#747474] rounded-md hover:bg-[#EAF5FE] hover:text-[#0176D3] hover:border-[#0176D3] transition-colors"
+                                title="Reemplazar producto"
+                              >
+                                <PackagePlus className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             {isManualMode && line.original_text === 'Agregado manualmente' && onDeleteLine && (
                               <button
                                 onClick={() => onDeleteLine(index)}
@@ -432,6 +452,19 @@ export default function QuoteReviewTable({
             </tbody>
           </table>
         </div>
+
+        {onAddLine && (
+          <div className="px-4 py-3 border-t border-[#E5E5E5] bg-[#FAFAFA]">
+            <button
+              onClick={onAddLine}
+              className="inline-flex items-center gap-2 px-4 py-2 border border-[#0176D3] text-[#0176D3] rounded-lg hover:bg-[#EAF5FE] transition-colors bg-white"
+              style={{ fontSize: 12, fontWeight: 600 }}
+            >
+              <PlusCircle className="w-4 h-4" />
+              + Agregar linea
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

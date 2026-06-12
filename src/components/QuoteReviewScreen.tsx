@@ -1,11 +1,11 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle } from 'lucide-react';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
 import type { QuoteLine, EditValues } from './QuoteReviewTable';
 import ProductLookupModal, { type ProductResult } from './ProductLookupModal';
-import InlineProductSearch, { type SearchProduct } from './InlineProductSearch';
-import InlineProductLineRow from './InlineProductLineRow';
+import { type SearchProduct } from './InlineProductSearch';
+import AddLineModal, { type AddLineResult } from './quote/AddLineModal';
 import { normalizeLines } from '../lib/normalizeLines';
 import { useAppSettings } from '../hooks/useAppSettings';
 
@@ -74,13 +74,17 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [showProductModal, setShowProductModal] = useState(false);
   const [deleteConfirmIndex, setDeleteConfirmIndex] = useState<number | null>(null);
   const [showInlineAddRow, setShowInlineAddRow] = useState(false);
+  const [showAddLineModal, setShowAddLineModal] = useState(false);
+  const [replaceLineIndex, setReplaceLineIndex] = useState<number | null>(null);
 
   const isManualMode = activeQuoteData.status === 'manual';
 
   const linesWithReview = useMemo<QuoteLine[]>(() => {
     return lines.map((l: any) => ({
       ...l,
-      needs_review: (l.confidence ?? 0) < confidenceThreshold,
+      needs_review: l.badgeType === 'manual' || l.badgeType === 'producto_nuevo'
+        ? false
+        : (l.confidence ?? 0) < confidenceThreshold,
     }));
   }, [lines, confidenceThreshold]);
 
@@ -173,6 +177,46 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     recalculate(updatedLines);
     setShowInlineAddRow(false);
   }, [lines, recalculate, ensureEditedMode]);
+
+  const handleAddLineFromModal = useCallback((result: AddLineResult) => {
+    ensureEditedMode();
+    const newLine: QuoteLine = {
+      original_text: 'Agregado manualmente',
+      quantity: result.quantity,
+      matched_unit_of_measure: result.matched_unit_of_measure,
+      matched_product_code: result.matched_product_code,
+      matched_product_name: result.matched_product_name,
+      matched_unit_price: result.matched_unit_price,
+      confidence: 1.0,
+      needs_review: false,
+      badgeType: result.source === 'producto_nuevo' ? 'producto_nuevo' : 'manual',
+    };
+    const updatedLines = [...lines, newLine];
+    setLines(updatedLines);
+    recalculate(updatedLines);
+    setShowAddLineModal(false);
+  }, [lines, recalculate, ensureEditedMode]);
+
+  const handleReplaceLineFromModal = useCallback((result: AddLineResult) => {
+    if (replaceLineIndex === null) return;
+    ensureEditedMode();
+    const updatedLines = [...lines];
+    updatedLines[replaceLineIndex] = {
+      ...updatedLines[replaceLineIndex],
+      matched_product_code: result.matched_product_code,
+      matched_product_name: result.matched_product_name,
+      matched_unit_price: result.matched_unit_price,
+      matched_unit_of_measure: result.matched_unit_of_measure,
+      quantity: result.quantity,
+      confidence: 1.0,
+      needs_review: false,
+      approved: false,
+      badgeType: result.source === 'producto_nuevo' ? 'producto_nuevo' : 'manual',
+    };
+    setLines(updatedLines);
+    recalculate(updatedLines);
+    setReplaceLineIndex(null);
+  }, [replaceLineIndex, lines, recalculate, ensureEditedMode]);
 
   const handleDeleteLine = useCallback((index: number) => {
     setDeleteConfirmIndex(index);
@@ -293,6 +337,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     onApproved(approvedLines, { ...activeQuoteData, subtotal, lines: approvedLines, totalLines: approvedLines.length });
   }, [canGeneratePDF, lines, activeQuoteData, subtotal, onApproved]);
 
+  const totalLinesCount = lines.filter((l) => !l.ignored).length;
+
   if (!quoteData) {
     return (
       <div style={{ padding: '48px', textAlign: 'center', color: '#666' }}>
@@ -327,7 +373,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               }`}
               style={{ fontSize: 13, fontWeight: 600 }}
             >
-              Versión original
+              Version original
             </button>
             <button
               onClick={() => setViewMode('edited')}
@@ -338,7 +384,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               }`}
               style={{ fontSize: 13, fontWeight: 600 }}
             >
-              Versión revisada
+              Version revisada
             </button>
           </div>
         </div>
@@ -349,7 +395,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           <SummaryField label="Referencia" value={activeQuoteData.quoteReference} />
           <SummaryField label="Cliente" value={activeQuoteData.customerName} />
           <SummaryField label="Fecha" value={activeQuoteData.generatedDate} />
-          <SummaryField label="Total de líneas" value={String(activeQuoteData.totalLines)} />
+          <SummaryField label="Total de lineas" value={String(totalLinesCount)} />
           <div className="flex flex-col">
             <span
               className="uppercase text-[#747474]"
@@ -394,8 +440,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           <div className="max-w-[1480px] mx-auto px-7 py-3 flex items-center gap-3">
             <AlertTriangle className="w-4 h-4 text-[#B86C00] flex-shrink-0" />
             <p className="text-[#92400E]" style={{ fontSize: 13, fontWeight: 500 }}>
-              {flaggedCount} {flaggedCount === 1 ? 'línea necesita' : 'líneas necesitan'} revisión antes de generar el PDF.
-              Revisa las filas resaltadas, edítalas o ignóralas.
+              {flaggedCount} {flaggedCount === 1 ? 'linea necesita' : 'lineas necesitan'} revision antes de generar el PDF.
+              Revisa las filas resaltadas, editalas o ignoralas.
             </p>
           </div>
         </div>
@@ -406,7 +452,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           <div className="max-w-[1480px] mx-auto px-7 py-3 flex items-center gap-3">
             <PlusCircle className="w-4 h-4 text-[#0176D3] flex-shrink-0" />
             <p className="text-[#0176D3]" style={{ fontSize: 13, fontWeight: 500 }}>
-              Modo cotización manual — Agrega productos con el botón debajo para armar la cotización desde cero.
+              Modo cotizacion manual — Agrega productos con el boton debajo para armar la cotizacion desde cero.
             </p>
           </div>
         </div>
@@ -431,6 +477,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               onQuantityChange={handleQuantityChange}
               onProductSelect={handleProductSelectInEdit}
               onApprove={handleApprove}
+              onReplaceLine={(index) => setReplaceLineIndex(index)}
+              onAddLine={() => setShowAddLineModal(true)}
               showInlineAddRow={showInlineAddRow}
               onInlineAddProduct={handleInlineProductSelect}
               onCancelInlineAdd={() => setShowInlineAddRow(false)}
@@ -442,16 +490,24 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                   <PlusCircle className="w-7 h-7 text-[#0176D3]" />
                 </div>
                 <p className="text-[#181818] mb-1" style={{ fontSize: 15, fontWeight: 600 }}>
-                  Aún no hay líneas
+                  Aun no hay lineas
                 </p>
-                <p className="text-[#747474]" style={{ fontSize: 13 }}>
-                  Agrega productos para comenzar tu cotización.
+                <p className="text-[#747474] mb-4" style={{ fontSize: 13 }}>
+                  Agrega productos para comenzar tu cotizacion.
                 </p>
+                <button
+                  onClick={() => setShowAddLineModal(true)}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 border border-[#0176D3] text-[#0176D3] rounded-lg hover:bg-[#EAF5FE] transition-colors bg-white"
+                  style={{ fontSize: 13, fontWeight: 600 }}
+                >
+                  <PlusCircle className="w-4 h-4" />
+                  + Agregar linea
+                </button>
               </div>
             </div>
           )}
 
-          {isManualMode && !showInlineAddRow && (
+          {isManualMode && !showInlineAddRow && lines.length > 0 && (
             <div className="px-7 pb-4">
               <button
                 onClick={() => setShowInlineAddRow(true)}
@@ -459,7 +515,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                 style={{ fontSize: 13, fontWeight: 600 }}
               >
                 <PlusCircle className="w-4 h-4" />
-                Agregar línea de producto
+                Agregar linea de producto
               </button>
             </div>
           )}
@@ -516,7 +572,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                 className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
                 style={{ fontSize: 11, fontWeight: 500 }}
               >
-                {isManualMode ? 'Agrega al menos un producto' : 'Revisa todas las líneas marcadas antes de generar'}
+                {isManualMode ? 'Agrega al menos un producto' : 'Revisa todas las lineas marcadas antes de generar'}
                 <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
               </div>
             )}
@@ -527,7 +583,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       <div className="bg-[#F3F3F3]">
         <div className="max-w-[1480px] mx-auto px-7 pb-6 text-center">
           <p className="text-[#747474]" style={{ fontSize: 12 }}>
-            Todos los cambios se aplicarán al PDF final. La cotización se guardará en tu historial.
+            Todos los cambios se aplicaran al PDF final. La cotizacion se guardara en tu historial.
           </p>
         </div>
       </div>
@@ -582,6 +638,20 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         />
       )}
 
+      <AddLineModal
+        open={showAddLineModal}
+        onClose={() => setShowAddLineModal(false)}
+        onLineAdded={handleAddLineFromModal}
+        title="Agregar linea"
+      />
+
+      <AddLineModal
+        open={replaceLineIndex !== null}
+        onClose={() => setReplaceLineIndex(null)}
+        onLineAdded={handleReplaceLineFromModal}
+        title="Reemplazar producto"
+      />
+
       {deleteConfirmIndex !== null && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div
@@ -592,10 +662,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               className="text-[#181818] mb-2"
               style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.01em' }}
             >
-              ¿Eliminar línea?
+              ¿Eliminar linea?
             </h3>
             <p className="text-[#444444] mb-6" style={{ fontSize: 13, lineHeight: 1.5 }}>
-              Esta línea se quitará de la cotización. No podrás deshacer esta acción.
+              Esta linea se quitara de la cotizacion. No podras deshacer esta accion.
             </p>
             <div className="flex justify-end gap-2">
               <button
@@ -627,10 +697,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               className="text-[#181818] mb-2"
               style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.01em' }}
             >
-              ¿Salir de esta página?
+              ¿Salir de esta pagina?
             </h3>
             <p className="text-[#444444] mb-6" style={{ fontSize: 13, lineHeight: 1.5 }}>
-              Si sales ahora, perderás todos los cambios que has hecho en esta cotización.
+              Si sales ahora, perderas todos los cambios que has hecho en esta cotizacion.
             </p>
             <div className="flex justify-end gap-2">
               <button

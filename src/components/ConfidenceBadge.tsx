@@ -1,14 +1,23 @@
 interface ConfidenceBadgeProps {
   value: number;
   isApproved?: boolean;
+  badgeType?: 'auto' | 'manual' | 'producto_nuevo';
 }
 
-export default function ConfidenceBadge({ value, isApproved }: ConfidenceBadgeProps) {
+export default function ConfidenceBadge({ value, isApproved, badgeType }: ConfidenceBadgeProps) {
   let label: string;
   let bgColor: string;
   let textColor: string;
 
-  if (isApproved) {
+  if (badgeType === 'manual') {
+    label = 'Manual';
+    bgColor = '#EAF5FE';
+    textColor = '#0176D3';
+  } else if (badgeType === 'producto_nuevo') {
+    label = 'Producto nuevo';
+    bgColor = '#FEF1DC';
+    textColor = '#B86C00';
+  } else if (isApproved) {
     label = 'OK';
     bgColor = '#DEF5E5';
     textColor = '#2E844A';
