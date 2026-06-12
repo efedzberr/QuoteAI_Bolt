@@ -1,0 +1,287 @@
+import { StyleSheet } from '@react-pdf/renderer';
+
+export const ORANGE = '#E8521A';
+export const DARK_GRAY = '#333333';
+export const LIGHT_GRAY = '#F0F0F0';
+export const BORDER_COLOR = '#CCCCCC';
+export const TABLE_HEADER_BG = '#E8E8E8';
+
+export const styles = StyleSheet.create({
+  page: {
+    fontFamily: 'Helvetica',
+    fontSize: 8,
+    paddingTop: 20,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+    color: DARK_GRAY,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  headerLeft: {
+    flex: 1,
+  },
+  logoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  logoImage: {
+    width: 120,
+    height: 40,
+    objectFit: 'contain' as const,
+    marginBottom: 4,
+  },
+  companyName: {
+    fontSize: 8,
+    fontFamily: 'Helvetica-Bold',
+    color: DARK_GRAY,
+    marginBottom: 2,
+  },
+  companyDetail: {
+    fontSize: 7,
+    color: '#666666',
+    marginBottom: 1,
+  },
+  companyWebsite: {
+    fontSize: 7,
+    color: ORANGE,
+    marginTop: 2,
+  },
+  headerRight: {
+    width: 220,
+  },
+  headerInfoRow: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
+    borderBottomWidth: 0,
+  },
+  headerInfoRowLast: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
+  },
+  headerInfoLabel: {
+    width: 80,
+    padding: 4,
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+    backgroundColor: LIGHT_GRAY,
+    borderRightWidth: 1,
+    borderRightColor: BORDER_COLOR,
+    textAlign: 'center',
+  },
+  headerInfoValue: {
+    flex: 1,
+    padding: 4,
+    fontSize: 7,
+    textAlign: 'center',
+  },
+  sectionSoldTo: {
+    flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  soldToCol: {
+    flex: 1,
+    padding: 6,
+  },
+  soldToDivider: {
+    width: 1,
+    backgroundColor: BORDER_COLOR,
+  },
+  soldToLabel: {
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+    marginBottom: 4,
+    color: DARK_GRAY,
+  },
+  soldToText: {
+    fontSize: 7,
+    color: '#444444',
+    marginBottom: 1.5,
+  },
+  orderSection: {
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
+    marginBottom: 10,
+  },
+  orderHeaderRow: {
+    flexDirection: 'row',
+    backgroundColor: LIGHT_GRAY,
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER_COLOR,
+  },
+  orderDataRow: {
+    flexDirection: 'row',
+  },
+  orderCell: {
+    flex: 1,
+    padding: 4,
+    fontSize: 7,
+    borderRightWidth: 1,
+    borderRightColor: BORDER_COLOR,
+  },
+  orderCellLast: {
+    flex: 1,
+    padding: 4,
+    fontSize: 7,
+  },
+  orderCellBold: {
+    flex: 1,
+    padding: 4,
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+    borderRightWidth: 1,
+    borderRightColor: BORDER_COLOR,
+  },
+  orderCellBoldLast: {
+    flex: 1,
+    padding: 4,
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+  },
+  tableContainer: {
+    marginTop: 6,
+  },
+  tableHeader: {
+    flexDirection: 'row',
+    backgroundColor: TABLE_HEADER_BG,
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: BORDER_COLOR,
+    minHeight: 18,
+  },
+  tableRowAlt: {
+    flexDirection: 'row',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: BORDER_COLOR,
+    minHeight: 18,
+    backgroundColor: '#FAFAFA',
+  },
+  colClave: {
+    width: 70,
+    padding: 4,
+    fontSize: 7,
+    borderRightWidth: 1,
+    borderRightColor: BORDER_COLOR,
+  },
+  colDescripcion: {
+    flex: 1,
+    padding: 4,
+    fontSize: 7,
+    borderRightWidth: 1,
+    borderRightColor: BORDER_COLOR,
+  },
+  colAlmacen: {
+    width: 55,
+    padding: 4,
+    fontSize: 7,
+    textAlign: 'center',
+    borderRightWidth: 1,
+    borderRightColor: BORDER_COLOR,
+  },
+  colUM: {
+    width: 35,
+    padding: 4,
+    fontSize: 7,
+    textAlign: 'center',
+    borderRightWidth: 1,
+    borderRightColor: BORDER_COLOR,
+  },
+  colCantidad: {
+    width: 55,
+    padding: 4,
+    fontSize: 7,
+    textAlign: 'center',
+    borderRightWidth: 1,
+    borderRightColor: BORDER_COLOR,
+  },
+  colPrecio: {
+    width: 70,
+    padding: 4,
+    fontSize: 7,
+    textAlign: 'right',
+    borderRightWidth: 1,
+    borderRightColor: BORDER_COLOR,
+  },
+  colImporte: {
+    width: 70,
+    padding: 4,
+    fontSize: 7,
+    textAlign: 'right',
+  },
+  colHeaderText: {
+    fontSize: 7,
+    fontFamily: 'Helvetica-Bold',
+    textTransform: 'uppercase',
+  },
+  totalsContainer: {
+    marginTop: 8,
+    alignItems: 'flex-end',
+  },
+  totalsBox: {
+    width: 200,
+    borderWidth: 1,
+    borderColor: BORDER_COLOR,
+  },
+  totalsRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: BORDER_COLOR,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  totalsRowLast: {
+    flexDirection: 'row',
+    paddingVertical: 5,
+    paddingHorizontal: 8,
+    backgroundColor: LIGHT_GRAY,
+  },
+  totalsLabel: {
+    flex: 1,
+    fontSize: 8,
+    color: DARK_GRAY,
+  },
+  totalsValue: {
+    width: 90,
+    fontSize: 8,
+    textAlign: 'right',
+    color: DARK_GRAY,
+  },
+  totalsLabelBold: {
+    flex: 1,
+    fontSize: 9,
+    fontFamily: 'Helvetica-Bold',
+    color: DARK_GRAY,
+  },
+  totalsValueBold: {
+    width: 90,
+    fontSize: 9,
+    fontFamily: 'Helvetica-Bold',
+    textAlign: 'right',
+    color: DARK_GRAY,
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 15,
+    left: 20,
+    right: 20,
+    textAlign: 'center',
+    fontSize: 6,
+    color: '#999999',
+  },
+});
