@@ -3,7 +3,7 @@ import { X, Search, Loader2, PackagePlus } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../../lib/supabase';
 import { escapeIlikeTerm } from '../../lib/productDatabase';
-import CreateProductModal, { type NewProductData } from './CreateProductModal';
+import CreateProductModal, { type NewProductData, type PrefillData } from './CreateProductModal';
 
 const productsClient = createClient(
   'https://sfwblexfjrctgokscuqz.supabase.co',
@@ -28,14 +28,21 @@ interface SearchResult {
   source: 'catalogo' | 'producto_nuevo';
 }
 
+export interface SourceLineData {
+  originalText: string;
+  quantity: number;
+  unitOfMeasure: string;
+}
+
 interface AddLineModalProps {
   open: boolean;
   onClose: () => void;
   onLineAdded: (result: AddLineResult) => void;
   title?: string;
+  sourceLineData?: SourceLineData | null;
 }
 
-export default function AddLineModal({ open, onClose, onLineAdded, title = 'Agregar linea' }: AddLineModalProps) {
+export default function AddLineModal({ open, onClose, onLineAdded, title = 'Agregar linea', sourceLineData }: AddLineModalProps) {
   const [tab, setTab] = useState<'search' | 'create'>('search');
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -354,6 +361,11 @@ export default function AddLineModal({ open, onClose, onLineAdded, title = 'Agre
         open={showCreate}
         onClose={() => setShowCreate(false)}
         onProductCreated={handleProductCreated}
+        prefillData={sourceLineData ? {
+          originalText: sourceLineData.originalText,
+          quantity: sourceLineData.quantity,
+          unitOfMeasure: sourceLineData.unitOfMeasure,
+        } : null}
       />
     </>
   );

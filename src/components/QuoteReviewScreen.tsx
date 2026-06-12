@@ -650,6 +650,11 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         onClose={() => setReplaceLineIndex(null)}
         onLineAdded={handleReplaceLineFromModal}
         title="Reemplazar producto"
+        sourceLineData={replaceLineIndex !== null ? {
+          originalText: lines[replaceLineIndex]?.original_text || '',
+          quantity: lines[replaceLineIndex]?.quantity || 1,
+          unitOfMeasure: lines[replaceLineIndex]?.matched_unit_of_measure || 'PZ',
+        } : null}
       />
 
       {deleteConfirmIndex !== null && (

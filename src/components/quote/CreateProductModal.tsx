@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { X, ChevronDown, ChevronRight, AlertTriangle, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
@@ -19,6 +19,12 @@ export interface NewProductData {
   precio_unitario: number;
 }
 
+export interface PrefillData {
+  originalText: string;
+  quantity: number;
+  unitOfMeasure: string;
+}
+
 interface DuplicateMatch {
   source: 'catalogo' | 'productos_nuevos';
   codigo: string;
@@ -31,13 +37,26 @@ interface CreateProductModalProps {
   open: boolean;
   onClose: () => void;
   onProductCreated: (product: NewProductData, quantity: number) => void;
+  prefillData?: PrefillData | null;
 }
 
 function removeAccents(str: string): string {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-export default function CreateProductModal({ open, onClose, onProductCreated }: CreateProductModalProps) {
+function truncateAtWord(text: string, maxLen: number): string {
+  if (text.length <= maxLen) return text;
+  const truncated = text.substring(0, maxLen);
+  const lastSpace = truncated.lastIndexOf(' ');
+  return lastSpace > 0 ? truncated.substring(0, lastSpace) : truncated;
+}
+
+function extractCode(text: string): string {
+  const match = text.match(/\b([A-Z0-9]+-[A-Z0-9]+(?:-[A-Z0-9]+)*)\.?\s*$/);
+  return match ? match[1] : '';
+}
+
+export default function CreateProductModal({ open, onClose, onProductCreated, prefillData }: CreateProductModalProps) {
   const [codigo, setCodigo] = useState('');
   const [descripcionCorta, setDescripcionCorta] = useState('');
   const [descripcionLarga, setDescripcionLarga] = useState('');
@@ -83,6 +102,23 @@ export default function CreateProductModal({ open, onClose, onProductCreated }: 
     setErrors({});
     setDuplicate(null);
   }, []);
+
+  useEffect(() => {
+    if (open && prefillData) {
+      const text = prefillData.originalText || '';
+      setDescripcionLarga(text);
+      setDescripcionCorta(truncateAtWord(text, 80));
+      setCantidad(String(Math.max(1, Math.round(prefillData.quantity || 1))));
+      const um = (prefillData.unitOfMeasure || 'PZ').trim().toUpperCase();
+      const validUnits = ['PZ', 'MT', 'KG', 'LT', 'JG', 'RL', 'CJ', 'PAR', 'TB', 'BT'];
+      setUnidadMedida(validUnits.includes(um) ? um : 'PZ');
+      setCodigo(extractCode(text));
+      setMarca('');
+      setPrecioUnitario('');
+      setErrors({});
+      setDuplicate(null);
+    }
+  }, [open, prefillData]);
 
   const handleClose = useCallback(() => {
     resetForm();
