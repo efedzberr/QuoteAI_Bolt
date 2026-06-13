@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import AppLayout from './layout/AppLayout';
 import { fetchRecentJobs, type Job, type JobStatus } from '../lib/jobs';
+import { getStageInfo, isResumableStage, isProcessingStage, isFinalStage } from '../lib/jobStages';
 import {
   FileText,
   Package,
@@ -16,6 +17,7 @@ import {
   RefreshCw,
   Clock,
   AlertCircle,
+  Loader2,
 } from 'lucide-react';
 
 interface HomeDashboardProps {
@@ -23,6 +25,7 @@ interface HomeDashboardProps {
   onNewQuoteDocling?: () => void;
   onOpenAdmin?: () => void;
   onResumeJob?: (job: Job) => void;
+  onReexecuteJob?: (job: Job) => void;
 }
 
 /* ─── Sub-components (internal only) ─── */
@@ -133,18 +136,15 @@ function StatusChip({ status }: { status: string }) {
   );
 }
 
-function JobStatusChip({ status }: { status: JobStatus }) {
-  const map: Record<JobStatus, { label: string; cls: string }> = {
-    procesando: { label: 'Procesando', cls: 'bg-brand-soft text-brand' },
-    en_revision: { label: 'En revisión', cls: 'bg-warn-soft text-warn' },
-    enviado_validacion: { label: 'Enviado', cls: 'bg-brand-soft text-brand' },
-    completado: { label: 'Completado', cls: 'bg-good-soft text-good' },
-    error: { label: 'Error', cls: 'bg-bad-soft text-bad' },
-  };
-  const { label, cls } = map[status] || { label: status, cls: 'bg-rule-soft text-ink-faint' };
+function JobStatusChip({ status }: { status: string }) {
+  const info = getStageInfo(status);
   return (
-    <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${cls}`}>
-      {label}
+    <span
+      className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap"
+      style={{ backgroundColor: info.bgColor, color: info.color }}
+    >
+      {info.type === 'procesando' && <Loader2 className="w-3 h-3 animate-spin" />}
+      {info.label}
     </span>
   );
 }
@@ -216,7 +216,7 @@ function getFormattedDate(): string {
 
 /* ─── Main Component ─── */
 
-function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob }: HomeDashboardProps) {
+function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob, onReexecuteJob }: HomeDashboardProps) {
   const auth = useAuth();
   const [activeFilter, setActiveFilter] = useState(0);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -530,17 +530,43 @@ function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob
                           })}
                         </td>
                         <td className="py-3 px-4 text-center">
-                          {(job.status === 'en_revision' || job.status === 'completado') && onResumeJob && (
+                          {isResumableStage(job.status) && onResumeJob && (
                             <button
                               onClick={() => onResumeJob(job)}
                               className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-brand bg-brand-soft rounded-md hover:bg-brand/10 transition-colors"
                             >
                               <RefreshCw className="w-3 h-3" />
-                              Reenviar a validación
+                              Reanudar
                             </button>
                           )}
+                          {isFinalStage(job.status) && onResumeJob && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => onResumeJob(job)}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-good bg-good-soft rounded-md hover:bg-good/10 transition-colors"
+                              >
+                                <Eye className="w-3 h-3" />
+                                Ver PDF
+                              </button>
+                              {onReexecuteJob && (
+                                <button
+                                  onClick={() => onReexecuteJob(job)}
+                                  className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-brand bg-brand-soft rounded-md hover:bg-brand/10 transition-colors"
+                                  title="Reejecutar"
+                                >
+                                  <RefreshCw className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {isProcessingStage(job.status) && (
+                            <span className="inline-flex items-center gap-1 text-[11px] text-ink-faint" title="En proceso...">
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                              En proceso...
+                            </span>
+                          )}
                           {job.status === 'error' && job.error && (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-bad">
+                            <span className="inline-flex items-center gap-1 text-[11px] text-bad" title={job.error}>
                               <AlertCircle className="w-3 h-3" />
                               {job.error.substring(0, 30)}
                             </span>

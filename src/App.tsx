@@ -10,7 +10,7 @@ import AuthScreen from './components/AuthScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
 import { normalizeLines } from './lib/normalizeLines';
-import { createJob, updateJobPayload, updateJobStatus, updateJobProgreso, getJobByReferencia } from './lib/jobs';
+import { createJob, updateJobPayload, updateJobStatus } from './lib/jobs';
 import { createJobLines, bulkUpsertJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 
 const WEBHOOK_URL = 'https://hook.us2.make.com/3p4n696w3n2jpplghxvnaa21t3ihselx';
@@ -285,6 +285,7 @@ function App() {
   const [approvedData, setApprovedData] = useState<{ lines: any[]; quoteData: any } | null>(null);
   const [editedQuoteData, setEditedQuoteData] = useState<any>(null);
   const [manualQuoteData, setManualQuoteData] = useState<any>(null);
+  const [reexecJob, setReexecJob] = useState<any>(null);
   const [jobReferencia, setJobReferencia] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -292,7 +293,10 @@ function App() {
   const onProcessingError = useCallback((message: string, rawText?: string) => {
     setWebhookError(message);
     if (rawText) setRawResponse(rawText);
-  }, []);
+    if (jobReferencia) {
+      updateJobStatus(jobReferencia, 'error', { error: message.substring(0, 200) });
+    }
+  }, [jobReferencia]);
 
   const onProcessingComplete = useCallback((data: any, rawText: string) => {
     if (data.lines && Array.isArray(data.lines)) {
@@ -305,7 +309,7 @@ function App() {
     setRawResponse(rawText);
     setCurrentScreen('review');
     if (jobReferencia) {
-      updateJobStatus(jobReferencia, 'en_revision', { payload: data });
+      updateJobStatus(jobReferencia, 'validacion', { payload: data });
     }
     if (jobId && data.lines && Array.isArray(data.lines)) {
       const matchLines = data.lines.map((line: any, i: number) => ({
@@ -327,7 +331,9 @@ function App() {
   }, [jobReferencia, jobId]);
 
   const handleFileReady = useCallback((data: UploadData) => {
-    setUploadData(data);
+    const upperCustomer = data.customerName.toLocaleUpperCase('es-MX');
+    const normalizedData = { ...data, customerName: upperCustomer };
+    setUploadData(normalizedData);
     setWebhookResponse(null);
     setRawResponse('');
     setWebhookError(null);
@@ -335,11 +341,12 @@ function App() {
 
     const ref = `QAI-${Date.now()}`;
     setJobReferencia(ref);
-    createJob(ref, data.customerName).then((job) => {
+    createJob(ref, upperCustomer).then((job) => {
       if (job) {
         setJobId(job.id);
-        updateJobPayload(ref, data.rows, data.rows.length);
-        const jobLines = data.rows.map((row, i) => ({
+        updateJobStatus(ref, 'revision_datos');
+        updateJobPayload(ref, normalizedData.rows, normalizedData.rows.length);
+        const jobLines = normalizedData.rows.map((row, i) => ({
           job_id: job.id,
           line_index: i,
           codigo_original: row.Codigo || row.codigo || null,
@@ -363,10 +370,11 @@ function App() {
   }, []);
 
   const handleCreateManualQuote = useCallback((customerName: string) => {
+    const upperCustomer = customerName.toLocaleUpperCase('es-MX');
     const emptyQuoteData = {
       status: 'manual',
       quoteReference: `QAI-MANUAL-${Date.now()}`,
-      customerName,
+      customerName: upperCustomer,
       generatedDate: new Date().toLocaleDateString('es-MX'),
       totalLines: 0,
       flaggedLines: 0,
@@ -381,12 +389,11 @@ function App() {
   const handleConfirmSend = useCallback((editedRows: Record<string, any>[]) => {
     if (!uploadData) return;
 
-    // Update uploadData rows with the edited version
     setUploadData((prev) => prev ? { ...prev, rows: editedRows } : prev);
     setCurrentScreen('processing');
 
     if (jobReferencia) {
-      updateJobStatus(jobReferencia, 'procesando');
+      updateJobStatus(jobReferencia, 'matching');
     }
 
     const controller = new AbortController();
@@ -512,6 +519,9 @@ function App() {
 
   const handleApproved = useCallback((approvedLines: any[], quoteData: any) => {
     const edited = { ...quoteData, lines: approvedLines };
+    if (jobReferencia) {
+      updateJobStatus(jobReferencia, 'generacion');
+    }
     setApprovedData({ lines: approvedLines, quoteData: edited });
     setEditedQuoteData(edited);
     setCurrentScreen('generate');
@@ -532,6 +542,90 @@ function App() {
     setJobReferencia(null);
     setJobId(null);
   }, []);
+
+  const handleBackToPreview = useCallback(() => {
+    if (uploadData) {
+      setWebhookResponse(null);
+      setRawResponse('');
+      setWebhookError(null);
+      setCurrentScreen('preview');
+      if (jobReferencia) {
+        updateJobStatus(jobReferencia, 'revision_datos');
+      }
+    } else {
+      setCurrentScreen('home');
+    }
+  }, [uploadData, jobReferencia]);
+
+  const handleBackFromPdfToReview = useCallback(() => {
+    setCurrentScreen('review');
+    if (jobReferencia) {
+      updateJobStatus(jobReferencia, 'validacion');
+    }
+  }, [jobReferencia]);
+
+  const handleReexecNewQuote = useCallback(() => {
+    if (!reexecJob) return;
+    const newRef = `QAI-${Date.now()}`;
+    const cliente = reexecJob.cliente || '';
+    setReexecJob(null);
+    setJobReferencia(newRef);
+    createJob(newRef, cliente).then((job) => {
+      if (job) {
+        setJobId(job.id);
+        if (reexecJob.payload) {
+          updateJobPayload(newRef, reexecJob.payload, reexecJob.total_lineas || 0);
+          updateJobStatus(newRef, 'revision_datos');
+          const rows = reexecJob.payload.rows || reexecJob.payload.lines || [];
+          setUploadData({ customerName: cliente, rows });
+          setCurrentScreen('preview');
+        }
+      }
+    });
+  }, [reexecJob]);
+
+  const handleReexecSameJob = useCallback(() => {
+    if (!reexecJob) return;
+    const ref = reexecJob.referencia;
+    setJobReferencia(ref);
+    setJobId(reexecJob.id);
+    setReexecJob(null);
+    updateJobStatus(ref, 'validacion');
+    fetchJobLines(reexecJob.id).then((jobLines) => {
+      if (jobLines.length > 0) {
+        const reconstructedLines = jobLines.map((jl: JobLine) => ({
+          original_text: jl.descripcion_original || '',
+          original_code: jl.codigo_original || null,
+          quantity: jl.cantidad || 1,
+          matched_product_code: jl.producto_codigo || null,
+          matched_product_name: jl.producto_descripcion || null,
+          matched_unit_price: jl.precio_unitario ?? null,
+          matched_unit_of_measure: jl.unidad_medida || jl.unidad_original || 'PZA',
+          confidence: jl.confianza ?? 0,
+          needs_review: jl.requiere_revision,
+          ignored: jl.estado === 'ignorada',
+          approved: jl.estado === 'aprobada',
+          badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
+          _lineIndex: jl.line_index,
+        }));
+        const quoteData = {
+          quoteReference: ref,
+          customerName: reexecJob.cliente || '',
+          generatedDate: new Date(reexecJob.created_at).toLocaleDateString('es-MX'),
+          totalLines: reconstructedLines.length,
+          currency: 'MXN',
+          subtotal: reconstructedLines.reduce((sum: number, l: any) => {
+            if (l.ignored) return sum;
+            return sum + (l.quantity || 0) * (l.matched_unit_price || 0);
+          }, 0),
+          lines: reconstructedLines,
+        };
+        setWebhookResponse(quoteData);
+        setRawResponse(JSON.stringify(quoteData));
+        setCurrentScreen('review');
+      }
+    });
+  }, [reexecJob]);
 
   if (auth.loading) {
     return (
@@ -556,6 +650,7 @@ function App() {
 
   if (currentScreen === 'home') {
     return (
+    <>
       <HomeDashboard
         onNewQuote={() => {
           setReadEngine('default');
@@ -566,12 +661,25 @@ function App() {
           setCurrentScreen('upload');
         }}
         onOpenAdmin={() => setCurrentScreen('admin')}
+        onReexecuteJob={(job) => setReexecJob(job)}
         onResumeJob={(job) => {
           const ref = job.referencia;
           setJobReferencia(ref);
           setJobId(job.id);
 
-          if (job.status === 'en_revision' || job.status === 'enviado_validacion') {
+          if (job.status === 'revision_datos') {
+            if (job.payload && job.payload.rows) {
+              setUploadData({
+                customerName: job.cliente || '',
+                rows: job.payload.rows || job.payload,
+              });
+              setCurrentScreen('preview');
+            } else if (job.payload) {
+              const rows = Array.isArray(job.payload) ? job.payload : [];
+              setUploadData({ customerName: job.cliente || '', rows });
+              setCurrentScreen('preview');
+            }
+          } else if (job.status === 'validacion' || job.status === 'en_revision' || job.status === 'enviado_validacion') {
             fetchJobLines(job.id).then((jobLines) => {
               if (jobLines.length > 0) {
                 const reconstructedLines = jobLines.map((jl: JobLine) => ({
@@ -613,12 +721,57 @@ function App() {
             });
           } else if (job.status === 'completado' && job.payload) {
             const normalized = normalizeResponse(job.payload, job.cliente || '');
-            setWebhookResponse(normalized);
-            setRawResponse(JSON.stringify(job.payload));
-            setCurrentScreen('review');
+            setApprovedData({ lines: normalized.lines || [], quoteData: normalized });
+            setEditedQuoteData(normalized);
+            setCurrentScreen('generate');
           }
         }}
       />
+      {reexecJob && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-7 max-w-md w-full mx-4 border border-[#E5E5E5]" style={{ boxShadow: '0 12px 24px rgba(0,0,0,.15)' }}>
+            <h3 className="text-[#181818] mb-2" style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.01em' }}>
+              Reejecutar cotizacion
+            </h3>
+            <p className="text-[#444444] mb-1" style={{ fontSize: 13, lineHeight: 1.5 }}>
+              Esta cotizacion ya fue completada. ¿Que deseas hacer?
+            </p>
+            <p className="text-[#747474] mb-6" style={{ fontSize: 12 }}>
+              Ref: {reexecJob.referencia} — {reexecJob.cliente}
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleReexecNewQuote}
+                className="w-full px-4 py-3 text-white bg-[#0176D3] rounded-lg hover:bg-[#014486] transition-colors text-left"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Crear nueva cotizacion
+                <span className="block text-white/70 mt-0.5" style={{ fontSize: 11, fontWeight: 400 }}>
+                  Genera un job nuevo con los datos como punto de partida
+                </span>
+              </button>
+              <button
+                onClick={handleReexecSameJob}
+                className="w-full px-4 py-3 text-[#0176D3] bg-[#EAF5FE] border border-[#0176D3]/20 rounded-lg hover:bg-[#D6EDFB] transition-colors text-left"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Regenerar sobre la misma
+                <span className="block text-[#747474] mt-0.5" style={{ fontSize: 11, fontWeight: 400 }}>
+                  Reutiliza la misma referencia y sobreescribe el resultado
+                </span>
+              </button>
+              <button
+                onClick={() => setReexecJob(null)}
+                className="w-full px-4 py-2.5 text-[#444444] bg-[#F0F0F0] rounded-lg hover:bg-[#E5E5E5] transition-colors"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
     );
   }
 
@@ -687,7 +840,7 @@ function App() {
       >
         <PDFPreviewScreen
           quoteData={approvedData.quoteData}
-          onBack={() => setCurrentScreen('review')}
+          onBack={handleBackFromPdfToReview}
         />
       </AppLayout>
     );
@@ -733,6 +886,7 @@ function App() {
           rawResponse={rawResponse}
           onApproved={handleApproved}
           onBack={handleBackToUpload}
+          onBackToPreview={handleBackToPreview}
           jobId={jobId || undefined}
           jobReferencia={jobReferencia || undefined}
         />

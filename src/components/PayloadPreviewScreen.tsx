@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { ArrowLeft, Send, ChevronDown, ChevronRight, Copy, Check, Table, Braces, AlertTriangle, Trash2, PlusCircle } from 'lucide-react';
 import Header from './Header';
 import { updateJobPayloadDebounced } from '../lib/jobs';
-import { upsertJobLine, deleteJobLine as deleteJobLineApi, getMaxLineIndex } from '../lib/jobLines';
+import { upsertJobLine, deleteJobLine as deleteJobLineApi } from '../lib/jobLines';
 
 interface PayloadPreviewScreenProps {
   customerName: string;
@@ -33,7 +33,7 @@ export default function PayloadPreviewScreen({
   const [rulesExpanded, setRulesExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
   const [editableRows, setEditableRows] = useState<Record<string, any>[]>(() =>
-    initialRows.map((r, i) => ({ ...r, 'IEST-01': String(i + 1) }))
+    initialRows.map((r, i) => ({ ...r, 'IEST-01': String(i + 1), _lineIndex: i }))
   );
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -45,6 +45,7 @@ export default function PayloadPreviewScreen({
   const allColumns = useMemo(() => {
     const colSet = new Set<string>();
     editableRows.forEach((row) => Object.keys(row).forEach((k) => colSet.add(k)));
+    colSet.delete('_lineIndex');
     const cols = Array.from(colSet);
     const priority = ['IEST-01', 'Codigo', 'Descripcion', 'Unid', 'Cant'];
     return [
@@ -97,8 +98,9 @@ export default function PayloadPreviewScreen({
     syncToSupabase(updated);
 
     if (jobId) {
+      const stableIdx = updated[row]._lineIndex;
       const r = updated[row];
-      upsertJobLine(jobId, row, {
+      upsertJobLine(jobId, stableIdx, {
         codigo_original: r.Codigo || null,
         descripcion_original: r.Descripcion || null,
         unidad_original: r.Unid || null,
@@ -123,7 +125,8 @@ export default function PayloadPreviewScreen({
   const confirmDelete = () => {
     if (deleteConfirm === null) return;
     if (jobId) {
-      deleteJobLineApi(jobId, deleteConfirm);
+      const stableIdx = editableRows[deleteConfirm]._lineIndex;
+      deleteJobLineApi(jobId, stableIdx);
     }
     const updated = renumber(editableRows.filter((_, i) => i !== deleteConfirm));
     setEditableRows(updated);
@@ -132,27 +135,27 @@ export default function PayloadPreviewScreen({
   };
 
   const handleAddLine = () => {
+    const maxLocalIdx = editableRows.reduce((max, r) => Math.max(max, r._lineIndex ?? 0), -1);
+    const newLineIndex = maxLocalIdx + 1;
     const newRow: Record<string, any> = {};
     allColumns.forEach(col => { newRow[col] = ''; });
     newRow['IEST-01'] = String(editableRows.length + 1);
     newRow['Cant'] = '1';
     newRow['Unid'] = 'PZ';
+    newRow['_lineIndex'] = newLineIndex;
     const updated = [...editableRows, newRow];
     setEditableRows(updated);
     syncToSupabase(updated);
 
     if (jobId) {
-      getMaxLineIndex(jobId).then((maxIdx) => {
-        const newIdx = maxIdx + 1;
-        upsertJobLine(jobId, newIdx, {
-          codigo_original: null,
-          descripcion_original: null,
-          unidad_original: 'PZ',
-          cantidad: 1,
-          origen: 'auto',
-          estado: 'pendiente',
-          requiere_revision: false,
-        });
+      upsertJobLine(jobId, newLineIndex, {
+        codigo_original: null,
+        descripcion_original: null,
+        unidad_original: 'PZ',
+        cantidad: 1,
+        origen: 'auto',
+        estado: 'pendiente',
+        requiere_revision: false,
       });
     }
 
@@ -163,9 +166,10 @@ export default function PayloadPreviewScreen({
   };
 
   const jsonTabContent = useMemo(() => {
+    const cleanRows = editableRows.map(({ _lineIndex, ...rest }) => rest);
     const editedPayload = rawDoclingResponse !== undefined && rawDoclingResponse !== null
-      ? { ...rawDoclingResponse, rows: editableRows }
-      : { customerName, rows: editableRows, processingRules };
+      ? { ...rawDoclingResponse, rows: cleanRows }
+      : { customerName, rows: cleanRows, processingRules };
     return JSON.stringify(editedPayload, null, 2);
   }, [rawDoclingResponse, editableRows, customerName, processingRules]);
 
@@ -178,7 +182,8 @@ export default function PayloadPreviewScreen({
   };
 
   const handleConfirm = () => {
-    onConfirmSend(editableRows);
+    const cleanRows = editableRows.map(({ _lineIndex, ...rest }) => rest);
+    onConfirmSend(cleanRows);
   };
 
   return (

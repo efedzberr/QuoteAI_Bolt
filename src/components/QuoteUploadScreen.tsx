@@ -797,7 +797,7 @@ export default function QuoteUploadScreen({ readEngine = 'default', onFileReady,
               <input
                 type="text"
                 value={customerName}
-                onChange={(e) => { setCustomerName(e.target.value); setManualError(null); }}
+                onChange={(e) => { setCustomerName(e.target.value.toLocaleUpperCase('es-MX')); setManualError(null); }}
                 placeholder="ej. Constructora del Norte – OC-2024-0091"
                 className="w-full px-3.5 py-3 border border-[#E5E5E5] rounded-lg text-[#181818] placeholder:text-[#A3A3A3] focus:outline-none focus:border-[#0176D3] focus:ring-[3px] focus:ring-[#EAF5FE] transition-all"
                 style={{ fontSize: 14 }}

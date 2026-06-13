@@ -1,6 +1,9 @@
 import { supabase } from './supabase';
 
-export type JobStatus = 'procesando' | 'en_revision' | 'enviado_validacion' | 'completado' | 'error';
+export type JobStatus =
+  | 'nueva_solicitud' | 'extraccion' | 'revision_datos' | 'matching'
+  | 'validacion' | 'generacion' | 'completado' | 'error'
+  | 'procesando' | 'en_revision' | 'enviado_validacion';
 
 export interface Job {
   id: string;
@@ -18,7 +21,7 @@ export interface Job {
 export async function createJob(referencia: string, cliente: string): Promise<Job | null> {
   const { data, error } = await supabase
     .from('jobs')
-    .insert({ referencia, cliente, status: 'procesando' })
+    .insert({ referencia, cliente, status: 'nueva_solicitud' })
     .select()
     .single();
 

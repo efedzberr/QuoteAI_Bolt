@@ -36,6 +36,7 @@ interface QuoteReviewScreenProps {
   rawResponse: string;
   onApproved: (approvedLines: QuoteLine[], quoteData: QuoteData) => void;
   onBack: () => void;
+  onBackToPreview?: () => void;
   jobId?: string;
   jobReferencia?: string;
 }
@@ -51,7 +52,7 @@ function formatCurrency(value: number, currency: string): string {
   }).format(value);
 }
 
-export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, jobId, jobReferencia }: QuoteReviewScreenProps) {
+export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, jobId, jobReferencia }: QuoteReviewScreenProps) {
   const { confidenceThreshold } = useAppSettings();
 
   const [viewMode, setViewMode] = useState<ViewMode>(editedQuoteData ? 'edited' : 'original');
@@ -755,12 +756,21 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
 
       <div className="bg-[#F3F3F3]">
         <div className="max-w-[1480px] mx-auto px-7 pt-4 pb-3 flex justify-end gap-3">
+          {onBackToPreview && !isManualMode && (
+            <button
+              onClick={onBackToPreview}
+              className="px-5 py-3 border border-[#E5E5E5] text-[#444444] rounded-lg hover:bg-white transition-colors"
+              style={{ fontSize: 14, fontWeight: 600 }}
+            >
+              ← Volver a revision de datos
+            </button>
+          )}
           <button
             onClick={handleBack}
             className="px-5 py-3 border border-[#E5E5E5] text-[#444444] rounded-lg hover:bg-white transition-colors"
             style={{ fontSize: 14, fontWeight: 600 }}
           >
-            ← Volver a cargar
+            ← Inicio
           </button>
           <div className="relative group">
             <button
