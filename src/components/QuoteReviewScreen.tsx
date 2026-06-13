@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check } from 'lucide-react';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
 import type { QuoteLine, EditValues } from './QuoteReviewTable';
@@ -8,6 +8,8 @@ import { type SearchProduct } from './InlineProductSearch';
 import AddLineModal, { type AddLineResult } from './quote/AddLineModal';
 import { normalizeLines } from '../lib/normalizeLines';
 import { useAppSettings } from '../hooks/useAppSettings';
+import { upsertJobLine, getMaxLineIndex } from '../lib/jobLines';
+import { updateJobProgreso } from '../lib/jobs';
 
 interface QuoteData {
   status?: string;
@@ -34,6 +36,8 @@ interface QuoteReviewScreenProps {
   rawResponse: string;
   onApproved: (approvedLines: QuoteLine[], quoteData: QuoteData) => void;
   onBack: () => void;
+  jobId?: string;
+  jobReferencia?: string;
 }
 
 type ViewMode = 'original' | 'edited';
@@ -47,7 +51,7 @@ function formatCurrency(value: number, currency: string): string {
   }).format(value);
 }
 
-export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack }: QuoteReviewScreenProps) {
+export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, jobId, jobReferencia }: QuoteReviewScreenProps) {
   const { confidenceThreshold } = useAppSettings();
 
   const [viewMode, setViewMode] = useState<ViewMode>(editedQuoteData ? 'edited' : 'original');
@@ -76,6 +80,40 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [showInlineAddRow, setShowInlineAddRow] = useState(false);
   const [showAddLineModal, setShowAddLineModal] = useState(false);
   const [replaceLineIndex, setReplaceLineIndex] = useState<number | null>(null);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const progresoDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const persistLineAction = useCallback((lineIndex: number, fields: Record<string, any>) => {
+    if (!jobId) return;
+    setSaveStatus('saving');
+    upsertJobLine(jobId, lineIndex, fields).then(() => {
+      setSaveStatus('saved');
+      setTimeout(() => setSaveStatus('idle'), 2000);
+    });
+  }, [jobId]);
+
+  const updateProgreso = useCallback((updatedLines: QuoteLine[]) => {
+    if (!jobReferencia) return;
+    if (progresoDebounceRef.current) clearTimeout(progresoDebounceRef.current);
+    progresoDebounceRef.current = setTimeout(() => {
+      const total = updatedLines.length;
+      if (total === 0) return;
+      const resolved = updatedLines.filter((l: any) =>
+        l.approved || l.ignored || !l.needs_review
+      ).length;
+      const pct = Math.round((resolved / total) * 100);
+      updateJobProgreso(jobReferencia, pct);
+    }, 2000);
+  }, [jobReferencia]);
+
+  useEffect(() => {
+    return () => { if (progresoDebounceRef.current) clearTimeout(progresoDebounceRef.current); };
+  }, []);
+
+  const getLineIndex = useCallback((arrayIdx: number) => {
+    const line = lines[arrayIdx] as any;
+    return line?._lineIndex ?? arrayIdx;
+  }, [lines]);
 
   const isManualMode = activeQuoteData.status === 'manual';
 
@@ -132,7 +170,27 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     setLines(updatedLines);
     recalculate(updatedLines);
     setShowProductModal(false);
-  }, [lines, recalculate, ensureEditedMode]);
+
+    if (jobId) {
+      getMaxLineIndex(jobId).then((maxIdx) => {
+        const newIdx = maxIdx + 1;
+        upsertJobLine(jobId, newIdx, {
+          descripcion_original: 'Agregado manualmente',
+          producto_codigo: product.ProductCode,
+          producto_descripcion: product.ProductName,
+          precio_unitario: product.UnitPrice,
+          unidad_medida: product.UnitOfMeasure,
+          cantidad: 1,
+          confianza: 1.0,
+          origen: 'manual',
+          estado: 'aprobada',
+          requiere_revision: false,
+          total_linea: product.UnitPrice,
+        });
+      });
+    }
+    updateProgreso(updatedLines);
+  }, [lines, recalculate, ensureEditedMode, jobId, updateProgreso]);
 
   const handleProductSelectInEdit = useCallback((product: SearchProduct) => {
     const idx = editingIndexRef.current ?? editingIndex;
@@ -155,10 +213,22 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       return updatedLines;
     });
 
+    persistLineAction(getLineIndex(idx), {
+      producto_codigo: product.CodigoArt,
+      producto_descripcion: product.DescCortaArt,
+      precio_unitario: Number(product.Precio),
+      unidad_medida: product.UMP,
+      confianza: 1.0,
+      origen: 'manual',
+      estado: 'aprobada',
+      requiere_revision: false,
+      total_linea: (lines[idx]?.quantity || 1) * Number(product.Precio),
+    });
+
     editingIndexRef.current = null;
     setEditingIndex(null);
     setEditValues(EMPTY_EDIT);
-  }, [editingIndex, recalculate, ensureEditedMode]);
+  }, [editingIndex, recalculate, ensureEditedMode, persistLineAction, getLineIndex, lines]);
 
   const handleInlineProductSelect = useCallback((product: SearchProduct) => {
     ensureEditedMode();
@@ -176,7 +246,27 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     setLines(updatedLines);
     recalculate(updatedLines);
     setShowInlineAddRow(false);
-  }, [lines, recalculate, ensureEditedMode]);
+
+    if (jobId) {
+      getMaxLineIndex(jobId).then((maxIdx) => {
+        const newIdx = maxIdx + 1;
+        upsertJobLine(jobId, newIdx, {
+          descripcion_original: 'Agregado manualmente',
+          producto_codigo: product.CodigoArt,
+          producto_descripcion: product.DescCortaArt,
+          precio_unitario: Number(product.Precio),
+          unidad_medida: product.UMP,
+          cantidad: 1,
+          confianza: 1.0,
+          origen: 'manual',
+          estado: 'aprobada',
+          requiere_revision: false,
+          total_linea: Number(product.Precio),
+        });
+      });
+    }
+    updateProgreso(updatedLines);
+  }, [lines, recalculate, ensureEditedMode, jobId, updateProgreso]);
 
   const handleAddLineFromModal = useCallback((result: AddLineResult) => {
     ensureEditedMode();
@@ -195,7 +285,28 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     setLines(updatedLines);
     recalculate(updatedLines);
     setShowAddLineModal(false);
-  }, [lines, recalculate, ensureEditedMode]);
+
+    if (jobId) {
+      const origen = result.source === 'producto_nuevo' ? 'producto_nuevo' : 'manual';
+      getMaxLineIndex(jobId).then((maxIdx) => {
+        const newIdx = maxIdx + 1;
+        upsertJobLine(jobId, newIdx, {
+          descripcion_original: 'Agregado manualmente',
+          producto_codigo: result.matched_product_code,
+          producto_descripcion: result.matched_product_name,
+          precio_unitario: result.matched_unit_price,
+          unidad_medida: result.matched_unit_of_measure,
+          cantidad: result.quantity,
+          confianza: 1.0,
+          origen: origen as any,
+          estado: 'aprobada',
+          requiere_revision: false,
+          total_linea: result.quantity * result.matched_unit_price,
+        });
+      });
+    }
+    updateProgreso(updatedLines);
+  }, [lines, recalculate, ensureEditedMode, jobId, updateProgreso]);
 
   const handleReplaceLineFromModal = useCallback((result: AddLineResult) => {
     if (replaceLineIndex === null) return;
@@ -215,8 +326,24 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     };
     setLines(updatedLines);
     recalculate(updatedLines);
+
+    const origen = result.source === 'producto_nuevo' ? 'producto_nuevo' : 'manual';
+    persistLineAction(getLineIndex(replaceLineIndex), {
+      producto_codigo: result.matched_product_code,
+      producto_descripcion: result.matched_product_name,
+      precio_unitario: result.matched_unit_price,
+      unidad_medida: result.matched_unit_of_measure,
+      cantidad: result.quantity,
+      confianza: 1.0,
+      origen: origen as any,
+      estado: 'aprobada',
+      requiere_revision: false,
+      total_linea: result.quantity * result.matched_unit_price,
+    });
+    updateProgreso(updatedLines);
+
     setReplaceLineIndex(null);
-  }, [replaceLineIndex, lines, recalculate, ensureEditedMode]);
+  }, [replaceLineIndex, lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso]);
 
   const handleDeleteLine = useCallback((index: number) => {
     setDeleteConfirmIndex(index);
@@ -237,7 +364,12 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     updatedLines[index] = { ...updatedLines[index], quantity: newQty };
     setLines(updatedLines);
     recalculate(updatedLines);
-  }, [lines, recalculate, ensureEditedMode]);
+    const price = updatedLines[index].matched_unit_price || 0;
+    persistLineAction(getLineIndex(index), {
+      cantidad: newQty,
+      total_linea: newQty * price || null,
+    });
+  }, [lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex]);
 
   const handleEditStart = useCallback(
     (index: number) => {
@@ -279,9 +411,22 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     };
     setLines(updatedLines);
     recalculate(updatedLines);
+
+    const lineTotal = parsedQty * ((parsedPrice !== null && !isNaN(parsedPrice)) ? parsedPrice : 0);
+    persistLineAction(getLineIndex(editingIndex), {
+      producto_codigo: editValues.matched_product_code || null,
+      producto_descripcion: editValues.matched_product_name || null,
+      precio_unitario: parsedPrice !== null && !isNaN(parsedPrice) ? parsedPrice : null,
+      cantidad: parsedQty,
+      unidad_medida: editValues.matched_unit_of_measure || null,
+      total_linea: lineTotal || null,
+      requiere_revision: false,
+    });
+    updateProgreso(updatedLines);
+
     setEditingIndex(null);
     setEditValues(EMPTY_EDIT);
-  }, [editingIndex, editValues, lines, recalculate, ensureEditedMode]);
+  }, [editingIndex, editValues, lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso]);
 
   const handleEditChange = useCallback((field: keyof EditValues, value: string) => {
     setEditValues((prev) => ({ ...prev, [field]: value }));
@@ -294,8 +439,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       updatedLines[index] = { ...updatedLines[index], ignored: true };
       setLines(updatedLines);
       recalculate(updatedLines);
+      persistLineAction(getLineIndex(index), { estado: 'ignorada' });
+      updateProgreso(updatedLines);
     },
-    [lines, recalculate, ensureEditedMode]
+    [lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso]
   );
 
   const handleRestore = useCallback(
@@ -305,8 +452,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       updatedLines[index] = { ...updatedLines[index], ignored: false };
       setLines(updatedLines);
       recalculate(updatedLines);
+      persistLineAction(getLineIndex(index), { estado: 'pendiente' });
+      updateProgreso(updatedLines);
     },
-    [lines, recalculate, ensureEditedMode]
+    [lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso]
   );
 
   const handleApprove = useCallback(
@@ -316,8 +465,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       updatedLines[index] = { ...updatedLines[index], approved: true };
       setLines(updatedLines);
       recalculate(updatedLines);
+      persistLineAction(getLineIndex(index), { estado: 'aprobada' });
+      updateProgreso(updatedLines);
     },
-    [lines, recalculate, ensureEditedMode]
+    [lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso]
   );
 
   const handleBack = useCallback(() => {
@@ -432,6 +583,21 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             </div>
           )}
           <SummaryField label="Subtotal" value={formatCurrency(subtotal, activeQuoteData.currency)} />
+          {jobId && saveStatus !== 'idle' && (
+            <div className="flex items-center gap-1.5 self-center ml-auto">
+              {saveStatus === 'saving' ? (
+                <>
+                  <CloudOff className="w-3.5 h-3.5 text-[#747474] animate-pulse" />
+                  <span className="text-[#747474]" style={{ fontSize: 11, fontWeight: 500 }}>Guardando...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5 text-[#2E844A]" />
+                  <span className="text-[#2E844A]" style={{ fontSize: 11, fontWeight: 500 }}>Avance guardado</span>
+                </>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

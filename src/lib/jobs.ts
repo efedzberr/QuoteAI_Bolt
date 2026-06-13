@@ -98,6 +98,14 @@ export async function fetchRecentJobs(limit = 10): Promise<Job[]> {
   return (data as Job[]) || [];
 }
 
+export async function updateJobProgreso(referencia: string, progreso: number): Promise<void> {
+  const { error } = await supabase
+    .from('jobs')
+    .update({ progreso, updated_at: new Date().toISOString() })
+    .eq('referencia', referencia);
+  if (error) console.error('[jobs] updateJobProgreso error:', error);
+}
+
 export async function getJobByReferencia(referencia: string): Promise<Job | null> {
   const { data, error } = await supabase
     .from('jobs')

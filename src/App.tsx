@@ -10,7 +10,8 @@ import AuthScreen from './components/AuthScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
 import { normalizeLines } from './lib/normalizeLines';
-import { createJob, updateJobPayload, updateJobStatus } from './lib/jobs';
+import { createJob, updateJobPayload, updateJobStatus, updateJobProgreso, getJobByReferencia } from './lib/jobs';
+import { createJobLines, bulkUpsertJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 
 const WEBHOOK_URL = 'https://hook.us2.make.com/3p4n696w3n2jpplghxvnaa21t3ihselx';
 
@@ -285,6 +286,7 @@ function App() {
   const [editedQuoteData, setEditedQuoteData] = useState<any>(null);
   const [manualQuoteData, setManualQuoteData] = useState<any>(null);
   const [jobReferencia, setJobReferencia] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const onProcessingError = useCallback((message: string, rawText?: string) => {
@@ -299,7 +301,24 @@ function App() {
     if (jobReferencia) {
       updateJobStatus(jobReferencia, 'en_revision', { payload: data });
     }
-  }, [jobReferencia]);
+    if (jobId && data.lines && Array.isArray(data.lines)) {
+      const matchLines = data.lines.map((line: any, i: number) => ({
+        line_index: i,
+        producto_codigo: line.matched_product_code || null,
+        producto_descripcion: line.matched_product_name || null,
+        unidad_medida: line.matched_unit_of_measure || null,
+        precio_unitario: line.matched_unit_price ?? null,
+        confianza: line.confidence ?? null,
+        requiere_revision: (line.confidence ?? 0) < 0.75,
+        total_linea: (line.quantity || 0) * (line.matched_unit_price || 0) || null,
+        origen: (line.matched_product_code && (line.confidence ?? 0) > 0) ? 'auto' : 'sin_match',
+        descripcion_original: line.original_text || null,
+        cantidad: line.quantity ?? 1,
+        codigo_original: line.original_code || null,
+      }));
+      bulkUpsertJobLines(jobId, matchLines);
+    }
+  }, [jobReferencia, jobId]);
 
   const handleFileReady = useCallback((data: UploadData) => {
     setUploadData(data);
@@ -312,7 +331,27 @@ function App() {
     setJobReferencia(ref);
     createJob(ref, data.customerName).then((job) => {
       if (job) {
+        setJobId(job.id);
         updateJobPayload(ref, data.rows, data.rows.length);
+        const jobLines = data.rows.map((row, i) => ({
+          job_id: job.id,
+          line_index: i,
+          codigo_original: row.Codigo || row.codigo || null,
+          descripcion_original: row.Descripcion || row.descripcion || row.original_text || null,
+          unidad_original: row.Unid || row.unidad || null,
+          cantidad: parseFloat(row.Cant || row.cantidad || '1') || 1,
+          producto_codigo: null,
+          producto_descripcion: null,
+          unidad_medida: null,
+          precio_unitario: null,
+          confianza: null,
+          origen: 'auto' as const,
+          estado: 'pendiente' as const,
+          requiere_revision: false,
+          total_linea: null,
+          notas: null,
+        }));
+        createJobLines(job.id, jobLines);
       }
     });
   }, []);
@@ -462,6 +501,7 @@ function App() {
     setRawResponse('');
     setWebhookError(null);
     setJobReferencia(null);
+    setJobId(null);
   }, []);
 
   const handleApproved = useCallback((approvedLines: any[], quoteData: any) => {
@@ -484,6 +524,7 @@ function App() {
     setEditedQuoteData(null);
     setManualQuoteData(null);
     setJobReferencia(null);
+    setJobId(null);
   }, []);
 
   if (auth.loading) {
@@ -522,7 +563,49 @@ function App() {
         onResumeJob={(job) => {
           const ref = job.referencia;
           setJobReferencia(ref);
-          if (job.status === 'en_revision' && job.payload) {
+          setJobId(job.id);
+
+          if (job.status === 'en_revision' || job.status === 'enviado_validacion') {
+            fetchJobLines(job.id).then((jobLines) => {
+              if (jobLines.length > 0) {
+                const reconstructedLines = jobLines.map((jl: JobLine) => ({
+                  original_text: jl.descripcion_original || '',
+                  original_code: jl.codigo_original || null,
+                  quantity: jl.cantidad || 1,
+                  matched_product_code: jl.producto_codigo || null,
+                  matched_product_name: jl.producto_descripcion || null,
+                  matched_unit_price: jl.precio_unitario ?? null,
+                  matched_unit_of_measure: jl.unidad_medida || jl.unidad_original || 'PZA',
+                  confidence: jl.confianza ?? 0,
+                  needs_review: jl.requiere_revision,
+                  ignored: jl.estado === 'ignorada',
+                  approved: jl.estado === 'aprobada',
+                  badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
+                  _lineIndex: jl.line_index,
+                }));
+                const quoteData = {
+                  quoteReference: ref,
+                  customerName: job.cliente || '',
+                  generatedDate: new Date(job.created_at).toLocaleDateString('es-MX'),
+                  totalLines: reconstructedLines.length,
+                  currency: 'MXN',
+                  subtotal: reconstructedLines.reduce((sum: number, l: any) => {
+                    if (l.ignored) return sum;
+                    return sum + (l.quantity || 0) * (l.matched_unit_price || 0);
+                  }, 0),
+                  lines: reconstructedLines,
+                };
+                setWebhookResponse(quoteData);
+                setRawResponse(JSON.stringify(quoteData));
+                setCurrentScreen('review');
+              } else if (job.payload) {
+                const normalized = normalizeResponse(job.payload, job.cliente || '');
+                setWebhookResponse(normalized);
+                setRawResponse(JSON.stringify(job.payload));
+                setCurrentScreen('review');
+              }
+            });
+          } else if (job.status === 'completado' && job.payload) {
             const normalized = normalizeResponse(job.payload, job.cliente || '');
             setWebhookResponse(normalized);
             setRawResponse(JSON.stringify(job.payload));
@@ -552,6 +635,7 @@ function App() {
           rawDoclingResponse={uploadData.rawDoclingResponse}
           notice={uploadData.mappingNotice}
           jobReferencia={jobReferencia || undefined}
+          jobId={jobId || undefined}
           onConfirmSend={handleConfirmSend}
           onBack={handleBackToUpload}
         />
@@ -643,6 +727,8 @@ function App() {
           rawResponse={rawResponse}
           onApproved={handleApproved}
           onBack={handleBackToUpload}
+          jobId={jobId || undefined}
+          jobReferencia={jobReferencia || undefined}
         />
       </AppLayout>
     );

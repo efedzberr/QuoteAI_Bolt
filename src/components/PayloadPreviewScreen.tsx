@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { ArrowLeft, Send, ChevronDown, ChevronRight, Copy, Check, Table, Braces, AlertTriangle, Trash2, PlusCircle } from 'lucide-react';
 import Header from './Header';
 import { updateJobPayloadDebounced } from '../lib/jobs';
+import { upsertJobLine, deleteJobLine as deleteJobLineApi, getMaxLineIndex } from '../lib/jobLines';
 
 interface PayloadPreviewScreenProps {
   customerName: string;
@@ -10,6 +11,7 @@ interface PayloadPreviewScreenProps {
   rawDoclingResponse?: any;
   notice?: string;
   jobReferencia?: string;
+  jobId?: string;
   onConfirmSend: (editedRows: Record<string, any>[]) => void;
   onBack: () => void;
 }
@@ -23,6 +25,7 @@ export default function PayloadPreviewScreen({
   rawDoclingResponse,
   notice,
   jobReferencia,
+  jobId,
   onConfirmSend,
   onBack,
 }: PayloadPreviewScreenProps) {
@@ -92,6 +95,16 @@ export default function PayloadPreviewScreen({
     setEditableRows(updated);
     setEditingCell(null);
     syncToSupabase(updated);
+
+    if (jobId) {
+      const r = updated[row];
+      upsertJobLine(jobId, row, {
+        codigo_original: r.Codigo || null,
+        descripcion_original: r.Descripcion || null,
+        unidad_original: r.Unid || null,
+        cantidad: parseFloat(r.Cant) || 1,
+      });
+    }
   };
 
   const handleCellCancel = () => {
@@ -109,6 +122,9 @@ export default function PayloadPreviewScreen({
 
   const confirmDelete = () => {
     if (deleteConfirm === null) return;
+    if (jobId) {
+      deleteJobLineApi(jobId, deleteConfirm);
+    }
     const updated = renumber(editableRows.filter((_, i) => i !== deleteConfirm));
     setEditableRows(updated);
     setDeleteConfirm(null);
@@ -124,6 +140,22 @@ export default function PayloadPreviewScreen({
     const updated = [...editableRows, newRow];
     setEditableRows(updated);
     syncToSupabase(updated);
+
+    if (jobId) {
+      getMaxLineIndex(jobId).then((maxIdx) => {
+        const newIdx = maxIdx + 1;
+        upsertJobLine(jobId, newIdx, {
+          codigo_original: null,
+          descripcion_original: null,
+          unidad_original: 'PZ',
+          cantidad: 1,
+          origen: 'auto',
+          estado: 'pendiente',
+          requiere_revision: false,
+        });
+      });
+    }
+
     setTimeout(() => {
       setEditingCell({ row: updated.length - 1, col: 'Descripcion' });
       setEditValue('');
