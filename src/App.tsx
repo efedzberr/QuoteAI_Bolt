@@ -10,7 +10,7 @@ import AuthScreen from './components/AuthScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
 import { normalizeLines } from './lib/normalizeLines';
-import { createJob, updateJobPayload, updateJobStatus } from './lib/jobs';
+import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus } from './lib/jobs';
 import { createJobLines, bulkUpsertJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 
 const WEBHOOK_URL = 'https://hook.us2.make.com/3p4n696w3n2jpplghxvnaa21t3ihselx';
@@ -286,6 +286,7 @@ function App() {
   const [editedQuoteData, setEditedQuoteData] = useState<any>(null);
   const [manualQuoteData, setManualQuoteData] = useState<any>(null);
   const [reexecJob, setReexecJob] = useState<any>(null);
+  const [resumeExtraction, setResumeExtraction] = useState<{ rows: any[]; customerName: string } | null>(null);
   const [jobReferencia, setJobReferencia] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -330,23 +331,19 @@ function App() {
     }
   }, [jobReferencia, jobId]);
 
-  const handleFileReady = useCallback((data: UploadData) => {
-    const upperCustomer = data.customerName.toLocaleUpperCase('es-MX');
-    const normalizedData = { ...data, customerName: upperCustomer };
-    setUploadData(normalizedData);
-    setWebhookResponse(null);
-    setRawResponse('');
-    setWebhookError(null);
-    setCurrentScreen('preview');
+  const handleExtractionComplete = useCallback((rows: any[], customerName: string) => {
+    // Anti-duplicate: if we already have a jobId for this session, skip
+    if (jobId) return;
 
+    const upperCustomer = customerName.toLocaleUpperCase('es-MX');
     const ref = `QAI-${Date.now()}`;
     setJobReferencia(ref);
     createJob(ref, upperCustomer).then((job) => {
       if (job) {
         setJobId(job.id);
-        updateJobStatus(ref, 'revision_datos');
-        updateJobPayload(ref, normalizedData.rows, normalizedData.rows.length);
-        const jobLines = normalizedData.rows.map((row, i) => ({
+        updateJobStatus(ref, 'extraccion');
+        updateJobPayloadDebounced(ref, rows, rows.length);
+        const jobLines = rows.map((row, i) => ({
           job_id: job.id,
           line_index: i,
           codigo_original: row.Codigo || row.codigo || null,
@@ -367,7 +364,21 @@ function App() {
         createJobLines(job.id, jobLines);
       }
     });
-  }, []);
+  }, [jobId]);
+
+  const handleFileReady = useCallback((data: UploadData) => {
+    const upperCustomer = data.customerName.toLocaleUpperCase('es-MX');
+    const normalizedData = { ...data, customerName: upperCustomer };
+    setUploadData(normalizedData);
+    setWebhookResponse(null);
+    setRawResponse('');
+    setWebhookError(null);
+    setCurrentScreen('preview');
+
+    if (jobReferencia) {
+      updateJobStatus(jobReferencia, 'revision_datos');
+    }
+  }, [jobReferencia]);
 
   const handleCreateManualQuote = useCallback((customerName: string) => {
     const upperCustomer = customerName.toLocaleUpperCase('es-MX');
@@ -515,6 +526,7 @@ function App() {
     setWebhookError(null);
     setJobReferencia(null);
     setJobId(null);
+    setResumeExtraction(null);
   }, []);
 
   const handleApproved = useCallback((approvedLines: any[], quoteData: any) => {
@@ -541,6 +553,7 @@ function App() {
     setManualQuoteData(null);
     setJobReferencia(null);
     setJobId(null);
+    setResumeExtraction(null);
   }, []);
 
   const handleBackToPreview = useCallback(() => {
@@ -654,10 +667,16 @@ function App() {
       <HomeDashboard
         onNewQuote={() => {
           setReadEngine('default');
+          setResumeExtraction(null);
+          setJobReferencia(null);
+          setJobId(null);
           setCurrentScreen('upload');
         }}
         onNewQuoteDocling={() => {
           setReadEngine('docling');
+          setResumeExtraction(null);
+          setJobReferencia(null);
+          setJobId(null);
           setCurrentScreen('upload');
         }}
         onOpenAdmin={() => setCurrentScreen('admin')}
@@ -667,7 +686,11 @@ function App() {
           setJobReferencia(ref);
           setJobId(job.id);
 
-          if (job.status === 'revision_datos') {
+          if (job.status === 'extraccion') {
+            const rows = job.payload?.rows || (Array.isArray(job.payload) ? job.payload : []);
+            setResumeExtraction({ rows, customerName: job.cliente || '' });
+            setCurrentScreen('upload');
+          } else if (job.status === 'revision_datos') {
             if (job.payload && job.payload.rows) {
               setUploadData({
                 customerName: job.cliente || '',
@@ -924,9 +947,12 @@ function App() {
       <QuoteUploadScreen
         readEngine={readEngine}
         onFileReady={handleFileReady}
+        onExtractionComplete={handleExtractionComplete}
         onCreateManualQuote={handleCreateManualQuote}
         onOpenAdmin={() => setCurrentScreen('admin')}
         onBackToHome={() => setCurrentScreen('home')}
+        initialRows={resumeExtraction?.rows}
+        initialCustomerName={resumeExtraction?.customerName}
       />
     </AppLayout>
   );

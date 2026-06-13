@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, DragEvent } from 'react';
+import { useState, useCallback, useRef, useEffect, DragEvent } from 'react';
 import { Upload, Check, X, Lock, FileSpreadsheet, FileText, Image, Send } from 'lucide-react';
 import * as mammoth from 'mammoth';
 import Header from './Header';
@@ -21,9 +21,13 @@ interface ParsedData {
 interface QuoteUploadScreenProps {
   readEngine?: 'default' | 'docling';
   onFileReady: (data: ParsedData) => void;
+  onExtractionComplete?: (rows: any[], customerName: string) => void;
   onCreateManualQuote: (customerName: string) => void;
   onOpenAdmin?: () => void;
   onBackToHome?: () => void;
+  initialRows?: any[];
+  initialCustomerName?: string;
+  initialFileName?: string;
 }
 
 type ParseStatus = 'idle' | 'parsing' | 'processing' | 'success' | 'error';
@@ -80,22 +84,32 @@ async function renderPdfToImages(pdf: any): Promise<{ base64: string; mediaType:
   return images;
 }
 
-export default function QuoteUploadScreen({ readEngine = 'default', onFileReady, onCreateManualQuote, onOpenAdmin, onBackToHome }: QuoteUploadScreenProps) {
+export default function QuoteUploadScreen({ readEngine = 'default', onFileReady, onExtractionComplete, onCreateManualQuote, onOpenAdmin, onBackToHome, initialRows, initialCustomerName, initialFileName }: QuoteUploadScreenProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [customerName, setCustomerName] = useState('');
+  const [customerName, setCustomerName] = useState(initialCustomerName || '');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [parsedRows, setParsedRows] = useState<any[]>([]);
-  const [parseStatus, setParseStatus] = useState<ParseStatus>('idle');
+  const [parsedRows, setParsedRows] = useState<any[]>(initialRows || []);
+  const [parseStatus, setParseStatus] = useState<ParseStatus>(initialRows && initialRows.length > 0 ? 'success' : 'idle');
   const [parseError, setParseError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [rowCount, setRowCount] = useState<number>(0);
+  const [rowCount, setRowCount] = useState<number>(initialRows?.length || 0);
   const [processingDetail, setProcessingDetail] = useState<string>('');
   const [manualError, setManualError] = useState<string | null>(null);
   const [fractionalRows, setFractionalRows] = useState<FractionalRow[] | null>(null);
+  const extractionNotifiedRef = useRef(!!initialRows && initialRows.length > 0);
   const { logs, clearLogs } = useDebugLogs();
 
   const [n8nLoading, setN8nLoading] = useState(false);
   const [n8nError, setN8nError] = useState<string | null>(null);
+
+  // Notify parent when extraction completes + customer name is filled
+  useEffect(() => {
+    if (extractionNotifiedRef.current) return;
+    if (parseStatus !== 'success' || parsedRows.length === 0) return;
+    if (!customerName.trim()) return;
+    extractionNotifiedRef.current = true;
+    onExtractionComplete?.(parsedRows, customerName.trim());
+  }, [parseStatus, parsedRows, customerName, onExtractionComplete]);
 
   const detectFractionalRows = useCallback((rows: any[]): FractionalRow[] => {
     const fractional: FractionalRow[] = [];
@@ -146,6 +160,7 @@ export default function QuoteUploadScreen({ readEngine = 'default', onFileReady,
     setParseError(null);
     setRowCount(0);
     setProcessingDetail('');
+    extractionNotifiedRef.current = false;
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
@@ -582,6 +597,7 @@ export default function QuoteUploadScreen({ readEngine = 'default', onFileReady,
     setRowCount(0);
     setProcessingDetail('');
     setN8nError(null);
+    extractionNotifiedRef.current = false;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -820,7 +836,7 @@ export default function QuoteUploadScreen({ readEngine = 'default', onFileReady,
               </label>
 
               {/* Upload Zone */}
-              {!selectedFile && (
+              {!selectedFile && parseStatus !== 'success' && (
                 <div
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
@@ -906,6 +922,35 @@ export default function QuoteUploadScreen({ readEngine = 'default', onFileReady,
                         <X className="w-4 h-4 text-[#747474]" />
                       </button>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {/* Resumed extraction state (no file, but rows pre-loaded) */}
+              {!selectedFile && parseStatus === 'success' && parsedRows.length > 0 && (
+                <div
+                  className="rounded-xl border border-[#2E844A] bg-[#DEF5E5] flex items-center px-5 py-4"
+                  style={{ minHeight: 88 }}
+                >
+                  <div className="flex items-center gap-4 w-full">
+                    <div className="w-10 h-10 rounded-full bg-[#2E844A] flex items-center justify-center flex-shrink-0">
+                      <Check className="w-5 h-5 text-white" strokeWidth={2.5} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[#181818]" style={{ fontSize: 14, fontWeight: 600 }}>
+                        Datos de extraccion cargados
+                      </p>
+                      <p className="text-[#747474]" style={{ fontSize: 12 }}>
+                        {parsedRows.length} {parsedRows.length === 1 ? 'fila' : 'filas'} listas para procesar
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleRemoveFile}
+                      className="flex-shrink-0 w-8 h-8 rounded-full hover:bg-white flex items-center justify-center transition-colors"
+                      aria-label="Descartar datos"
+                    >
+                      <X className="w-4 h-4 text-[#747474]" />
+                    </button>
                   </div>
                 </div>
               )}

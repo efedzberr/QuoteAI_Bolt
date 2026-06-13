@@ -18,7 +18,7 @@ export interface StageInfo {
 
 const STAGES: Record<string, StageInfo> = {
   nueva_solicitud: { order: 1, label: 'Nueva solicitud', color: '#444444', bgColor: '#F0F0F0', type: 'reposo' },
-  extraccion: { order: 2, label: 'Extraccion inteligente', color: '#0176D3', bgColor: '#EAF5FE', type: 'procesando' },
+  extraccion: { order: 2, label: 'Extraccion completada', color: '#2E844A', bgColor: '#DEF5E5', type: 'reposo' },
   revision_datos: { order: 3, label: 'Revision de datos', color: '#B86C00', bgColor: '#FEF1DC', type: 'reposo' },
   matching: { order: 4, label: 'Matching de productos', color: '#0176D3', bgColor: '#EAF5FE', type: 'procesando' },
   validacion: { order: 5, label: 'Validacion comercial', color: '#B86C00', bgColor: '#FEF1DC', type: 'reposo' },
