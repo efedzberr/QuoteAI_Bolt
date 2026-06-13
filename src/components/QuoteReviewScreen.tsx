@@ -205,9 +205,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         matched_product_name: product.DescCortaArt,
         matched_unit_price: Number(product.Precio),
         matched_unit_of_measure: product.UMP,
-        confidence: 1.0,
+        confidence: null,
         needs_review: false,
         approved: false,
+        badgeType: 'manual',
       };
       setTimeout(() => recalculate(updatedLines), 0);
       return updatedLines;
@@ -218,7 +219,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       producto_descripcion: product.DescCortaArt,
       precio_unitario: Number(product.Precio),
       unidad_medida: product.UMP,
-      confianza: 1.0,
+      confianza: null,
       origen: 'manual',
       estado: 'aprobada',
       requiere_revision: false,
@@ -407,7 +408,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       matched_unit_price: parsedPrice !== null && !isNaN(parsedPrice) ? parsedPrice : null,
       quantity: parsedQty,
       matched_unit_of_measure: editValues.matched_unit_of_measure || '',
+      confidence: null,
       needs_review: false,
+      badgeType: 'manual',
     };
     setLines(updatedLines);
     recalculate(updatedLines);
@@ -420,6 +423,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       cantidad: parsedQty,
       unidad_medida: editValues.matched_unit_of_measure || null,
       total_linea: lineTotal || null,
+      confianza: null,
+      origen: 'manual',
+      estado: 'aprobada',
       requiere_revision: false,
     });
     updateProgreso(updatedLines);
