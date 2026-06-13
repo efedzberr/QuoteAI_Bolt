@@ -110,8 +110,44 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     return () => { if (progresoDebounceRef.current) clearTimeout(progresoDebounceRef.current); };
   }, []);
 
+  const editingIndexRef2 = useRef(editingIndex);
+  const editValuesRef = useRef(editValues);
+  const linesRef = useRef(lines);
+  editingIndexRef2.current = editingIndex;
+  editValuesRef.current = editValues;
+  linesRef.current = lines;
+
+  useEffect(() => {
+    return () => {
+      const idx = editingIndexRef2.current;
+      if (idx === null || !jobId) return;
+      const currentLines = linesRef.current;
+      const line = currentLines[idx] as any;
+      const lineIdx = line?._lineIndex ?? idx;
+      const ev = editValuesRef.current;
+      const parsedPrice = ev.matched_unit_price !== '' ? parseFloat(ev.matched_unit_price) : null;
+      const parsedQty = ev.quantity !== '' ? Math.max(1, Math.round(parseFloat(ev.quantity) || 1)) : 1;
+      const lineTotal = parsedQty * ((parsedPrice !== null && !isNaN(parsedPrice)) ? parsedPrice : 0);
+      upsertJobLine(jobId, lineIdx, {
+        producto_codigo: ev.matched_product_code || null,
+        producto_descripcion: ev.matched_product_name || null,
+        precio_unitario: parsedPrice !== null && !isNaN(parsedPrice) ? parsedPrice : null,
+        cantidad: parsedQty,
+        unidad_medida: ev.matched_unit_of_measure || null,
+        total_linea: lineTotal || null,
+        confianza: null,
+        origen: 'manual',
+        estado: 'aprobada',
+        requiere_revision: false,
+      });
+    };
+  }, [jobId]);
+
   const getLineIndex = useCallback((arrayIdx: number) => {
     const line = lines[arrayIdx] as any;
+    if (line?._lineIndex === undefined) {
+      console.warn('[QuoteReview] _lineIndex missing for array position', arrayIdx, '- falling back to arrayIdx. Data may persist to wrong row.');
+    }
     return line?._lineIndex ?? arrayIdx;
   }, [lines]);
 

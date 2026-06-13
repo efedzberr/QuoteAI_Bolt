@@ -295,6 +295,12 @@ function App() {
   }, []);
 
   const onProcessingComplete = useCallback((data: any, rawText: string) => {
+    if (data.lines && Array.isArray(data.lines)) {
+      data.lines = data.lines.map((line: any, i: number) => ({
+        ...line,
+        _lineIndex: i,
+      }));
+    }
     setWebhookResponse(data);
     setRawResponse(rawText);
     setCurrentScreen('review');
