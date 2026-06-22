@@ -272,12 +272,9 @@ interface UploadData {
   mappingNotice?: string;
 }
 
-type ReadEngine = 'default' | 'docling';
-
 function App() {
   const auth = useAuth();
   const [currentScreen, setCurrentScreen] = useState<Screen>('home');
-  const [readEngine, setReadEngine] = useState<ReadEngine>('default');
   const [uploadData, setUploadData] = useState<UploadData | null>(null);
   const [webhookResponse, setWebhookResponse] = useState<any>(null);
   const [rawResponse, setRawResponse] = useState<string>('');
@@ -655,7 +652,6 @@ function App() {
   const handleLayoutNavigate = (section: string) => {
     if (section === 'home') setCurrentScreen('home');
     else if (section === 'cotizar') {
-      setReadEngine('default');
       setCurrentScreen('upload');
     }
     else if (section === 'ajustes') setCurrentScreen('admin');
@@ -666,14 +662,12 @@ function App() {
     <>
       <HomeDashboard
         onNewQuote={() => {
-          setReadEngine('default');
           setResumeExtraction(null);
           setJobReferencia(null);
           setJobId(null);
           setCurrentScreen('upload');
         }}
         onNewQuoteDocling={() => {
-          setReadEngine('docling');
           setResumeExtraction(null);
           setJobReferencia(null);
           setJobId(null);
@@ -945,7 +939,6 @@ function App() {
       contentPadding={false}
     >
       <QuoteUploadScreen
-        readEngine={readEngine}
         onFileReady={handleFileReady}
         onExtractionComplete={handleExtractionComplete}
         onCreateManualQuote={handleCreateManualQuote}
