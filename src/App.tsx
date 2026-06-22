@@ -13,7 +13,7 @@ import { normalizeLines } from './lib/normalizeLines';
 import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus } from './lib/jobs';
 import { createJobLines, bulkUpsertJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 
-const WEBHOOK_URL = 'https://hook.us2.make.com/3p4n696w3n2jpplghxvnaa21t3ihselx';
+const WEBHOOK_URL = 'https://quoteai-production.up.railway.app/match';
 
 const PROCESSING_RULES = [
   'If the row does not contain a clear product request with a quantity, it is likely a header, title, or section label. In that case return: { "original_text": "<the row text>", "quantity": null, "unit_of_measure": null, "product_code_hint": null, "description": null, "keywords": [], "attributes": { "material": null, "size": null, "color": null, "other": null }, "notes": "SKIP - this row is a header or label, not a product" }',
