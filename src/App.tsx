@@ -1,19 +1,15 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import HomeDashboard from './components/HomeDashboard';
 import QuoteUploadScreen from './components/QuoteUploadScreen';
 import PayloadPreviewScreen from './components/PayloadPreviewScreen';
-import ProcessingScreen from './components/ProcessingScreen';
 import QuoteReviewScreen from './components/QuoteReviewScreen';
 import PDFPreviewScreen from './components/PDFPreviewScreen';
 import AdminScreen from './components/AdminScreen';
 import AuthScreen from './components/AuthScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
-import { normalizeLines } from './lib/normalizeLines';
 import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus } from './lib/jobs';
-import { createJobLines, bulkUpsertJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
-
-const WEBHOOK_URL = 'https://quoteai-production.up.railway.app/match';
+import { createJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 
 const PROCESSING_RULES = [
   'If the row does not contain a clear product request with a quantity, it is likely a header, title, or section label. In that case return: { "original_text": "<the row text>", "quantity": null, "unit_of_measure": null, "product_code_hint": null, "description": null, "keywords": [], "attributes": { "material": null, "size": null, "color": null, "other": null }, "notes": "SKIP - this row is a header or label, not a product" }',
@@ -21,16 +17,7 @@ const PROCESSING_RULES = [
   'A valid product row must have at least a description and ideally a quantity.',
 ];
 
-type Screen = 'home' | 'upload' | 'preview' | 'processing' | 'review' | 'generate' | 'admin';
-
-const EXPECTED_LINE_FIELDS = [
-  'original_text',
-  'quantity',
-  'matched_product_code',
-  'matched_product_name',
-  'matched_unit_price',
-  'confidence',
-];
+type Screen = 'home' | 'upload' | 'preview' | 'review' | 'generate' | 'admin';
 
 function parseLineItem(line: any): any {
   if (typeof line === 'string') {
@@ -50,21 +37,6 @@ function parseLineItem(line: any): any {
     }
   }
   return line;
-}
-
-function unwrapMakeResponse(parsed: any): any {
-  if (Array.isArray(parsed) && parsed.length > 0) {
-    const first = parsed[0];
-    if (first && typeof first === 'object' && 'body' in first && typeof first.body === 'object') {
-      console.log('[Webhook] Detected Make wrapper format: [{ body: { ... } }]. Unwrapping body.');
-      return first.body;
-    }
-    if (first && typeof first === 'object' && 'lines' in first) {
-      console.log('[Webhook] Detected array wrapper: [{ lines: [...] }]. Unwrapping first element.');
-      return first;
-    }
-  }
-  return parsed;
 }
 
 function mapLineFields(line: any): any {
@@ -172,99 +144,6 @@ function normalizeResponse(data: any, customerName: string): any {
   return data;
 }
 
-function diagnoseResponse(parsed: any): { valid: boolean; message: string } {
-  if (parsed === null || parsed === undefined) {
-    return { valid: false, message: 'Parsed response is null/undefined.' };
-  }
-
-  if (typeof parsed !== 'object') {
-    return {
-      valid: false,
-      message: `Expected a JSON object, but received type "${typeof parsed}".\n\nValue: ${JSON.stringify(parsed).substring(0, 300)}`,
-    };
-  }
-
-  if (Array.isArray(parsed)) {
-    const topKeys = parsed.length > 0 ? Object.keys(parsed[0]) : [];
-    return {
-      valid: false,
-      message: [
-        'Response is an array, not an object with a "lines" property.',
-        '',
-        `Array length: ${parsed.length}`,
-        topKeys.length > 0 ? `First element keys: ${topKeys.join(', ')}` : 'Array is empty',
-        '',
-        'EXPECTED structure:',
-        '  { "lines": [ { "original_text": "...", "quantity": 1, ... } ] }',
-        '',
-        'RECEIVED structure:',
-        `  [ ${parsed.length > 0 ? JSON.stringify(parsed[0]).substring(0, 200) + '...' : '(empty)'} ]`,
-        '',
-        'Hint: The response might contain the lines directly as an array. Wrap it inside { "lines": [...] }.',
-      ].join('\n'),
-    };
-  }
-
-  const topKeys = Object.keys(parsed);
-
-  if (!('lines' in parsed)) {
-    return {
-      valid: false,
-      message: [
-        'Response object is missing the "lines" property.',
-        '',
-        `Top-level keys found: ${topKeys.length > 0 ? topKeys.join(', ') : '(none)'}`,
-        '',
-        'EXPECTED structure:',
-        '  { "lines": [ { "original_text": "...", "quantity": 1, ... } ] }',
-        '',
-        'RECEIVED structure:',
-        `  { ${topKeys.map(k => `"${k}": ${JSON.stringify(parsed[k]).substring(0, 80)}`).join(', ')} }`,
-      ].join('\n'),
-    };
-  }
-
-  if (!Array.isArray(parsed.lines)) {
-    return {
-      valid: false,
-      message: [
-        `"lines" exists but is not an array (type: ${typeof parsed.lines}).`,
-        '',
-        `Value of "lines": ${JSON.stringify(parsed.lines).substring(0, 300)}`,
-        '',
-        'EXPECTED: "lines" should be an array of line objects.',
-      ].join('\n'),
-    };
-  }
-
-  if (parsed.lines.length === 0) {
-    return {
-      valid: false,
-      message: [
-        '"lines" is an empty array - no product lines were returned.',
-        '',
-        `Other top-level keys: ${topKeys.filter(k => k !== 'lines').join(', ') || '(none)'}`,
-        '',
-        'The orchestration layer returned zero results. Check that your Make scenario is processing rows and producing output.',
-      ].join('\n'),
-    };
-  }
-
-  const firstLine = parsed.lines[0];
-  const lineKeys = typeof firstLine === 'object' && firstLine !== null ? Object.keys(firstLine) : [];
-  const missingFields = EXPECTED_LINE_FIELDS.filter(f => !(f in firstLine));
-
-  if (missingFields.length > 0) {
-    console.warn(
-      `[Webhook] Lines present but first line is missing fields: ${missingFields.join(', ')}`,
-      '\nFirst line keys:', lineKeys,
-      '\nFirst line:', firstLine
-    );
-  }
-
-  return { valid: true, message: '' };
-}
-
 interface UploadData {
   customerName: string;
   rows: Record<string, any>[];
@@ -286,47 +165,6 @@ function App() {
   const [resumeExtraction, setResumeExtraction] = useState<{ rows: any[]; customerName: string } | null>(null);
   const [jobReferencia, setJobReferencia] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  const onProcessingError = useCallback((message: string, rawText?: string) => {
-    setWebhookError(message);
-    if (rawText) setRawResponse(rawText);
-    if (jobReferencia) {
-      updateJobStatus(jobReferencia, 'error', { error: message.substring(0, 200) });
-    }
-  }, [jobReferencia]);
-
-  const onProcessingComplete = useCallback((data: any, rawText: string) => {
-    if (data.lines && Array.isArray(data.lines)) {
-      data.lines = data.lines.map((line: any, i: number) => ({
-        ...line,
-        _lineIndex: i,
-      }));
-    }
-    setWebhookResponse(data);
-    setRawResponse(rawText);
-    setCurrentScreen('review');
-    if (jobReferencia) {
-      updateJobStatus(jobReferencia, 'validacion', { payload: data });
-    }
-    if (jobId && data.lines && Array.isArray(data.lines)) {
-      const matchLines = data.lines.map((line: any, i: number) => ({
-        line_index: i,
-        producto_codigo: line.matched_product_code || null,
-        producto_descripcion: line.matched_product_name || null,
-        unidad_medida: line.matched_unit_of_measure || null,
-        precio_unitario: line.matched_unit_price ?? null,
-        confianza: line.confidence ?? null,
-        requiere_revision: (line.confidence ?? 0) < 0.75,
-        total_linea: (line.quantity || 0) * (line.matched_unit_price || 0) || null,
-        origen: (line.matched_product_code && (line.confidence ?? 0) > 0) ? 'auto' : 'sin_match',
-        descripcion_original: line.original_text || null,
-        cantidad: line.quantity ?? 1,
-        codigo_original: line.original_code || null,
-      }));
-      bulkUpsertJobLines(jobId, matchLines);
-    }
-  }, [jobReferencia, jobId]);
 
   const handleExtractionComplete = useCallback((rows: any[], customerName: string) => {
     // Anti-duplicate: if we already have a jobId for this session, skip
@@ -397,134 +235,36 @@ function App() {
   const handleConfirmSend = useCallback((editedRows: Record<string, any>[]) => {
     if (!uploadData) return;
 
-    setUploadData((prev) => prev ? { ...prev, rows: editedRows } : prev);
-    setCurrentScreen('processing');
-
     if (jobReferencia) {
       updateJobStatus(jobReferencia, 'matching');
     }
 
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+    const sanitizedRows = editedRows.map((row: any) => {
+      const cantInt = Math.max(1, Math.round(parseFloat(row?.Cant) || 1));
+      return { ...row, Cant: String(cantInt) };
+    });
 
-    (async () => {
-      try {
-        const sanitizedRows = editedRows.map((row: any) => {
-          const cantInt = Math.max(1, Math.round(parseFloat(row?.Cant) || 1));
-          return { ...row, Cant: String(cantInt) };
-        });
+    fetch('https://quoteai-production.up.railway.app/match/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        referencia: jobReferencia,
+        customerName: uploadData.customerName,
+        rows: sanitizedRows,
+      }),
+    }).catch((err) => {
+      console.error('[match/start] Error:', err);
+    });
 
-        const response = await fetch(WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            customerName: uploadData.customerName,
-            rows: sanitizedRows,
-            processingRules: PROCESSING_RULES,
-          }),
-          signal: controller.signal,
-        });
-
-        const rawText = await response.text();
-
-        console.group('[Webhook Response Diagnostics]');
-        console.log('HTTP Status:', response.status, response.statusText);
-        console.log('Content-Type:', response.headers.get('content-type'));
-        console.log('Raw response length:', rawText.length);
-        console.log('Raw response (full):', rawText);
-
-        if (!response.ok) {
-          console.error('Non-OK HTTP status received');
-          console.groupEnd();
-          onProcessingError(
-            `Webhook returned HTTP ${response.status} ${response.statusText}`,
-            rawText
-          );
-          return;
-        }
-
-        let parsed: any = null;
-        let parseError: string | null = null;
-
-        try {
-          const cleaned = rawText
-            .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')
-            .replace(/\r?\n|\r/g, ' ')
-            .replace(/\t/g, ' ')
-            .trim();
-
-          parsed = JSON.parse(cleaned);
-          console.log('Parsed JSON type:', typeof parsed);
-          console.log('Parsed JSON:', parsed);
-        } catch (e: any) {
-          parseError = e.message || 'Unknown JSON parse error';
-          console.error('JSON parse failed:', parseError);
-          console.log('First 500 chars of raw:', rawText.substring(0, 500));
-          console.groupEnd();
-
-          const preview = rawText.length > 200 ? rawText.substring(0, 200) + '...' : rawText;
-          onProcessingError(
-            `Response is not valid JSON.\n\nParse error: ${parseError}\n\nResponse preview:\n${preview}`,
-            rawText
-          );
-          return;
-        }
-
-        const raw = unwrapMakeResponse(parsed);
-        console.log('Unwrapped response:', raw);
-
-        const normalizedLinesList = normalizeLines(raw.lines);
-        const data = {
-          ...raw,
-          lines: normalizedLinesList,
-        };
-
-        console.log('[Webhook] Lines normalized:', normalizedLinesList.length, 'items');
-
-        const diagnostics = diagnoseResponse(data);
-        console.log('Diagnostics:', diagnostics);
-        console.groupEnd();
-
-        if (!diagnostics.valid) {
-          onProcessingError(diagnostics.message, rawText);
-          return;
-        }
-
-        const normalized = normalizeResponse(data, uploadData.customerName);
-        console.log('[Webhook] Normalized response:', normalized);
-
-        onProcessingComplete(normalized, rawText);
-      } catch (error: any) {
-        if (error.name === 'AbortError') return;
-        console.error('[Webhook] Network/fetch error:', error);
-        console.error('[Webhook] Error stack:', error.stack);
-        const detail = [
-          `Network error: ${error.message || 'Unknown error'}`,
-          error.cause ? `Cause: ${String(error.cause)}` : null,
-          '',
-          'This usually means the webhook URL is unreachable, CORS is blocking the request, or there is a network issue.',
-        ]
-          .filter(Boolean)
-          .join('\n');
-        setWebhookError(detail);
-      }
-    })();
-  }, [uploadData, jobReferencia, onProcessingError, onProcessingComplete]);
-
-  const handleCancel = useCallback(() => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
-    setCurrentScreen('upload');
+    setCurrentScreen('home');
     setUploadData(null);
     setWebhookResponse(null);
     setRawResponse('');
     setWebhookError(null);
     setJobReferencia(null);
     setJobId(null);
-    setResumeExtraction(null);
-  }, []);
+  }, [uploadData, jobReferencia]);
+
 
   const handleApproved = useCallback((approvedLines: any[], quoteData: any) => {
     const edited = { ...quoteData, lines: approvedLines };
@@ -814,30 +554,6 @@ function App() {
           jobId={jobId || undefined}
           onConfirmSend={handleConfirmSend}
           onBack={handleBackToUpload}
-        />
-      </AppLayout>
-    );
-  }
-
-  if (currentScreen === 'processing' && uploadData) {
-    return (
-      <AppLayout
-        active="cotizar"
-        breadcrumbs={[
-          { label: 'Inicio', onClick: () => setCurrentScreen('home') },
-          { label: 'Cotizar', onClick: () => setCurrentScreen('upload') },
-          { label: 'Procesando' },
-        ]}
-        onNavigate={handleLayoutNavigate}
-        contentPadding={false}
-      >
-        <ProcessingScreen
-          customerName={uploadData.customerName}
-          totalRows={uploadData.rows.length}
-          responseData={webhookResponse}
-          errorMessage={webhookError}
-          rawResponse={rawResponse}
-          onCancel={handleCancel}
         />
       </AppLayout>
     );
