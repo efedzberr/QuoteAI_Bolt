@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import AppLayout from './layout/AppLayout';
 import { fetchRecentJobs, type Job, type JobStatus } from '../lib/jobs';
-import { fetchJobLineStats, type JobLineStat } from '../lib/jobLines';
+import { fetchJobLineStats, type JobLineStat, type GlobalLineStats } from '../lib/jobLines';
 import { getStageInfo, isResumableStage, isProcessingStage, isFinalStage } from '../lib/jobStages';
 import {
   FileText,
@@ -10,7 +10,7 @@ import {
   Plus,
   DollarSign,
   CheckCircle,
-  TrendingUp,
+
   Eye,
   RefreshCw,
   Clock,
@@ -28,15 +28,13 @@ interface HomeDashboardProps {
 
 /* ─── Sub-components (internal only) ─── */
 
-function KpiCard({ icon: Icon, iconColor, iconBg, title, value, sub, delta, deltaPositive }: {
+function KpiCard({ icon: Icon, iconColor, iconBg, title, value, sub }: {
   icon: React.ElementType;
   iconColor: string;
   iconBg: string;
   title: string;
   value: string;
   sub: string;
-  delta: string;
-  deltaPositive: boolean;
 }) {
   return (
     <div className="bg-white rounded-card p-5 shadow-sm border border-rule-soft animate-rise-in">
@@ -44,11 +42,6 @@ function KpiCard({ icon: Icon, iconColor, iconBg, title, value, sub, delta, delt
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${iconBg}`}>
           <Icon className={`w-5 h-5 ${iconColor}`} />
         </div>
-        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-          deltaPositive ? 'text-good bg-good-soft' : 'text-bad bg-bad-soft'
-        }`}>
-          {deltaPositive ? '\u25B2' : '\u25BC'} {delta}
-        </span>
       </div>
       <p className="text-xs text-ink-faint font-medium uppercase tracking-wide mb-1">{title}</p>
       <p className="text-2xl font-bold text-ink">{value}</p>
@@ -187,6 +180,7 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [jobStats, setJobStats] = useState<Record<string, JobLineStat>>({});
+  const [globalStats, setGlobalStats] = useState<GlobalLineStats>({ totalLineas: 0, totalValor: 0, reconocidos: 0, confianzaAlta: 0, confianzaMedia: 0, confianzaBaja: 0, confianzaPromedio: 0 });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadJobs = async () => {
@@ -195,8 +189,9 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
     setLoadingJobs(false);
     const ids = data.map((j) => j.id).filter(Boolean);
     if (ids.length > 0) {
-      const stats = await fetchJobLineStats(ids);
-      setJobStats(stats);
+      const result = await fetchJobLineStats(ids);
+      setJobStats(result.perJob);
+      setGlobalStats(result.global);
     }
   };
 
@@ -229,6 +224,18 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
     if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(value);
   };
+
+  const kpiCotizaciones = jobs.length;
+  const kpiValorTotal = globalStats.totalValor;
+  const kpiProductosPorCotizacion = jobs.length > 0 ? (globalStats.totalLineas / jobs.length).toFixed(1) : '0';
+  const completados = jobs.filter((j) => j.status === 'completado').length;
+  const kpiTasaGeneracion = jobs.length > 0 ? Math.round((completados / jobs.length) * 100) : 0;
+
+  const confTotal = globalStats.totalLineas;
+  const confAltaPct = confTotal > 0 ? Math.round((globalStats.confianzaAlta / confTotal) * 100) : 0;
+  const confMediaPct = confTotal > 0 ? Math.round((globalStats.confianzaMedia / confTotal) * 100) : 0;
+  const confBajaPct = confTotal > 0 ? Math.round((globalStats.confianzaBaja / confTotal) * 100) : 0;
+  const precisionLectura = confTotal > 0 ? Math.round((globalStats.reconocidos / confTotal) * 100) : 0;
 
   const handleNavigate = (section: string) => {
     if (section === 'cotizar') onNewQuote();
@@ -283,40 +290,32 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
               iconColor="text-brand"
               iconBg="bg-brand-soft"
               title="Cotizaciones"
-              value="47"
-              sub="vs mes anterior"
-              delta="+12"
-              deltaPositive
+              value={String(kpiCotizaciones)}
+              sub="trabajos procesados"
             />
             <KpiCard
               icon={DollarSign}
               iconColor="text-good"
               iconBg="bg-good-soft"
               title="Valor total"
-              value="$2.84M MXN"
-              sub="ticket prom. $60,425"
-              delta="8.3%"
-              deltaPositive
+              value={`${formatMXN(kpiValorTotal)} MXN`}
+              sub={kpiCotizaciones > 0 ? `ticket prom. ${formatMXN(kpiValorTotal / kpiCotizaciones)}` : ''}
             />
             <KpiCard
               icon={Package}
               iconColor="text-[#7F56D9]"
               iconBg="bg-[#F4EBFF]"
               title="Productos / cotización"
-              value="18.4"
-              sub="rango 4–62"
-              delta="2.1"
-              deltaPositive
+              value={kpiProductosPorCotizacion}
+              sub={`${globalStats.totalLineas} líneas totales`}
             />
             <KpiCard
               icon={CheckCircle}
               iconColor="text-[#B86C00]"
               iconBg="bg-warn-soft"
               title="Tasa de generación"
-              value="89%"
-              sub="42 de 47"
-              delta="4 pts"
-              deltaPositive
+              value={`${kpiTasaGeneracion}%`}
+              sub={`${completados} de ${kpiCotizaciones}`}
             />
           </section>
 
@@ -326,43 +325,36 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
             <div className="bg-white rounded-card p-5 shadow-sm border border-rule-soft animate-rise-in stagger-1">
               <h3 className="text-sm font-semibold text-ink mb-4">Distribución por confianza</h3>
               <div className="space-y-3">
-                <ConfidenceBar label="Alta" pct={73} count={631} color="bg-good" />
-                <ConfidenceBar label="Media" pct={19} count={164} color="bg-warn" />
-                <ConfidenceBar label="Baja" pct={8} count={70} color="bg-bad" />
+                <ConfidenceBar label="Alta (≥90%)" pct={confAltaPct} count={globalStats.confianzaAlta} color="bg-good" />
+                <ConfidenceBar label="Media (70-89%)" pct={confMediaPct} count={globalStats.confianzaMedia} color="bg-warn" />
+                <ConfidenceBar label="Baja (<70%)" pct={confBajaPct} count={globalStats.confianzaBaja} color="bg-bad" />
               </div>
             </div>
 
             {/* OCR precision */}
             <div className="bg-white rounded-card p-5 shadow-sm border border-rule-soft animate-rise-in stagger-2">
               <h3 className="text-sm font-semibold text-ink mb-3">Precisión de lectura</h3>
-              <OcrDial value={89} />
+              <OcrDial value={precisionLectura} />
               <div className="mt-3 space-y-1.5 text-xs text-ink-faint">
                 <div className="flex justify-between">
-                  <span>1er intento</span>
-                  <span className="font-medium text-ink">82%</span>
+                  <span>Líneas con match</span>
+                  <span className="font-medium text-ink">{globalStats.reconocidos}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Con reintento</span>
-                  <span className="font-medium text-good">+7%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Manual</span>
-                  <span className="font-medium text-ink">11%</span>
+                  <span>Total líneas</span>
+                  <span className="font-medium text-ink">{globalStats.totalLineas}</span>
                 </div>
               </div>
             </div>
 
-            {/* Average confidence trend */}
+            {/* Average confidence */}
             <div className="bg-white rounded-card p-5 shadow-sm border border-rule-soft animate-rise-in stagger-3">
               <h3 className="text-sm font-semibold text-ink mb-1">Confianza promedio</h3>
               <div className="flex items-baseline gap-2 mb-1">
-                <span className="text-3xl font-bold text-ink">91.2%</span>
-                <span className="text-xs font-semibold text-good flex items-center gap-0.5">
-                  <TrendingUp className="w-3 h-3" /> 3.4 pts
-                </span>
+                <span className="text-3xl font-bold text-ink">{globalStats.confianzaPromedio}%</span>
               </div>
-              <p className="text-[10px] text-ink-faint mb-3">Últimas 10 cotizaciones</p>
-              <MiniTrendBars values={[62, 71, 58, 78, 82, 75, 88, 84, 91, 94]} />
+              <p className="text-[10px] text-ink-faint mb-3">Sobre {globalStats.totalLineas} líneas</p>
+              <MiniTrendBars values={jobs.slice(0, 10).map((j) => jobStats[j.id]?.confianza ?? 0)} />
             </div>
           </section>
 
