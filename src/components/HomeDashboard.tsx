@@ -13,7 +13,6 @@ import {
 
   Eye,
   RefreshCw,
-  Clock,
   AlertCircle,
   Loader2,
 } from 'lucide-react';
@@ -388,17 +387,26 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
                 <thead>
                   <tr className="text-xs text-ink-faint uppercase tracking-wider border-b border-rule-soft">
                     <th className="text-left py-3 px-5 font-medium">Cliente / Propuesta</th>
-                    <th className="text-right py-3 px-4 font-medium">Total</th>
-                    <th className="text-center py-3 px-4 font-medium">Productos</th>
-                    <th className="text-center py-3 px-4 font-medium">Reconocidos</th>
-                    <th className="text-center py-3 px-4 font-medium">Confianza</th>
-                    <th className="text-center py-3 px-4 font-medium">Estatus</th>
+                    <th className="text-center py-3 px-3 font-medium">Líneas</th>
+                    <th className="text-center py-3 px-3 font-medium">Productos</th>
+                    <th className="text-center py-3 px-3 font-medium">Reconocidos</th>
+                    <th className="text-center py-3 px-3 font-medium">Confianza</th>
+                    <th className="text-right py-3 px-3 font-medium">Total</th>
+                    <th className="text-center py-3 px-3 font-medium">Estatus</th>
+                    <th className="text-left py-3 px-3 font-medium">Fecha</th>
+                    <th className="text-center py-3 px-3 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredJobs.length === 0 ? (
+                  {loadingJobs ? (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-sm text-ink-faint">
+                      <td colSpan={9} className="py-8 text-center text-sm text-ink-faint">
+                        Cargando trabajos...
+                      </td>
+                    </tr>
+                  ) : filteredJobs.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-8 text-center text-sm text-ink-faint">
                         No hay propuestas en esta categoría.
                       </td>
                     </tr>
@@ -409,6 +417,9 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
                       const reconocidos = stat?.reconocidos ?? 0;
                       const total = stat?.total ?? 0;
                       const confianza = stat?.confianza ?? 0;
+                      const progressPct = job.total_lineas > 0
+                        ? Math.min(100, Math.round((job.progreso / job.total_lineas) * 100))
+                        : 0;
 
                       return (
                         <tr
@@ -420,18 +431,86 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
                             <p className="font-medium text-ink text-sm">{job.cliente || 'Sin cliente'}</p>
                             <p className="text-[11px] text-ink-faint font-mono">{job.referencia}</p>
                           </td>
-                          <td className="py-3 px-4 text-right font-semibold text-ink">
-                            {total > 0 ? formatMXN(total) : '-'}
+                          <td className="py-3 px-3 text-center text-ink-soft">
+                            {job.total_lineas || 0}
                           </td>
-                          <td className="py-3 px-4 text-center text-ink-soft">{productos}</td>
-                          <td className="py-3 px-4">
+                          <td className="py-3 px-3 text-center text-ink-soft">{productos}</td>
+                          <td className="py-3 px-3">
                             <RecognitionBar recognized={reconocidos} total={productos} />
                           </td>
-                          <td className="py-3 px-4 text-center">
+                          <td className="py-3 px-3 text-center">
                             {confianza > 0 ? <ConfidenceChip value={confianza} /> : <span className="text-[11px] text-ink-faint">-</span>}
                           </td>
-                          <td className="py-3 px-4 text-center">
-                            <JobStatusChip status={job.status} />
+                          <td className="py-3 px-3 text-right font-semibold text-ink">
+                            {total > 0 ? formatMXN(total) : '-'}
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex flex-col items-center gap-1">
+                              <JobStatusChip status={job.status} />
+                              {isProcessingStage(job.status) && job.total_lineas > 0 && (
+                                <div className="w-full max-w-[100px] flex items-center gap-1.5">
+                                  <div className="flex-1 h-1.5 bg-rule-soft rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full bg-brand transition-all duration-500"
+                                      style={{ width: `${progressPct}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-[10px] text-ink-faint font-medium">{progressPct}%</span>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-3 text-xs text-ink-faint whitespace-nowrap">
+                            {new Date(job.created_at).toLocaleDateString('es-MX', {
+                              day: '2-digit',
+                              month: 'short',
+                              year: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </td>
+                          <td className="py-3 px-3 text-center">
+                            {isResumableStage(job.status) && onResumeJob && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); onResumeJob(job); }}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-brand bg-brand-soft rounded-md hover:bg-brand/10 transition-colors"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                                Reanudar
+                              </button>
+                            )}
+                            {isFinalStage(job.status) && onResumeJob && (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onResumeJob(job); }}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-good bg-good-soft rounded-md hover:bg-good/10 transition-colors"
+                                >
+                                  <Eye className="w-3 h-3" />
+                                  Ver PDF
+                                </button>
+                                {onReexecuteJob && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); onReexecuteJob(job); }}
+                                    className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-brand bg-brand-soft rounded-md hover:bg-brand/10 transition-colors"
+                                    title="Reejecutar"
+                                  >
+                                    <RefreshCw className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            {isProcessingStage(job.status) && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-ink-faint" title="En proceso...">
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                                {job.progreso}/{job.total_lineas}
+                              </span>
+                            )}
+                            {job.status === 'error' && job.error && (
+                              <span className="inline-flex items-center gap-1 text-[11px] text-bad" title={job.error}>
+                                <AlertCircle className="w-3 h-3" />
+                                {job.error.substring(0, 30)}
+                              </span>
+                            )}
                           </td>
                         </tr>
                       );
@@ -440,167 +519,6 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
                 </tbody>
               </table>
             </div>
-          </section>
-
-          {/* Archivos procesados (real jobs from Supabase) */}
-          <section className="bg-white rounded-card shadow-sm border border-rule-soft animate-rise-in stagger-4">
-            <div className="p-5 pb-0">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-ink-faint" />
-                  <h3 className="text-sm font-semibold text-ink">Archivos procesados</h3>
-                </div>
-                <button
-                  onClick={() => {
-                    setLoadingJobs(true);
-                    fetchRecentJobs(20).then((data) => {
-                      setJobs(data);
-                      setLoadingJobs(false);
-                    });
-                  }}
-                  className="text-xs text-brand font-medium flex items-center gap-1 hover:underline"
-                >
-                  <RefreshCw className="w-3 h-3" /> Actualizar
-                </button>
-              </div>
-            </div>
-
-            {loadingJobs ? (
-              <div className="px-5 py-8 text-center text-sm text-ink-faint">
-                Cargando trabajos...
-              </div>
-            ) : jobs.length === 0 ? (
-              <div className="px-5 py-8 text-center text-sm text-ink-faint">
-                No hay archivos procesados aún.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-ink-faint uppercase tracking-wider border-b border-rule-soft">
-                      <th className="text-left py-3 px-5 font-medium">Referencia</th>
-                      <th className="text-left py-3 px-4 font-medium">Cliente</th>
-                      <th className="text-center py-3 px-4 font-medium">Lineas</th>
-                      <th className="text-center py-3 px-4 font-medium">Estatus</th>
-                      <th className="text-left py-3 px-4 font-medium">Fecha</th>
-                      <th className="text-center py-3 px-4 font-medium"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {jobs.map((job) => {
-                      const progressPct = job.total_lineas > 0
-                        ? Math.min(100, Math.round((job.progreso / job.total_lineas) * 100))
-                        : 0;
-                      const statusLabel =
-                        job.status === 'matching' || job.status === 'procesando'
-                          ? 'Procesando'
-                          : job.status === 'completado'
-                          ? 'Listo'
-                          : job.status === 'error'
-                          ? 'Error'
-                          : undefined;
-
-                      return (
-                      <tr
-                        key={job.id}
-                        onClick={() => onJobClick?.(job)}
-                        className="border-b border-rule-soft last:border-0 hover:bg-brand-soft/30 transition-colors cursor-pointer"
-                      >
-                        <td className="py-3 px-5">
-                          <p className="font-mono text-xs font-medium text-ink">{job.referencia}</p>
-                        </td>
-                        <td className="py-3 px-4 text-sm text-ink-soft">
-                          {job.cliente || '-'}
-                        </td>
-                        <td className="py-3 px-4 text-center text-ink-soft">
-                          {job.total_lineas || 0}
-                        </td>
-                        <td className="py-3 px-4">
-                          <div className="flex flex-col items-center gap-1">
-                            {statusLabel ? (
-                              <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${
-                                statusLabel === 'Listo' ? 'bg-good-soft text-good' :
-                                statusLabel === 'Error' ? 'bg-bad-soft text-bad' :
-                                'bg-brand-soft text-brand'
-                              }`}>
-                                {statusLabel === 'Procesando' && <Loader2 className="w-3 h-3 animate-spin inline mr-1" />}
-                                {statusLabel}
-                              </span>
-                            ) : (
-                              <JobStatusChip status={job.status} />
-                            )}
-                            {(job.status === 'matching' || job.status === 'procesando') && job.total_lineas > 0 && (
-                              <div className="w-full max-w-[100px] flex items-center gap-1.5">
-                                <div className="flex-1 h-1.5 bg-rule-soft rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-brand transition-all duration-500"
-                                    style={{ width: `${progressPct}%` }}
-                                  />
-                                </div>
-                                <span className="text-[10px] text-ink-faint font-medium">{progressPct}%</span>
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="py-3 px-4 text-xs text-ink-faint">
-                          {new Date(job.created_at).toLocaleDateString('es-MX', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </td>
-                        <td className="py-3 px-4 text-center">
-                          {isResumableStage(job.status) && onResumeJob && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); onResumeJob(job); }}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-brand bg-brand-soft rounded-md hover:bg-brand/10 transition-colors"
-                            >
-                              <RefreshCw className="w-3 h-3" />
-                              Reanudar
-                            </button>
-                          )}
-                          {isFinalStage(job.status) && onResumeJob && (
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={(e) => { e.stopPropagation(); onResumeJob(job); }}
-                                className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-good bg-good-soft rounded-md hover:bg-good/10 transition-colors"
-                              >
-                                <Eye className="w-3 h-3" />
-                                Ver PDF
-                              </button>
-                              {onReexecuteJob && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); onReexecuteJob(job); }}
-                                  className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-brand bg-brand-soft rounded-md hover:bg-brand/10 transition-colors"
-                                  title="Reejecutar"
-                                >
-                                  <RefreshCw className="w-3 h-3" />
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          {isProcessingStage(job.status) && (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-ink-faint" title="En proceso...">
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              {job.progreso}/{job.total_lineas}
-                            </span>
-                          )}
-                          {job.status === 'error' && job.error && (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-bad" title={job.error}>
-                              <AlertCircle className="w-3 h-3" />
-                              {job.error.substring(0, 30)}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
           </section>
       </div>
     </AppLayout>
