@@ -1,15 +1,26 @@
 import { useState, useCallback, useRef, useEffect, DragEvent } from 'react';
-import { Upload, Check, X, Lock, FileSpreadsheet, FileText, Image } from 'lucide-react';
+import { Upload, Check, X, Lock, FileSpreadsheet, FileText, Image, Search, Loader2 } from 'lucide-react';
 import Header from './Header';
 import DebugPanel from './DebugPanel';
 import { useDebugLogs } from '../hooks/useDebugLogs';
+import { useAuth } from '../hooks/useAuth';
 import FractionalQuantitiesDialog, {
   type FractionalRow,
   type FractionalDecision,
 } from './FractionalQuantitiesDialog';
 
+interface SalesforceAccount {
+  id: string;
+  noCliente: string;
+  name: string;
+  estado: string;
+  calle: string;
+  ownerId: string;
+}
+
 interface ParsedData {
   customerName: string;
+  salesforceAccount?: SalesforceAccount;
   rows: any[];
   rawDoclingResponse?: any;
   mappingNotice?: string;
@@ -29,11 +40,13 @@ interface QuoteUploadScreenProps {
 type ParseStatus = 'idle' | 'processing' | 'success' | 'error';
 
 const RAILWAY_EXTRACT_URL = 'https://quoteai-production.up.railway.app/extract';
+const RAILWAY_ACCOUNTS_URL = 'https://quoteai-production.up.railway.app/accounts/search';
 
 const SUPPORTED_EXTENSIONS = ['xlsx', 'xls', 'csv', 'pdf', 'docx', 'doc', 'txt', 'png', 'jpg', 'jpeg', 'webp'];
 
 export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, onCreateManualQuote, onOpenAdmin, onBackToHome, initialRows, initialCustomerName }: QuoteUploadScreenProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const auth = useAuth();
   const [customerName, setCustomerName] = useState(initialCustomerName || '');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parsedRows, setParsedRows] = useState<any[]>(initialRows || []);
@@ -45,6 +58,84 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
   const [fractionalRows, setFractionalRows] = useState<FractionalRow[] | null>(null);
   const extractionNotifiedRef = useRef(!!initialRows && initialRows.length > 0);
   const { logs, clearLogs } = useDebugLogs();
+
+  const [sfAccounts, setSfAccounts] = useState<SalesforceAccount[]>([]);
+  const [sfSearching, setSfSearching] = useState(false);
+  const [sfError, setSfError] = useState<string | null>(null);
+  const [sfShowDropdown, setSfShowDropdown] = useState(false);
+  const [selectedAccount, setSelectedAccount] = useState<SalesforceAccount | null>(null);
+  const sfDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sfDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (sfDropdownRef.current && !sfDropdownRef.current.contains(e.target as Node)) {
+        setSfShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const searchSalesforceAccounts = useCallback(async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setSfAccounts([]);
+      setSfShowDropdown(false);
+      return;
+    }
+    const userEmail = auth.user?.email;
+    if (!userEmail) return;
+
+    setSfSearching(true);
+    setSfError(null);
+    try {
+      const res = await fetch(RAILWAY_ACCOUNTS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userEmail, query: query.trim() }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'Error buscando cuentas');
+      }
+      setSfAccounts(json.records || []);
+      setSfShowDropdown(true);
+    } catch (err: any) {
+      setSfError(err.message || 'Error de conexión');
+      setSfAccounts([]);
+      setSfShowDropdown(true);
+    } finally {
+      setSfSearching(false);
+    }
+  }, [auth.user?.email]);
+
+  const handleCustomerNameChange = useCallback((value: string) => {
+    const upper = value.toLocaleUpperCase('es-MX');
+    setCustomerName(upper);
+    setManualError(null);
+    setSelectedAccount(null);
+
+    if (sfDebounceRef.current) clearTimeout(sfDebounceRef.current);
+    sfDebounceRef.current = setTimeout(() => {
+      searchSalesforceAccounts(upper);
+    }, 500);
+  }, [searchSalesforceAccounts]);
+
+  const handleCustomerKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (sfDebounceRef.current) clearTimeout(sfDebounceRef.current);
+      searchSalesforceAccounts(customerName);
+    }
+  }, [customerName, searchSalesforceAccounts]);
+
+  const handleSelectAccount = useCallback((account: SalesforceAccount) => {
+    setCustomerName(account.name);
+    setSelectedAccount(account);
+    setSfShowDropdown(false);
+    setSfAccounts([]);
+    setManualError(null);
+  }, []);
 
   useEffect(() => {
     if (extractionNotifiedRef.current) return;
@@ -256,6 +347,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
     if (parsedRows.length === 0) return;
     onFileReady({
       customerName: customerName.trim(),
+      salesforceAccount: selectedAccount || undefined,
       rows: parsedRows,
     });
   };
@@ -310,17 +402,75 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
               >
                 Cliente o referencia
               </label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => { setCustomerName(e.target.value.toLocaleUpperCase('es-MX')); setManualError(null); }}
-                placeholder="ej. Constructora del Norte – OC-2024-0091"
-                className="w-full px-3.5 py-3 border border-[#E5E5E5] rounded-lg text-[#181818] placeholder:text-[#A3A3A3] focus:outline-none focus:border-[#0176D3] focus:ring-[3px] focus:ring-[#EAF5FE] transition-all"
-                style={{ fontSize: 14 }}
-              />
-              <p className="mt-1.5 text-[#747474]" style={{ fontSize: 12 }}>
-                Aparecerá como identificador de la cotización.
-              </p>
+              <div className="relative" ref={sfDropdownRef}>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={(e) => handleCustomerNameChange(e.target.value)}
+                    onKeyDown={handleCustomerKeyDown}
+                    onFocus={() => { if (sfAccounts.length > 0) setSfShowDropdown(true); }}
+                    placeholder="ej. Constructora del Norte – OC-2024-0091"
+                    className="w-full px-3.5 py-3 pr-10 border border-[#E5E5E5] rounded-lg text-[#181818] placeholder:text-[#A3A3A3] focus:outline-none focus:border-[#0176D3] focus:ring-[3px] focus:ring-[#EAF5FE] transition-all"
+                    style={{ fontSize: 14 }}
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {sfSearching ? (
+                      <Loader2 className="w-4 h-4 text-[#0176D3] animate-spin" />
+                    ) : (
+                      <Search className="w-4 h-4 text-[#A3A3A3]" />
+                    )}
+                  </div>
+                </div>
+
+                {sfShowDropdown && (
+                  <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-[#E5E5E5] rounded-lg shadow-lg max-h-[240px] overflow-y-auto">
+                    {sfSearching ? (
+                      <div className="px-4 py-3 flex items-center gap-2 text-[#0176D3]" style={{ fontSize: 13 }}>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Buscando en Salesforce...
+                      </div>
+                    ) : sfError ? (
+                      <div className="px-4 py-3 text-[#B86C00]" style={{ fontSize: 13 }}>
+                        {sfError}
+                      </div>
+                    ) : sfAccounts.length === 0 ? (
+                      <div className="px-4 py-3 text-[#747474]" style={{ fontSize: 13 }}>
+                        No se encontraron cuentas. Puedes continuar con texto libre.
+                      </div>
+                    ) : (
+                      sfAccounts.map((acc) => (
+                        <button
+                          key={acc.id}
+                          type="button"
+                          onClick={() => handleSelectAccount(acc)}
+                          className="w-full text-left px-4 py-2.5 hover:bg-[#EAF5FE] transition-colors border-b border-[#F0F0F0] last:border-0"
+                        >
+                          <p className="text-[#181818] font-semibold" style={{ fontSize: 13 }}>{acc.name}</p>
+                          <p className="text-[#747474]" style={{ fontSize: 11 }}>
+                            No. {acc.noCliente} &middot; {acc.calle}, {acc.estado}
+                          </p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {selectedAccount ? (
+                <div className="mt-1.5 flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 text-[#2E844A] bg-[#DEF5E5] px-2 py-0.5 rounded text-[11px] font-semibold">
+                    <Check className="w-3 h-3" /> Salesforce
+                  </span>
+                  <span className="text-[#747474]" style={{ fontSize: 11 }}>
+                    No. {selectedAccount.noCliente}
+                  </span>
+                </div>
+              ) : (
+                <p className="mt-1.5 text-[#747474]" style={{ fontSize: 12 }}>
+                  Escribe para buscar en Salesforce o usa un nombre libre.
+                </p>
+              )}
               {manualError && (
                 <p className="mt-1.5 text-[#BA0517]" style={{ fontSize: 13 }}>{manualError}</p>
               )}
