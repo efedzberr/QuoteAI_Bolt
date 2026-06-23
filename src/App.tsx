@@ -6,10 +6,12 @@ import QuoteReviewScreen from './components/QuoteReviewScreen';
 import PDFPreviewScreen from './components/PDFPreviewScreen';
 import AdminScreen from './components/AdminScreen';
 import AuthScreen from './components/AuthScreen';
+import JobProgressScreen from './components/JobProgressScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
 import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus } from './lib/jobs';
 import { createJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
+import type { Job } from './lib/jobs';
 
 const PROCESSING_RULES = [
   'If the row does not contain a clear product request with a quantity, it is likely a header, title, or section label. In that case return: { "original_text": "<the row text>", "quantity": null, "unit_of_measure": null, "product_code_hint": null, "description": null, "keywords": [], "attributes": { "material": null, "size": null, "color": null, "other": null }, "notes": "SKIP - this row is a header or label, not a product" }',
@@ -17,7 +19,7 @@ const PROCESSING_RULES = [
   'A valid product row must have at least a description and ideally a quantity.',
 ];
 
-type Screen = 'home' | 'upload' | 'preview' | 'review' | 'generate' | 'admin';
+type Screen = 'home' | 'upload' | 'preview' | 'review' | 'generate' | 'admin' | 'job_progress';
 
 function parseLineItem(line: any): any {
   if (typeof line === 'string') {
@@ -165,6 +167,7 @@ function App() {
   const [resumeExtraction, setResumeExtraction] = useState<{ rows: any[]; customerName: string } | null>(null);
   const [jobReferencia, setJobReferencia] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [progressJob, setProgressJob] = useState<Job | null>(null);
 
   const handleExtractionComplete = useCallback((rows: any[], customerName: string) => {
     // Anti-duplicate: if we already have a jobId for this session, skip
@@ -377,6 +380,58 @@ function App() {
     });
   }, [reexecJob]);
 
+  const openJobResults = useCallback((job: Job) => {
+    setJobReferencia(job.referencia);
+    setJobId(job.id);
+    fetchJobLines(job.id).then((jobLines) => {
+      if (jobLines.length > 0) {
+        const reconstructedLines = jobLines.map((jl: JobLine) => ({
+          original_text: jl.descripcion_original || '',
+          original_code: jl.codigo_original || null,
+          quantity: jl.cantidad || 1,
+          matched_product_code: jl.producto_codigo || null,
+          matched_product_name: jl.producto_descripcion || null,
+          matched_unit_price: jl.precio_unitario ?? null,
+          matched_unit_of_measure: jl.unidad_medida || jl.unidad_original || 'PZA',
+          confidence: jl.confianza ?? 0,
+          needs_review: jl.requiere_revision,
+          ignored: jl.estado === 'ignorada',
+          approved: jl.estado === 'aprobada',
+          badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
+          _lineIndex: jl.line_index,
+        }));
+        const quoteData = {
+          quoteReference: job.referencia,
+          customerName: job.cliente || '',
+          generatedDate: new Date(job.created_at).toLocaleDateString('es-MX'),
+          totalLines: reconstructedLines.length,
+          currency: 'MXN',
+          subtotal: reconstructedLines.reduce((sum: number, l: any) => {
+            if (l.ignored) return sum;
+            return sum + (l.quantity || 0) * (l.matched_unit_price || 0);
+          }, 0),
+          lines: reconstructedLines,
+        };
+        setWebhookResponse(quoteData);
+        setRawResponse(JSON.stringify(quoteData));
+        setProgressJob(null);
+        setCurrentScreen('review');
+      }
+    });
+  }, []);
+
+  const handleJobClick = useCallback((job: Job) => {
+    if (job.status === 'completado') {
+      openJobResults(job);
+    } else if (job.status === 'error') {
+      setProgressJob(job);
+      setCurrentScreen('job_progress');
+    } else {
+      setProgressJob(job);
+      setCurrentScreen('job_progress');
+    }
+  }, [openJobResults]);
+
   if (auth.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F3F3F3]">
@@ -415,6 +470,7 @@ function App() {
         }}
         onOpenAdmin={() => setCurrentScreen('admin')}
         onReexecuteJob={(job) => setReexecJob(job)}
+        onJobClick={handleJobClick}
         onResumeJob={(job) => {
           const ref = job.referencia;
           setJobReferencia(ref);
@@ -529,6 +585,25 @@ function App() {
         </div>
       )}
     </>
+    );
+  }
+
+  if (currentScreen === 'job_progress' && progressJob) {
+    return (
+      <AppLayout
+        active="home"
+        breadcrumbs={[
+          { label: 'Inicio', onClick: () => setCurrentScreen('home') },
+          { label: 'Progreso' },
+        ]}
+        onNavigate={handleLayoutNavigate}
+      >
+        <JobProgressScreen
+          job={progressJob}
+          onComplete={(completedJob) => openJobResults(completedJob)}
+          onBack={() => { setProgressJob(null); setCurrentScreen('home'); }}
+        />
+      </AppLayout>
     );
   }
 

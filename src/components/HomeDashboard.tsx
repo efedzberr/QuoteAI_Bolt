@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import AppLayout from './layout/AppLayout';
 import { fetchRecentJobs, type Job, type JobStatus } from '../lib/jobs';
@@ -26,6 +26,7 @@ interface HomeDashboardProps {
   onOpenAdmin?: () => void;
   onResumeJob?: (job: Job) => void;
   onReexecuteJob?: (job: Job) => void;
+  onJobClick?: (job: Job) => void;
 }
 
 /* ─── Sub-components (internal only) ─── */
@@ -216,17 +217,26 @@ function getFormattedDate(): string {
 
 /* ─── Main Component ─── */
 
-function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob, onReexecuteJob }: HomeDashboardProps) {
+function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob, onReexecuteJob, onJobClick }: HomeDashboardProps) {
   const auth = useAuth();
   const [activeFilter, setActiveFilter] = useState(0);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     fetchRecentJobs(20).then((data) => {
       setJobs(data);
       setLoadingJobs(false);
     });
+
+    pollRef.current = setInterval(() => {
+      fetchRecentJobs(20).then((data) => setJobs(data));
+    }, 3000);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   const handleNavigate = (section: string) => {
@@ -503,10 +513,24 @@ function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob
                     </tr>
                   </thead>
                   <tbody>
-                    {jobs.map((job) => (
+                    {jobs.map((job) => {
+                      const progressPct = job.total_lineas > 0
+                        ? Math.min(100, Math.round((job.progreso / job.total_lineas) * 100))
+                        : 0;
+                      const statusLabel =
+                        job.status === 'matching' || job.status === 'procesando'
+                          ? 'Procesando'
+                          : job.status === 'completado'
+                          ? 'Listo'
+                          : job.status === 'error'
+                          ? 'Error'
+                          : undefined;
+
+                      return (
                       <tr
                         key={job.id}
-                        className="border-b border-rule-soft last:border-0 hover:bg-bg/50 transition-colors"
+                        onClick={() => onJobClick?.(job)}
+                        className="border-b border-rule-soft last:border-0 hover:bg-brand-soft/30 transition-colors cursor-pointer"
                       >
                         <td className="py-3 px-5">
                           <p className="font-mono text-xs font-medium text-ink">{job.referencia}</p>
@@ -517,8 +541,32 @@ function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob
                         <td className="py-3 px-4 text-center text-ink-soft">
                           {job.total_lineas || 0}
                         </td>
-                        <td className="py-3 px-4 text-center">
-                          <JobStatusChip status={job.status} />
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col items-center gap-1">
+                            {statusLabel ? (
+                              <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${
+                                statusLabel === 'Listo' ? 'bg-good-soft text-good' :
+                                statusLabel === 'Error' ? 'bg-bad-soft text-bad' :
+                                'bg-brand-soft text-brand'
+                              }`}>
+                                {statusLabel === 'Procesando' && <Loader2 className="w-3 h-3 animate-spin inline mr-1" />}
+                                {statusLabel}
+                              </span>
+                            ) : (
+                              <JobStatusChip status={job.status} />
+                            )}
+                            {(job.status === 'matching' || job.status === 'procesando') && job.total_lineas > 0 && (
+                              <div className="w-full max-w-[100px] flex items-center gap-1.5">
+                                <div className="flex-1 h-1.5 bg-rule-soft rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full bg-brand transition-all duration-500"
+                                    style={{ width: `${progressPct}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] text-ink-faint font-medium">{progressPct}%</span>
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="py-3 px-4 text-xs text-ink-faint">
                           {new Date(job.created_at).toLocaleDateString('es-MX', {
@@ -532,7 +580,7 @@ function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob
                         <td className="py-3 px-4 text-center">
                           {isResumableStage(job.status) && onResumeJob && (
                             <button
-                              onClick={() => onResumeJob(job)}
+                              onClick={(e) => { e.stopPropagation(); onResumeJob(job); }}
                               className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-brand bg-brand-soft rounded-md hover:bg-brand/10 transition-colors"
                             >
                               <RefreshCw className="w-3 h-3" />
@@ -542,7 +590,7 @@ function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob
                           {isFinalStage(job.status) && onResumeJob && (
                             <div className="flex items-center gap-1">
                               <button
-                                onClick={() => onResumeJob(job)}
+                                onClick={(e) => { e.stopPropagation(); onResumeJob(job); }}
                                 className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-good bg-good-soft rounded-md hover:bg-good/10 transition-colors"
                               >
                                 <Eye className="w-3 h-3" />
@@ -550,7 +598,7 @@ function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob
                               </button>
                               {onReexecuteJob && (
                                 <button
-                                  onClick={() => onReexecuteJob(job)}
+                                  onClick={(e) => { e.stopPropagation(); onReexecuteJob(job); }}
                                   className="inline-flex items-center gap-1 px-2 py-1.5 text-[11px] font-semibold text-brand bg-brand-soft rounded-md hover:bg-brand/10 transition-colors"
                                   title="Reejecutar"
                                 >
@@ -562,7 +610,7 @@ function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob
                           {isProcessingStage(job.status) && (
                             <span className="inline-flex items-center gap-1 text-[11px] text-ink-faint" title="En proceso...">
                               <Loader2 className="w-3 h-3 animate-spin" />
-                              En proceso...
+                              {job.progreso}/{job.total_lineas}
                             </span>
                           )}
                           {job.status === 'error' && job.error && (
@@ -573,7 +621,8 @@ function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob
                           )}
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
