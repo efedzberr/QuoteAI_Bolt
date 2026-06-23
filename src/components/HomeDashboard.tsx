@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import AppLayout from './layout/AppLayout';
 import { fetchRecentJobs, type Job, type JobStatus } from '../lib/jobs';
+import { fetchJobLineStats, type JobLineStat } from '../lib/jobLines';
 import { getStageInfo, isResumableStage, isProcessingStage, isFinalStage } from '../lib/jobStages';
 import {
   FileText,
@@ -10,7 +11,6 @@ import {
   DollarSign,
   CheckCircle,
   TrendingUp,
-  ArrowUpRight,
   Eye,
   RefreshCw,
   Clock,
@@ -120,20 +120,6 @@ function MiniTrendBars({ values }: { values: number[] }) {
   );
 }
 
-function StatusChip({ status }: { status: string }) {
-  const map: Record<string, string> = {
-    Generada: 'bg-good-soft text-good',
-    Enviada: 'bg-brand-soft text-brand',
-    'En revisión': 'bg-warn-soft text-warn',
-    Borrador: 'bg-rule-soft text-ink-faint',
-  };
-  return (
-    <span className={`text-[11px] font-semibold px-2.5 py-1 rounded-full whitespace-nowrap ${map[status] || 'bg-rule-soft text-ink-faint'}`}>
-      {status}
-    </span>
-  );
-}
-
 function JobStatusChip({ status }: { status: string }) {
   const info = getStageInfo(status);
   return (
@@ -172,25 +158,6 @@ function RecognitionBar({ recognized, total }: { recognized: number; total: numb
   );
 }
 
-/* ─── Mock data ─── */
-
-const MOCK_QUOTES = [
-  { client: 'Industrial Monterrey SA', id: 'QAI-2847', total: '$124,850', products: 32, recognized: 29, confidence: 94, status: 'Generada' },
-  { client: 'Constructora Del Norte', id: 'QAI-2846', total: '$87,320', products: 18, recognized: 16, confidence: 88, status: 'Enviada' },
-  { client: 'Talleres Solís', id: 'QAI-2845', total: '$45,200', products: 12, recognized: 10, confidence: 82, status: 'En revisión' },
-  { client: 'Maquiladora Saltillo', id: 'QAI-2844', total: '$203,500', products: 48, recognized: 44, confidence: 91, status: 'Generada' },
-  { client: 'Refaccionaria Apodaca', id: 'QAI-2843', total: '$31,750', products: 8, recognized: 7, confidence: 76, status: 'Borrador' },
-  { client: 'Servicios Eléctricos GMX', id: 'QAI-2842', total: '$156,400', products: 26, recognized: 24, confidence: 92, status: 'Generada' },
-  { client: 'Aceros Industriales SA', id: 'QAI-2841', total: '$92,100', products: 22, recognized: 19, confidence: 85, status: 'Enviada' },
-];
-
-const FILTER_TABS = [
-  { label: 'Todas', count: 47 },
-  { label: 'Generadas', count: 42 },
-  { label: 'En revisión', count: 3 },
-  { label: 'Borrador', count: 2 },
-];
-
 /* ─── Helpers ─── */
 
 function getGreeting(): string {
@@ -219,22 +186,49 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
   const [activeFilter, setActiveFilter] = useState(0);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
+  const [jobStats, setJobStats] = useState<Record<string, JobLineStat>>({});
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const loadJobs = async () => {
+    const data = await fetchRecentJobs(20);
+    setJobs(data);
+    setLoadingJobs(false);
+    const ids = data.map((j) => j.id).filter(Boolean);
+    if (ids.length > 0) {
+      const stats = await fetchJobLineStats(ids);
+      setJobStats(stats);
+    }
+  };
+
   useEffect(() => {
-    fetchRecentJobs(20).then((data) => {
-      setJobs(data);
-      setLoadingJobs(false);
-    });
-
-    pollRef.current = setInterval(() => {
-      fetchRecentJobs(20).then((data) => setJobs(data));
-    }, 3000);
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+    loadJobs();
+    pollRef.current = setInterval(loadJobs, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
+
+  const isGenerada = (s: JobStatus) => s === 'completado';
+  const isEnRevision = (s: JobStatus) => s === 'revision_datos' || s === 'validacion' || s === 'en_revision' || s === 'enviado_validacion';
+  const isBorrador = (s: JobStatus) => s === 'procesando' || s === 'matching' || s === 'extraccion' || s === 'nueva_solicitud' || s === 'generacion';
+
+  const filteredJobs = activeFilter === 0
+    ? jobs
+    : activeFilter === 1
+    ? jobs.filter((j) => isGenerada(j.status))
+    : activeFilter === 2
+    ? jobs.filter((j) => isEnRevision(j.status))
+    : jobs.filter((j) => isBorrador(j.status));
+
+  const filterTabs = [
+    { label: 'Todas', count: jobs.length },
+    { label: 'Generadas', count: jobs.filter((j) => isGenerada(j.status)).length },
+    { label: 'En revisión', count: jobs.filter((j) => isEnRevision(j.status)).length },
+    { label: 'Borrador', count: jobs.filter((j) => isBorrador(j.status)).length },
+  ];
+
+  const formatMXN = (value: number) => {
+    if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(2)}M`;
+    return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(value);
+  };
 
   const handleNavigate = (section: string) => {
     if (section === 'cotizar') onNewQuote();
@@ -377,13 +371,10 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
             <div className="p-5 pb-0">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-sm font-semibold text-ink">Tus propuestas recientes</h3>
-                <button className="text-xs text-brand font-medium flex items-center gap-1 hover:underline">
-                  Ver todas <ArrowUpRight className="w-3 h-3" />
-                </button>
               </div>
               {/* Segmented filter */}
               <div className="flex gap-1 border-b border-rule">
-                {FILTER_TABS.map((tab, i) => (
+                {filterTabs.map((tab, i) => (
                   <button
                     key={tab.label}
                     onClick={() => setActiveFilter(i)}
@@ -410,37 +401,50 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
                     <th className="text-center py-3 px-4 font-medium">Reconocidos</th>
                     <th className="text-center py-3 px-4 font-medium">Confianza</th>
                     <th className="text-center py-3 px-4 font-medium">Estatus</th>
-                    <th className="text-center py-3 px-4 font-medium"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {MOCK_QUOTES.map((q) => (
-                    <tr
-                      key={q.id}
-                      className="border-b border-rule-soft last:border-0 hover:bg-bg/50 transition-colors"
-                    >
-                      <td className="py-3 px-5">
-                        <p className="font-medium text-ink text-sm">{q.client}</p>
-                        <p className="text-[11px] text-ink-faint font-mono">{q.id}</p>
-                      </td>
-                      <td className="py-3 px-4 text-right font-semibold text-ink">{q.total}</td>
-                      <td className="py-3 px-4 text-center text-ink-soft">{q.products}</td>
-                      <td className="py-3 px-4">
-                        <RecognitionBar recognized={q.recognized} total={q.products} />
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <ConfidenceChip value={q.confidence} />
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <StatusChip status={q.status} />
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <button className="w-7 h-7 rounded-full hover:bg-rule-soft flex items-center justify-center text-ink-faint transition-colors">
-                          <Eye className="w-4 h-4" />
-                        </button>
+                  {filteredJobs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-sm text-ink-faint">
+                        No hay propuestas en esta categoría.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredJobs.map((job) => {
+                      const stat = jobStats[job.id];
+                      const productos = stat?.productos ?? 0;
+                      const reconocidos = stat?.reconocidos ?? 0;
+                      const total = stat?.total ?? 0;
+                      const confianza = stat?.confianza ?? 0;
+
+                      return (
+                        <tr
+                          key={job.id}
+                          onClick={() => onJobClick?.(job)}
+                          className="border-b border-rule-soft last:border-0 hover:bg-brand-soft/30 transition-colors cursor-pointer"
+                        >
+                          <td className="py-3 px-5">
+                            <p className="font-medium text-ink text-sm">{job.cliente || 'Sin cliente'}</p>
+                            <p className="text-[11px] text-ink-faint font-mono">{job.referencia}</p>
+                          </td>
+                          <td className="py-3 px-4 text-right font-semibold text-ink">
+                            {total > 0 ? formatMXN(total) : '-'}
+                          </td>
+                          <td className="py-3 px-4 text-center text-ink-soft">{productos}</td>
+                          <td className="py-3 px-4">
+                            <RecognitionBar recognized={reconocidos} total={productos} />
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {confianza > 0 ? <ConfidenceChip value={confianza} /> : <span className="text-[11px] text-ink-faint">-</span>}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <JobStatusChip status={job.status} />
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
                 </tbody>
               </table>
             </div>

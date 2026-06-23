@@ -110,3 +110,43 @@ export async function getMaxLineIndex(jobId: string): Promise<number> {
   if (error || !data || data.length === 0) return -1;
   return data[0].line_index;
 }
+
+export interface JobLineStat {
+  productos: number;
+  reconocidos: number;
+  total: number;
+  confianza: number;
+}
+
+export async function fetchJobLineStats(jobIds: string[]): Promise<Record<string, JobLineStat>> {
+  if (jobIds.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from('job_lines')
+    .select('job_id, producto_codigo, confianza, total_linea')
+    .in('job_id', jobIds);
+
+  if (error || !data) {
+    console.error('[jobLines] fetchJobLineStats error:', error);
+    return {};
+  }
+
+  const grouped: Record<string, JobLineStat> = {};
+  for (const row of data) {
+    if (!grouped[row.job_id]) {
+      grouped[row.job_id] = { productos: 0, reconocidos: 0, total: 0, confianza: 0 };
+    }
+    const stat = grouped[row.job_id];
+    stat.productos++;
+    if (row.producto_codigo) stat.reconocidos++;
+    stat.total += row.total_linea || 0;
+    stat.confianza += row.confianza || 0;
+  }
+
+  for (const id of Object.keys(grouped)) {
+    const stat = grouped[id];
+    stat.confianza = stat.productos > 0 ? Math.round(stat.confianza / stat.productos) : 0;
+  }
+
+  return grouped;
+}
