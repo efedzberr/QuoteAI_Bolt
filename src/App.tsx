@@ -259,14 +259,25 @@ function App() {
       console.error('[match/start] Error:', err);
     });
 
-    setCurrentScreen('home');
+    const jobForProgress: Job = {
+      id: jobId || '',
+      referencia: jobReferencia || '',
+      cliente: uploadData.customerName,
+      status: 'matching',
+      total_lineas: sanitizedRows.length,
+      progreso: 0,
+      payload: null,
+      error: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    setProgressJob(jobForProgress);
+    setCurrentScreen('job_progress');
     setUploadData(null);
     setWebhookResponse(null);
     setRawResponse('');
     setWebhookError(null);
-    setJobReferencia(null);
-    setJobId(null);
-  }, [uploadData, jobReferencia]);
+  }, [uploadData, jobReferencia, jobId]);
 
 
   const handleApproved = useCallback((approvedLines: any[], quoteData: any) => {
@@ -594,7 +605,7 @@ function App() {
       >
         <JobProgressScreen
           job={progressJob}
-          onComplete={(completedJob) => openJobResults(completedJob)}
+          onViewResults={(completedJob) => openJobResults(completedJob)}
           onBack={() => { setProgressJob(null); setCurrentScreen('home'); }}
         />
       </AppLayout>

@@ -1,38 +1,40 @@
 import { useState, useEffect, useRef } from 'react';
-import { Loader2, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Loader2, CheckCircle, AlertCircle, ArrowLeft, Eye } from 'lucide-react';
 import { getJobByReferencia, type Job } from '../lib/jobs';
 
 interface JobProgressScreenProps {
   job: Job;
-  onComplete: (job: Job) => void;
+  onViewResults: (job: Job) => void;
   onBack: () => void;
 }
 
-export default function JobProgressScreen({ job: initialJob, onComplete, onBack }: JobProgressScreenProps) {
+export default function JobProgressScreen({ job: initialJob, onViewResults, onBack }: JobProgressScreenProps) {
   const [job, setJob] = useState<Job>(initialJob);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
+    if (job.status === 'completado' || job.status === 'error') return;
+
     pollRef.current = setInterval(async () => {
       const updated = await getJobByReferencia(job.referencia);
       if (!updated) return;
       setJob(updated);
-      if (updated.status === 'completado') {
+      if (updated.status === 'completado' || updated.status === 'error') {
         if (pollRef.current) clearInterval(pollRef.current);
-        onComplete(updated);
       }
     }, 3000);
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [job.referencia, onComplete]);
+  }, [job.referencia, job.status]);
 
   const progressPct = job.total_lineas > 0
     ? Math.min(100, Math.round((job.progreso / job.total_lineas) * 100))
     : 0;
 
   const isError = job.status === 'error';
+  const isComplete = job.status === 'completado';
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-8">
@@ -48,6 +50,27 @@ export default function JobProgressScreen({ job: initialJob, onComplete, onBack 
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-left mb-6">
                 <p className="text-sm text-red-700">{job.error || 'Error desconocido'}</p>
               </div>
+            </>
+          ) : isComplete ? (
+            <>
+              <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mx-auto mb-5">
+                <CheckCircle className="w-8 h-8 text-green-500" />
+              </div>
+              <h2 className="text-lg font-bold text-[#181818] mb-1">Procesamiento completado</h2>
+              <p className="text-sm text-[#747474] mb-1">{job.referencia}</p>
+              {job.cliente && (
+                <p className="text-xs text-[#A3A3A3] mb-6">{job.cliente}</p>
+              )}
+              <p className="text-sm text-[#444444] mb-6">
+                {job.total_lineas} lineas procesadas correctamente.
+              </p>
+              <button
+                onClick={() => onViewResults(job)}
+                className="inline-flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white bg-[#0176D3] rounded-lg hover:bg-[#014486] transition-colors shadow-sm"
+              >
+                <Eye className="w-4 h-4" />
+                Ver resultados
+              </button>
             </>
           ) : (
             <>
