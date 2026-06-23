@@ -7,13 +7,11 @@ import {
   FileText,
   Package,
   Plus,
-  Upload,
   DollarSign,
   CheckCircle,
   TrendingUp,
   ArrowUpRight,
   Eye,
-  ScanText,
   RefreshCw,
   Clock,
   AlertCircle,
@@ -22,7 +20,6 @@ import {
 
 interface HomeDashboardProps {
   onNewQuote: () => void;
-  onNewQuoteDocling?: () => void;
   onOpenAdmin?: () => void;
   onResumeJob?: (job: Job) => void;
   onReexecuteJob?: (job: Job) => void;
@@ -217,7 +214,7 @@ function getFormattedDate(): string {
 
 /* ─── Main Component ─── */
 
-function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob, onReexecuteJob, onJobClick }: HomeDashboardProps) {
+function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, onJobClick }: HomeDashboardProps) {
   const auth = useAuth();
   const [activeFilter, setActiveFilter] = useState(0);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -281,25 +278,6 @@ function HomeDashboard({ onNewQuote, onNewQuoteDocling, onOpenAdmin, onResumeJob
                   <Plus className="w-4 h-4" />
                   Nueva cotización
                 </button>
-                <button
-                  onClick={onNewQuote}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 border border-white/30 text-white font-medium text-sm rounded-lg hover:bg-white/10 transition-all"
-                >
-                  <Upload className="w-4 h-4" />
-                  Subir archivo
-                </button>
-                {onNewQuoteDocling && (
-                  <button
-                    onClick={onNewQuoteDocling}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 border border-white/30 text-white font-medium text-sm rounded-lg hover:bg-white/10 transition-all"
-                  >
-                    <ScanText className="w-4 h-4" />
-                    Subir vía Docling (Railway)
-                    <span className="ml-1 px-1.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-bold tracking-wide leading-none">
-                      BETA
-                    </span>
-                  </button>
-                )}
               </div>
             </div>
           </section>

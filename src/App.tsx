@@ -462,12 +462,6 @@ function App() {
           setJobId(null);
           setCurrentScreen('upload');
         }}
-        onNewQuoteDocling={() => {
-          setResumeExtraction(null);
-          setJobReferencia(null);
-          setJobId(null);
-          setCurrentScreen('upload');
-        }}
         onOpenAdmin={() => setCurrentScreen('admin')}
         onReexecuteJob={(job) => setReexecJob(job)}
         onJobClick={handleJobClick}

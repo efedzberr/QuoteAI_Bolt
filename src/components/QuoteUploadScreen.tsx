@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect, DragEvent } from 'react';
-import { Upload, Check, X, Lock, FileSpreadsheet, FileText, Image, Send } from 'lucide-react';
+import { Upload, Check, X, Lock, FileSpreadsheet, FileText, Image } from 'lucide-react';
 import Header from './Header';
 import DebugPanel from './DebugPanel';
 import { useDebugLogs } from '../hooks/useDebugLogs';
@@ -7,7 +7,6 @@ import FractionalQuantitiesDialog, {
   type FractionalRow,
   type FractionalDecision,
 } from './FractionalQuantitiesDialog';
-import mapN8nToReviewData from '../lib/mapN8nToReviewData';
 
 interface ParsedData {
   customerName: string;
@@ -30,8 +29,6 @@ interface QuoteUploadScreenProps {
 type ParseStatus = 'idle' | 'processing' | 'success' | 'error';
 
 const RAILWAY_EXTRACT_URL = 'https://quoteai-production.up.railway.app/extract';
-const N8N_WEBHOOK_URL = import.meta.env.VITE_N8N_WEBHOOK_URL || '';
-const DOCLING_OCR_URL = 'https://cotizaciones-docling-production.up.railway.app/ocr';
 
 const SUPPORTED_EXTENSIONS = ['xlsx', 'xls', 'csv', 'pdf', 'docx', 'doc', 'txt', 'png', 'jpg', 'jpeg', 'webp'];
 
@@ -48,9 +45,6 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
   const [fractionalRows, setFractionalRows] = useState<FractionalRow[] | null>(null);
   const extractionNotifiedRef = useRef(!!initialRows && initialRows.length > 0);
   const { logs, clearLogs } = useDebugLogs();
-
-  const [n8nLoading, setN8nLoading] = useState(false);
-  const [n8nError, setN8nError] = useState<string | null>(null);
 
   useEffect(() => {
     if (extractionNotifiedRef.current) return;
@@ -242,7 +236,6 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
     setParseStatus('idle');
     setParseError(null);
     setRowCount(0);
-    setN8nError(null);
     extractionNotifiedRef.current = false;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -270,94 +263,6 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
   const isButtonEnabled =
     customerName.trim() !== '' &&
     parseStatus === 'success';
-
-  const isN8nButtonEnabled = !!selectedFile && !n8nLoading && parseStatus !== 'processing';
-
-  const handleSendToN8n = async () => {
-    if (!selectedFile) return;
-
-    if (!N8N_WEBHOOK_URL) {
-      const msg = 'VITE_N8N_WEBHOOK_URL no esta configurada. Agrega la URL del webhook en el archivo .env y reinicia el servidor.';
-      console.error('[n8n] Error:', msg);
-      setN8nError(msg);
-      return;
-    }
-
-    setN8nLoading(true);
-    setN8nError(null);
-
-    try {
-      console.log('[n8n] Step A: Enviando archivo a Docling…', selectedFile.name, selectedFile.size);
-      const form = new FormData();
-      form.append('file', selectedFile);
-
-      let doclingResponse: Response;
-      try {
-        doclingResponse = await fetch(DOCLING_OCR_URL, {
-          method: 'POST',
-          body: form,
-        });
-      } catch (fetchErr: any) {
-        const detail = fetchErr?.message || String(fetchErr);
-        throw new Error('No se pudo conectar a Docling (Railway). Posible causa: CORS o servicio caido. Detalle: ' + detail);
-      }
-
-      const doclingRawText = await doclingResponse.text();
-      if (!doclingResponse.ok) {
-        throw new Error(`Docling respondio HTTP ${doclingResponse.status}: ${doclingRawText.substring(0, 300)}`);
-      }
-
-      let doclingJson: any;
-      try {
-        doclingJson = JSON.parse(doclingRawText);
-      } catch {
-        throw new Error('La respuesta de Docling no es JSON valido: ' + doclingRawText.substring(0, 200));
-      }
-
-      console.log('[n8n] Step B: Enviando JSON de Docling a n8n…');
-      let n8nResponse: Response;
-      try {
-        n8nResponse = await fetch(N8N_WEBHOOK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(doclingJson),
-        });
-      } catch (fetchErr: any) {
-        const detail = fetchErr?.message || String(fetchErr);
-        throw new Error('No se pudo conectar al webhook de n8n. Detalle: ' + detail);
-      }
-
-      const n8nRawText = await n8nResponse.text();
-      if (!n8nResponse.ok) {
-        throw new Error(`n8n respondio HTTP ${n8nResponse.status}: ${n8nRawText.substring(0, 300)}`);
-      }
-
-      let n8nData: any;
-      try {
-        n8nData = JSON.parse(n8nRawText);
-      } catch {
-        throw new Error('La respuesta de n8n no es JSON valido: ' + n8nRawText.substring(0, 200));
-      }
-
-      const { mappedRows, mappingSuccessful } = mapN8nToReviewData(n8nData);
-      const notice = mappingSuccessful
-        ? undefined
-        : 'No se pudo mapear automaticamente la respuesta de n8n a la tabla; revisa la pestana JSON.';
-
-      onFileReady({
-        customerName: customerName.trim() || 'Sin cliente',
-        rows: mappedRows,
-        rawDoclingResponse: n8nData,
-        mappingNotice: notice,
-      });
-    } catch (err: any) {
-      const msg = err?.message || String(err);
-      console.error('[n8n] Error:', msg);
-      setN8nError(msg);
-    } finally {
-      setN8nLoading(false);
-    }
-  };
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return bytes + ' B';
@@ -577,41 +482,6 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
               </div>
             </div>
 
-            {/* n8n Send Button */}
-            {selectedFile && (
-              <div className="mt-4">
-                <button
-                  onClick={handleSendToN8n}
-                  disabled={!isN8nButtonEnabled}
-                  className={`
-                    w-full h-11 rounded-lg border transition-all flex items-center justify-center gap-2
-                    ${isN8nButtonEnabled
-                      ? 'border-[#0176D3] text-[#0176D3] bg-white hover:bg-[#EAF5FE] cursor-pointer'
-                      : 'border-[#D1D5DB] text-[#A3A3A3] bg-[#FAFAFA] cursor-not-allowed'
-                    }
-                  `}
-                  style={{ fontSize: 13, fontWeight: 700 }}
-                >
-                  {n8nLoading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-[#0176D3] border-t-transparent rounded-full animate-spin"></div>
-                      Procesando via n8n…
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      Enviar a n8n
-                    </>
-                  )}
-                </button>
-                {n8nError && (
-                  <p className="mt-2 text-[#B86C00]" style={{ fontSize: 12, fontWeight: 600 }}>
-                    {n8nError}
-                  </p>
-                )}
-              </div>
-            )}
-
             {/* Process Button */}
             <button
               onClick={handleSubmit}
@@ -625,7 +495,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
               `}
               style={{ fontSize: 14, fontWeight: 700 }}
             >
-              Procesar y enviar
+              Revisar Extracción
             </button>
 
             {/* Helper Text */}
