@@ -1,8 +1,9 @@
 import { supabase } from './supabase';
 
 export type JobStatus =
-  | 'nueva_solicitud' | 'extraccion' | 'revision_datos' | 'matching'
-  | 'validacion' | 'generacion' | 'completado' | 'error'
+  | 'nueva_solicitud' | 'extraccion' | 'extraccion_completada' | 'revision_datos'
+  | 'matching' | 'matching_completado' | 'validacion' | 'generacion'
+  | 'completado' | 'completada' | 'pdf_generado' | 'error'
   | 'procesando' | 'en_revision' | 'enviado_validacion';
 
 export interface Job {

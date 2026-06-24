@@ -3,7 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import AppLayout from './layout/AppLayout';
 import { fetchRecentJobs, type Job, type JobStatus } from '../lib/jobs';
 import { fetchJobLineStats, type JobLineStat, type GlobalLineStats } from '../lib/jobLines';
-import { getStageInfo, isResumableStage, isProcessingStage, isFinalStage } from '../lib/jobStages';
+import { getStageInfo, isResumableStage, isProcessingStage, isFinalStage, isValidatedStage } from '../lib/jobStages';
 import {
   FileText,
   Package,
@@ -200,9 +200,9 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
-  const isGenerada = (s: JobStatus) => s === 'completado';
-  const isEnRevision = (s: JobStatus) => s === 'revision_datos' || s === 'validacion' || s === 'en_revision' || s === 'enviado_validacion';
-  const isBorrador = (s: JobStatus) => s === 'procesando' || s === 'matching' || s === 'extraccion' || s === 'nueva_solicitud' || s === 'generacion';
+  const isGenerada = (s: JobStatus) => s === 'completado' || s === 'completada' || s === 'pdf_generado';
+  const isEnRevision = (s: JobStatus) => s === 'revision_datos' || s === 'validacion' || s === 'matching_completado' || s === 'en_revision' || s === 'enviado_validacion';
+  const isBorrador = (s: JobStatus) => s === 'procesando' || s === 'matching' || s === 'extraccion' || s === 'extraccion_completada' || s === 'nueva_solicitud' || s === 'generacion';
 
   const filteredJobs = activeFilter === 0
     ? jobs
@@ -470,13 +470,13 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
                             })}
                           </td>
                           <td className="py-3 px-3 text-center">
-                            {isResumableStage(job.status) && onResumeJob && (
+                            {(isResumableStage(job.status) || isValidatedStage(job.status)) && onResumeJob && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); onResumeJob(job); }}
                                 className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-semibold text-brand bg-brand-soft rounded-md hover:bg-brand/10 transition-colors"
                               >
-                                <RefreshCw className="w-3 h-3" />
-                                Reanudar
+                                <Eye className="w-3 h-3" />
+                                Revisar / Validar
                               </button>
                             )}
                             {isFinalStage(job.status) && onResumeJob && (

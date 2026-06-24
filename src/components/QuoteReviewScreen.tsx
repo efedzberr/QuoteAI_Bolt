@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck } from 'lucide-react';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
 import type { QuoteLine, EditValues } from './QuoteReviewTable';
@@ -9,7 +9,7 @@ import AddLineModal, { type AddLineResult } from './quote/AddLineModal';
 import { normalizeLines } from '../lib/normalizeLines';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { upsertJobLine, getMaxLineIndex } from '../lib/jobLines';
-import { updateJobProgreso } from '../lib/jobs';
+import { updateJobProgreso, updateJobStatus } from '../lib/jobs';
 
 interface QuoteData {
   status?: string;
@@ -82,6 +82,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [showAddLineModal, setShowAddLineModal] = useState(false);
   const [replaceLineIndex, setReplaceLineIndex] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [jobStatus, setJobStatus] = useState<string>(quoteData.status || '');
+  const [validating, setValidating] = useState(false);
   const progresoDebounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const persistLineAction = useCallback((lineIndex: number, fields: Record<string, any>) => {
@@ -523,7 +525,18 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     onBack();
   }, [onBack]);
 
-  const canGeneratePDF = isManualMode ? lines.length > 0 : flaggedCount === 0;
+  const canGeneratePDF = (jobStatus === 'completada' || jobStatus === 'completado') && (isManualMode ? lines.length > 0 : true);
+
+  const canValidate = isManualMode ? lines.length > 0 && flaggedCount === 0 : flaggedCount === 0;
+  const isAlreadyValidated = jobStatus === 'completada' || jobStatus === 'completado' || jobStatus === 'pdf_generado';
+
+  const handleValidateByUser = useCallback(async () => {
+    if (!canValidate || !jobReferencia) return;
+    setValidating(true);
+    await updateJobStatus(jobReferencia, 'completada' as any);
+    setJobStatus('completada');
+    setValidating(false);
+  }, [canValidate, jobReferencia]);
 
   const handleGeneratePDF = useCallback(() => {
     if (!canGeneratePDF) return;
@@ -755,7 +768,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       </div>
 
       <div className="bg-[#F3F3F3]">
-        <div className="max-w-[1480px] mx-auto px-7 pt-4 pb-3 flex justify-end gap-3">
+        <div className="max-w-[1480px] mx-auto px-7 pt-4 pb-3 flex justify-end gap-3 flex-wrap">
           {onBackToPreview && !isManualMode && (
             <button
               onClick={onBackToPreview}
@@ -772,29 +785,82 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           >
             ← Inicio
           </button>
+
+          <div className="flex-1" />
+
+          {/* Enviar a Salesforce - disabled placeholder */}
           <div className="relative group">
             <button
-              onClick={handleGeneratePDF}
-              disabled={!canGeneratePDF}
-              className={`px-7 py-3 rounded-lg transition-all flex items-center gap-2 ${
-                canGeneratePDF
-                  ? 'bg-[#0176D3] text-white hover:bg-[#014486]'
-                  : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
-              }`}
-              style={{ fontSize: 14, fontWeight: 700 }}
+              disabled
+              className="px-5 py-3 rounded-lg bg-[#D1D5DB] text-[#747474] cursor-not-allowed flex items-center gap-2"
+              style={{ fontSize: 14, fontWeight: 600 }}
             >
-              Generar PDF →
+              <Send className="w-4 h-4" />
+              Enviar a Salesforce
             </button>
-            {!canGeneratePDF && (
-              <div
-                className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                style={{ fontSize: 11, fontWeight: 500 }}
-              >
-                {isManualMode ? 'Agrega al menos un producto' : 'Revisa todas las lineas marcadas antes de generar'}
-                <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
-              </div>
-            )}
+            <div
+              className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+              style={{ fontSize: 11, fontWeight: 500 }}
+            >
+              Proximamente
+              <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
+            </div>
           </div>
+
+          {/* Validar button - only visible before validation */}
+          {!isAlreadyValidated && (
+            <div className="relative group">
+              <button
+                onClick={handleValidateByUser}
+                disabled={!canValidate || validating}
+                className={`px-6 py-3 rounded-lg transition-all flex items-center gap-2 ${
+                  canValidate && !validating
+                    ? 'bg-[#2E844A] text-white hover:bg-[#236B3B]'
+                    : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
+                }`}
+                style={{ fontSize: 14, fontWeight: 700 }}
+              >
+                <ShieldCheck className="w-4 h-4" />
+                {validating ? 'Validando...' : 'Validado por el usuario'}
+              </button>
+              {!canValidate && (
+                <div
+                  className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                  style={{ fontSize: 11, fontWeight: 500 }}
+                >
+                  Resuelve todas las lineas pendientes para poder validar
+                  <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Generar PDF - only available after validation */}
+          {isAlreadyValidated && (
+            <div className="relative group">
+              <button
+                onClick={handleGeneratePDF}
+                disabled={!canGeneratePDF}
+                className={`px-7 py-3 rounded-lg transition-all flex items-center gap-2 ${
+                  canGeneratePDF
+                    ? 'bg-[#0176D3] text-white hover:bg-[#014486]'
+                    : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
+                }`}
+                style={{ fontSize: 14, fontWeight: 700 }}
+              >
+                Generar PDF →
+              </button>
+              {!canGeneratePDF && (
+                <div
+                  className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                  style={{ fontSize: 11, fontWeight: 500 }}
+                >
+                  Valida primero para poder generar el PDF
+                  <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
