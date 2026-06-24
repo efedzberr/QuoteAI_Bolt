@@ -13,13 +13,13 @@ export default function JobProgressScreen({ job: initialJob, onViewResults, onBa
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (job.status === 'completado' || job.status === 'error') return;
+    if (job.status === 'completado' || job.status === 'matching_completado' || job.status === 'completada' || job.status === 'pdf_generado' || job.status === 'error') return;
 
     pollRef.current = setInterval(async () => {
       const updated = await getJobByReferencia(job.referencia);
       if (!updated) return;
       setJob(updated);
-      if (updated.status === 'completado' || updated.status === 'error') {
+      if (updated.status === 'completado' || updated.status === 'matching_completado' || updated.status === 'completada' || updated.status === 'pdf_generado' || updated.status === 'error') {
         if (pollRef.current) clearInterval(pollRef.current);
       }
     }, 3000);
@@ -34,7 +34,7 @@ export default function JobProgressScreen({ job: initialJob, onViewResults, onBa
     : 0;
 
   const isError = job.status === 'error';
-  const isComplete = job.status === 'completado';
+  const isComplete = job.status === 'completado' || job.status === 'matching_completado' || job.status === 'completada' || job.status === 'pdf_generado';
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-8">
