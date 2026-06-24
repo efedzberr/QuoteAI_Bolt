@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import { Loader2, X, ChevronDown, Filter } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { escapeIlikeTerm } from '../lib/productDatabase';
 
@@ -17,6 +17,13 @@ export interface SearchProduct {
   UMP: string;
 }
 
+interface FacetRow {
+  marca: string | null;
+  depto: string | null;
+  categoria: string | null;
+  subcategoria: string | null;
+}
+
 interface InlineProductSearchProps {
   placeholder?: string;
   initialValue?: string;
@@ -26,8 +33,108 @@ interface InlineProductSearchProps {
   value?: string;
 }
 
+function MultiSelectFilter({
+  label,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  options: string[];
+  selected: string[];
+  onChange: (vals: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [filter, setFilter] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!filter) return options;
+    const low = filter.toLowerCase();
+    return options.filter((o) => o.toLowerCase().includes(low));
+  }, [options, filter]);
+
+  const toggle = (val: string) => {
+    onChange(
+      selected.includes(val) ? selected.filter((v) => v !== val) : [...selected, val]
+    );
+  };
+
+  return (
+    <div ref={ref} className="relative flex-1 min-w-0">
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`w-full flex items-center justify-between gap-1 px-2.5 py-1.5 rounded-md border text-xs transition-colors ${
+          selected.length > 0
+            ? 'border-[#00A99D] bg-[#F0FDFA] text-[#00796B]'
+            : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+        }`}
+      >
+        <span className="truncate">
+          {selected.length === 0 ? label : `${label} (${selected.length})`}
+        </span>
+        <ChevronDown className="w-3 h-3 flex-shrink-0" />
+      </button>
+
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-[60] max-h-64 flex flex-col">
+          <div className="p-2 border-b border-gray-100">
+            <input
+              type="text"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value)}
+              placeholder="Buscar..."
+              className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#00A99D]"
+              autoFocus
+            />
+          </div>
+          <div className="overflow-y-auto flex-1 p-1">
+            {filtered.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-3">Sin opciones</p>
+            )}
+            {filtered.map((opt) => (
+              <label
+                key={opt}
+                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
+              >
+                <input
+                  type="checkbox"
+                  checked={selected.includes(opt)}
+                  onChange={() => toggle(opt)}
+                  className="w-3.5 h-3.5 rounded border-gray-300 text-[#00A99D] focus:ring-[#00A99D]"
+                />
+                <span className="text-xs text-gray-700 truncate">{opt}</span>
+              </label>
+            ))}
+          </div>
+          {selected.length > 0 && (
+            <div className="border-t border-gray-100 p-1.5">
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className="w-full text-xs text-[#00796B] hover:text-[#004D40] py-1"
+              >
+                Limpiar seleccion
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function InlineProductSearch({
-  placeholder = 'Buscar por nombre, código o marca...',
+  placeholder = 'Buscar por nombre, codigo o marca...',
   initialValue = '',
   onSelect,
   onCancel,
@@ -38,14 +145,75 @@ export default function InlineProductSearch({
   const [results, setResults] = useState<SearchProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [resultCount, setResultCount] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const reqIdRef = useRef(0);
 
-  const performSearch = useCallback(async (term: string) => {
-    if (term.trim().length < 2) {
+  // Facets
+  const [facets, setFacets] = useState<FacetRow[]>([]);
+  const [selectedMarcas, setSelectedMarcas] = useState<string[]>([]);
+  const [selectedCategorias, setSelectedCategorias] = useState<string[]>([]);
+  const [selectedTipos, setSelectedTipos] = useState<string[]>([]);
+  const facetsLoaded = useRef(false);
+
+  useEffect(() => {
+    if (facetsLoaded.current) return;
+    facetsLoaded.current = true;
+    productsClient.rpc('get_product_facets').then(({ data }) => {
+      if (data) setFacets(data as FacetRow[]);
+    });
+  }, []);
+
+  const marcaOptions = useMemo(() => {
+    const set = new Set<string>();
+    facets.forEach((f) => { if (f.marca) set.add(f.marca); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [facets]);
+
+  const categoriaOptions = useMemo(() => {
+    const set = new Set<string>();
+    const filtered = selectedMarcas.length > 0
+      ? facets.filter((f) => f.marca && selectedMarcas.includes(f.marca))
+      : facets;
+    filtered.forEach((f) => { if (f.categoria) set.add(f.categoria); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [facets, selectedMarcas]);
+
+  const tipoOptions = useMemo(() => {
+    const set = new Set<string>();
+    let filtered = facets;
+    if (selectedMarcas.length > 0) {
+      filtered = filtered.filter((f) => f.marca && selectedMarcas.includes(f.marca));
+    }
+    if (selectedCategorias.length > 0) {
+      filtered = filtered.filter((f) => f.categoria && selectedCategorias.includes(f.categoria));
+    }
+    filtered.forEach((f) => { if (f.subcategoria) set.add(f.subcategoria); });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
+  }, [facets, selectedMarcas, selectedCategorias]);
+
+  // Clear downstream filters when upstream changes
+  useEffect(() => {
+    setSelectedCategorias((prev) => prev.filter((c) => categoriaOptions.includes(c)));
+  }, [categoriaOptions]);
+
+  useEffect(() => {
+    setSelectedTipos((prev) => prev.filter((t) => tipoOptions.includes(t)));
+  }, [tipoOptions]);
+
+  const hasFilters = selectedMarcas.length > 0 || selectedCategorias.length > 0 || selectedTipos.length > 0;
+
+  const performSearch = useCallback(async (term: string, marcas: string[], categorias: string[], tipos: string[]) => {
+    const words = term.trim().split(/\s+/).filter(Boolean).map(escapeIlikeTerm).filter(Boolean);
+    const hasText = words.length > 0;
+    const hasAnyFilter = marcas.length > 0 || categorias.length > 0 || tipos.length > 0;
+
+    if (!hasText && !hasAnyFilter) {
       setResults([]);
+      setResultCount(null);
       setShowDropdown(false);
       return;
     }
@@ -53,111 +221,112 @@ export default function InlineProductSearch({
     const myId = ++reqIdRef.current;
     setLoading(true);
     try {
-      const q = escapeIlikeTerm(term);
-      const { data, error } = await productsClient
+      let query = productsClient
         .from('products')
         .select('CodigoArt, DescCortaArt, DescLargaArt, Marca, Precio, UMP')
-        .or(
-          [
-            `DescCortaArt.ilike."%${q}%"`,
-            `DescLargaArt.ilike."%${q}%"`,
-            `CodigoArt.ilike."%${q}%"`,
-            `Marca.ilike."%${q}%"`,
-          ].join(',')
-        )
-        .limit(10);
+        .limit(50);
 
+      // Apply text search: each word must match at least one field
+      for (const w of words) {
+        query = query.or(
+          [
+            `DescCortaArt.ilike.%${w}%`,
+            `DescLargaArt.ilike.%${w}%`,
+            `Marca.ilike.%${w}%`,
+            `CategoriaArt.ilike.%${w}%`,
+            `SubCategoriaArt.ilike.%${w}%`,
+            `CodigoArt.ilike.%${w}%`,
+          ].join(',')
+        );
+      }
+
+      // Apply facet filters
+      if (marcas.length > 0) {
+        query = query.in('Marca', marcas);
+      }
+      if (categorias.length > 0) {
+        query = query.in('CategoriaArt', categorias);
+      }
+      if (tipos.length > 0) {
+        query = query.in('SubCategoriaArt', tipos);
+      }
+
+      const { data, error } = await query;
       if (myId !== reqIdRef.current) return;
       if (error) console.error('Search error:', error);
-      setResults((data as SearchProduct[]) || []);
+      const items = (data as SearchProduct[]) || [];
+      setResults(items);
+      setResultCount(items.length);
       setShowDropdown(true);
     } catch (error) {
       if (myId !== reqIdRef.current) return;
       console.error('Search error:', error);
       setResults([]);
+      setResultCount(0);
     } finally {
       if (myId === reqIdRef.current) setLoading(false);
     }
   }, []);
 
+  // Debounced search triggered by searchTerm or filter changes
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    if (searchTerm.length < 2) {
+    const words = searchTerm.trim().split(/\s+/).filter(Boolean);
+    const hasText = words.length >= 1 && searchTerm.trim().length >= 2;
+    const hasAnyFilter = selectedMarcas.length > 0 || selectedCategorias.length > 0 || selectedTipos.length > 0;
+
+    if (!hasText && !hasAnyFilter) {
       setResults([]);
+      setResultCount(null);
       setShowDropdown(false);
       return;
     }
 
     debounceRef.current = setTimeout(() => {
-      performSearch(searchTerm);
+      performSearch(searchTerm, selectedMarcas, selectedCategorias, selectedTipos);
     }, 300);
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [searchTerm, performSearch]);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [searchTerm, selectedMarcas, selectedCategorias, selectedTipos, performSearch]);
 
   useEffect(() => {
-    if (autoFocus && inputRef.current) {
-      inputRef.current.focus();
-    }
+    if (autoFocus && inputRef.current) inputRef.current.focus();
   }, [autoFocus]);
 
   useEffect(() => {
-    if (value !== undefined) {
-      setSearchTerm(value);
-    }
+    if (value !== undefined) setSearchTerm(value);
   }, [value]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node) &&
-        inputRef.current &&
-        !inputRef.current.contains(event.target as Node)
-      ) {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
       }
     }
-
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setShowDropdown(false);
         onCancel();
       }
     }
-
     document.addEventListener('mouseup', handleClickOutside);
     document.addEventListener('keydown', handleEscape);
-
     return () => {
       document.removeEventListener('mouseup', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
   }, [onCancel]);
 
-  const highlightMatch = (text: string, term: string) => {
-    if (!term || !text) return text;
-    const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const safe = escapeRegExp(term);
-    if (!safe) return text;
-    const regex = new RegExp(`(${safe})`, 'gi');
-    const parts = text.split(regex);
-    const lower = term.toLowerCase();
-    return parts.map((part, i) =>
-      part.toLowerCase() === lower
-        ? <span key={i} className="bg-yellow-200 font-medium">{part}</span>
-        : part
-    );
+  const handleSelect = (product: SearchProduct) => {
+    onSelect(product);
+    setShowDropdown(false);
   };
 
-  const handleSelect = (product: SearchProduct) => {
-    console.log('handleSelect called with:', product.CodigoArt);
-    onSelect(product);
-    console.log('onSelect called');
-    setShowDropdown(false);
+  const clearFilters = () => {
+    setSelectedMarcas([]);
+    setSelectedCategorias([]);
+    setSelectedTipos([]);
   };
 
   let dropdownStyle: React.CSSProperties = {};
@@ -167,19 +336,58 @@ export default function InlineProductSearch({
       position: 'fixed',
       top: `${inputRect.bottom + 4}px`,
       left: `${inputRect.left}px`,
-      width: `${inputRect.width}px`,
-      minHeight: '200px',
+      width: `${Math.max(inputRect.width, 480)}px`,
+      minHeight: '120px',
     };
   }
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
+      {/* Filter row */}
+      <div className="flex items-center gap-2 mb-2">
+        <Filter className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+        <MultiSelectFilter
+          label="Marca"
+          options={marcaOptions}
+          selected={selectedMarcas}
+          onChange={setSelectedMarcas}
+        />
+        <MultiSelectFilter
+          label="Categoria"
+          options={categoriaOptions}
+          selected={selectedCategorias}
+          onChange={setSelectedCategorias}
+        />
+        <MultiSelectFilter
+          label="Tipo"
+          options={tipoOptions}
+          selected={selectedTipos}
+          onChange={setSelectedTipos}
+        />
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="text-xs text-[#00796B] hover:text-[#004D40] whitespace-nowrap px-1"
+          >
+            Limpiar
+          </button>
+        )}
+      </div>
+
+      {/* Search input */}
       <div className="relative">
         <input
           ref={inputRef}
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              if (debounceRef.current) clearTimeout(debounceRef.current);
+              performSearch(searchTerm, selectedMarcas, selectedCategorias, selectedTipos);
+            }
+          }}
           placeholder={placeholder}
           className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-[#00A99D] focus:border-transparent"
         />
@@ -191,6 +399,7 @@ export default function InlineProductSearch({
             onClick={() => {
               setSearchTerm('');
               setShowDropdown(false);
+              setResultCount(null);
               inputRef.current?.focus();
             }}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
@@ -200,10 +409,23 @@ export default function InlineProductSearch({
         )}
       </div>
 
-      {showDropdown && searchTerm.length >= 2 && (
+      {/* Result count */}
+      {resultCount !== null && !loading && (
+        <div className="flex items-center justify-between mt-1.5">
+          <span className="text-xs text-gray-500">{resultCount} resultado{resultCount !== 1 ? 's' : ''}</span>
+          {hasFilters && (
+            <button type="button" onClick={clearFilters} className="text-xs text-[#00796B] hover:underline">
+              Limpiar filtros
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Dropdown */}
+      {showDropdown && (
         <div
           ref={dropdownRef}
-          className="bg-white border border-gray-300 rounded-md shadow-lg z-9999 max-h-72 overflow-y-auto"
+          className="bg-white border border-gray-300 rounded-md shadow-lg z-[9999] max-h-72 overflow-y-auto"
           style={dropdownStyle}
         >
           {loading && (
@@ -224,20 +446,19 @@ export default function InlineProductSearch({
                 <button
                   key={product.CodigoArt}
                   onMouseDown={(e) => {
-                    console.log('onMouseDown fired for:', product.CodigoArt);
                     e.preventDefault();
                     handleSelect(product);
                   }}
                   className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
                 >
                   <div className="font-semibold text-gray-900 text-sm">
-                    {highlightMatch(product.DescCortaArt, searchTerm)}
+                    {product.DescCortaArt}
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5 space-x-2">
                     <span>{product.CodigoArt}</span>
-                    <span>·</span>
+                    <span>&middot;</span>
                     <span>{product.Marca}</span>
-                    <span>·</span>
+                    <span>&middot;</span>
                     <span>${Number(product.Precio).toFixed(2)}</span>
                     <span>{product.UMP}</span>
                   </div>
