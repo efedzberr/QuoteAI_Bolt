@@ -33,31 +33,29 @@ interface InlineProductSearchProps {
   value?: string;
 }
 
+type OpenFilter = 'marca' | 'categoria' | 'tipo' | null;
+
 function CheckboxDropdown({
   label,
   options,
   selected,
   onChange,
+  isOpen,
+  onToggle,
 }: {
   label: string;
   options: string[];
   selected: string[];
   onChange: (vals: string[]) => void;
+  isOpen: boolean;
+  onToggle: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [filterText, setFilterText] = useState('');
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setFilterText('');
-      }
-    }
-    if (open) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [open]);
+    if (!isOpen) setFilterText('');
+  }, [isOpen]);
 
   const visibleOptions = useMemo(() => {
     if (!filterText.trim()) return options;
@@ -79,7 +77,7 @@ function CheckboxDropdown({
     <div ref={panelRef} className="relative">
       <button
         type="button"
-        onClick={() => { setOpen(!open); setFilterText(''); }}
+        onClick={onToggle}
         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-all ${
           selected.length > 0
             ? 'border-[#00A99D] bg-[#F0FDFA] text-[#00796B]'
@@ -87,11 +85,11 @@ function CheckboxDropdown({
         }`}
       >
         <span className="truncate max-w-[120px]">{buttonLabel}</span>
-        <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
-      {open && (
-        <div className="absolute top-full left-0 mt-1 w-60 bg-white border border-gray-200 rounded-lg shadow-xl z-[70] flex flex-col max-h-72">
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-1 w-60 bg-white border border-gray-200 rounded-lg shadow-xl z-50 flex flex-col max-h-72">
           <div className="p-2 border-b border-gray-100">
             <input
               type="text"
@@ -159,6 +157,9 @@ export default function InlineProductSearch({
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const reqIdRef = useRef(0);
 
+  // Which filter panel is open (mutual exclusion)
+  const [openFilter, setOpenFilter] = useState<OpenFilter>(null);
+
   // Facets state
   const [facets, setFacets] = useState<FacetRow[]>([]);
   const [selectedMarcas, setSelectedMarcas] = useState<string[]>([]);
@@ -175,7 +176,7 @@ export default function InlineProductSearch({
     });
   }, []);
 
-  // Derive marca options: all unique non-null marcas from facets
+  // Derive marca options
   const marcaOptions = useMemo(() => {
     const set = new Set<string>();
     for (const f of facets) {
@@ -223,6 +224,26 @@ export default function InlineProductSearch({
 
   const hasAnyFilter = selectedMarcas.length > 0 || selectedCategorias.length > 0 || selectedTipos.length > 0;
 
+  // Close filter panel on outside click
+  useEffect(() => {
+    if (!openFilter) return;
+    function handleMouseDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpenFilter(null);
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [openFilter]);
+
+  const handleToggleFilter = useCallback((filter: OpenFilter) => {
+    setOpenFilter((prev) => {
+      if (prev === filter) return null;
+      return filter;
+    });
+    setShowDropdown(false);
+  }, []);
+
   const performSearch = useCallback(async (
     term: string,
     marcas: string[],
@@ -248,7 +269,6 @@ export default function InlineProductSearch({
         .select('CodigoArt, DescCortaArt, DescLargaArt, Marca, Precio, UMP')
         .limit(50);
 
-      // Text search: each word must match at least one field (AND between words)
       for (const w of words) {
         query = query.or(
           [
@@ -262,7 +282,6 @@ export default function InlineProductSearch({
         );
       }
 
-      // Facet filters
       if (marcas.length > 0) query = query.in('Marca', marcas);
       if (categorias.length > 0) query = query.in('CategoriaArt', categorias);
       if (tipos.length > 0) query = query.in('SubCategoriaArt', tipos);
@@ -317,11 +336,13 @@ export default function InlineProductSearch({
     function handleClickOutside(event: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setShowDropdown(false);
+        setOpenFilter(null);
       }
     }
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         setShowDropdown(false);
+        setOpenFilter(null);
         onCancel();
       }
     }
@@ -346,6 +367,7 @@ export default function InlineProductSearch({
     setResults([]);
     setResultCount(null);
     setShowDropdown(false);
+    setOpenFilter(null);
     inputRef.current?.focus();
   };
 
@@ -358,6 +380,7 @@ export default function InlineProductSearch({
       left: `${rect.left}px`,
       width: `${Math.max(rect.width, 480)}px`,
       minHeight: '100px',
+      zIndex: 40,
     };
   }
 
@@ -371,18 +394,24 @@ export default function InlineProductSearch({
           options={marcaOptions}
           selected={selectedMarcas}
           onChange={setSelectedMarcas}
+          isOpen={openFilter === 'marca'}
+          onToggle={() => handleToggleFilter('marca')}
         />
         <CheckboxDropdown
           label="Categoria"
           options={categoriaOptions}
           selected={selectedCategorias}
           onChange={setSelectedCategorias}
+          isOpen={openFilter === 'categoria'}
+          onToggle={() => handleToggleFilter('categoria')}
         />
         <CheckboxDropdown
           label="Tipo"
           options={tipoOptions}
           selected={selectedTipos}
           onChange={setSelectedTipos}
+          isOpen={openFilter === 'tipo'}
+          onToggle={() => handleToggleFilter('tipo')}
         />
         {(hasAnyFilter || searchTerm.trim().length > 0) && (
           <button
@@ -403,6 +432,7 @@ export default function InlineProductSearch({
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
+          onFocus={() => setOpenFilter(null)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -443,11 +473,11 @@ export default function InlineProductSearch({
         </div>
       )}
 
-      {/* Results dropdown */}
-      {showDropdown && (
+      {/* Results dropdown - z-40, below filter panels which are z-50 */}
+      {showDropdown && !openFilter && (
         <div
           ref={dropdownRef}
-          className="bg-white border border-gray-300 rounded-md shadow-lg z-[9999] max-h-72 overflow-y-auto"
+          className="bg-white border border-gray-300 rounded-md shadow-lg max-h-72 overflow-y-auto"
           style={dropdownStyle}
         >
           {loading && (
