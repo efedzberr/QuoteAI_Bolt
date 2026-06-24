@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Loader2, X, ChevronDown, Filter } from 'lucide-react';
+import { Loader2, X, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import { createClient } from '@supabase/supabase-js';
 import { escapeIlikeTerm } from '../lib/productDatabase';
 
@@ -33,7 +33,7 @@ interface InlineProductSearchProps {
   value?: string;
 }
 
-function MultiSelectFilter({
+function CheckboxDropdown({
   label,
   options,
   selected,
@@ -45,83 +45,90 @@ function MultiSelectFilter({
   onChange: (vals: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState('');
-  const ref = useRef<HTMLDivElement>(null);
+  const [filterText, setFilterText] = useState('');
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setFilterText('');
+      }
     }
-    document.addEventListener('mousedown', handleClick);
+    if (open) document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+  }, [open]);
 
-  const filtered = useMemo(() => {
-    if (!filter) return options;
-    const low = filter.toLowerCase();
-    return options.filter((o) => o.toLowerCase().includes(low));
-  }, [options, filter]);
+  const visibleOptions = useMemo(() => {
+    if (!filterText.trim()) return options;
+    const lower = filterText.toLowerCase();
+    return options.filter((o) => o.toLowerCase().includes(lower));
+  }, [options, filterText]);
 
-  const toggle = (val: string) => {
-    onChange(
-      selected.includes(val) ? selected.filter((v) => v !== val) : [...selected, val]
-    );
+  const toggleOption = (val: string) => {
+    if (selected.includes(val)) {
+      onChange(selected.filter((v) => v !== val));
+    } else {
+      onChange([...selected, val]);
+    }
   };
 
+  const buttonLabel = selected.length > 0 ? `${label} (${selected.length})` : label;
+
   return (
-    <div ref={ref} className="relative flex-1 min-w-0">
+    <div ref={panelRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen(!open)}
-        className={`w-full flex items-center justify-between gap-1 px-2.5 py-1.5 rounded-md border text-xs transition-colors ${
+        onClick={() => { setOpen(!open); setFilterText(''); }}
+        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-xs font-medium transition-all ${
           selected.length > 0
             ? 'border-[#00A99D] bg-[#F0FDFA] text-[#00796B]'
             : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
         }`}
       >
-        <span className="truncate">
-          {selected.length === 0 ? label : `${label} (${selected.length})`}
-        </span>
-        <ChevronDown className="w-3 h-3 flex-shrink-0" />
+        <span className="truncate max-w-[120px]">{buttonLabel}</span>
+        <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-gray-200 rounded-lg shadow-xl z-[60] max-h-64 flex flex-col">
+        <div className="absolute top-full left-0 mt-1 w-60 bg-white border border-gray-200 rounded-lg shadow-xl z-[70] flex flex-col max-h-72">
           <div className="p-2 border-b border-gray-100">
             <input
               type="text"
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
               placeholder="Buscar..."
-              className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-[#00A99D]"
+              className="w-full px-2.5 py-1.5 text-xs border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#00A99D] focus:border-[#00A99D]"
               autoFocus
+              onKeyDown={(e) => e.stopPropagation()}
             />
           </div>
-          <div className="overflow-y-auto flex-1 p-1">
-            {filtered.length === 0 && (
-              <p className="text-xs text-gray-400 text-center py-3">Sin opciones</p>
+          <div className="overflow-y-auto flex-1 p-1.5">
+            {visibleOptions.length === 0 && (
+              <p className="text-xs text-gray-400 text-center py-4">Sin opciones</p>
             )}
-            {filtered.map((opt) => (
+            {visibleOptions.map((opt) => (
               <label
                 key={opt}
-                className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
+                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md hover:bg-gray-50 cursor-pointer"
+                onMouseDown={(e) => e.preventDefault()}
               >
                 <input
                   type="checkbox"
                   checked={selected.includes(opt)}
-                  onChange={() => toggle(opt)}
-                  className="w-3.5 h-3.5 rounded border-gray-300 text-[#00A99D] focus:ring-[#00A99D]"
+                  onChange={() => toggleOption(opt)}
+                  className="w-3.5 h-3.5 rounded border-gray-300 text-[#00A99D] focus:ring-[#00A99D] cursor-pointer"
                 />
                 <span className="text-xs text-gray-700 truncate">{opt}</span>
               </label>
             ))}
           </div>
           {selected.length > 0 && (
-            <div className="border-t border-gray-100 p-1.5">
+            <div className="border-t border-gray-100 p-2">
               <button
                 type="button"
                 onClick={() => onChange([])}
-                className="w-full text-xs text-[#00796B] hover:text-[#004D40] py-1"
+                className="w-full text-xs text-[#00796B] hover:text-[#004D40] font-medium py-1"
               >
                 Limpiar seleccion
               </button>
@@ -152,13 +159,14 @@ export default function InlineProductSearch({
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const reqIdRef = useRef(0);
 
-  // Facets
+  // Facets state
   const [facets, setFacets] = useState<FacetRow[]>([]);
   const [selectedMarcas, setSelectedMarcas] = useState<string[]>([]);
   const [selectedCategorias, setSelectedCategorias] = useState<string[]>([]);
   const [selectedTipos, setSelectedTipos] = useState<string[]>([]);
   const facetsLoaded = useRef(false);
 
+  // Load facets once
   useEffect(() => {
     if (facetsLoaded.current) return;
     facetsLoaded.current = true;
@@ -167,35 +175,44 @@ export default function InlineProductSearch({
     });
   }, []);
 
+  // Derive marca options: all unique non-null marcas from facets
   const marcaOptions = useMemo(() => {
     const set = new Set<string>();
-    facets.forEach((f) => { if (f.marca) set.add(f.marca); });
+    for (const f of facets) {
+      if (f.marca) set.add(f.marca);
+    }
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
   }, [facets]);
 
+  // Derive categoria options: filtered by selected marcas
   const categoriaOptions = useMemo(() => {
     const set = new Set<string>();
-    const filtered = selectedMarcas.length > 0
-      ? facets.filter((f) => f.marca && selectedMarcas.includes(f.marca))
+    const source = selectedMarcas.length > 0
+      ? facets.filter((f) => f.marca !== null && selectedMarcas.includes(f.marca))
       : facets;
-    filtered.forEach((f) => { if (f.categoria) set.add(f.categoria); });
+    for (const f of source) {
+      if (f.categoria) set.add(f.categoria);
+    }
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
   }, [facets, selectedMarcas]);
 
+  // Derive tipo options: filtered by selected marcas AND categorias
   const tipoOptions = useMemo(() => {
     const set = new Set<string>();
-    let filtered = facets;
+    let source = facets;
     if (selectedMarcas.length > 0) {
-      filtered = filtered.filter((f) => f.marca && selectedMarcas.includes(f.marca));
+      source = source.filter((f) => f.marca !== null && selectedMarcas.includes(f.marca));
     }
     if (selectedCategorias.length > 0) {
-      filtered = filtered.filter((f) => f.categoria && selectedCategorias.includes(f.categoria));
+      source = source.filter((f) => f.categoria !== null && selectedCategorias.includes(f.categoria));
     }
-    filtered.forEach((f) => { if (f.subcategoria) set.add(f.subcategoria); });
+    for (const f of source) {
+      if (f.subcategoria) set.add(f.subcategoria);
+    }
     return Array.from(set).sort((a, b) => a.localeCompare(b, 'es'));
   }, [facets, selectedMarcas, selectedCategorias]);
 
-  // Clear downstream filters when upstream changes
+  // Prune downstream selections when upstream changes
   useEffect(() => {
     setSelectedCategorias((prev) => prev.filter((c) => categoriaOptions.includes(c)));
   }, [categoriaOptions]);
@@ -204,14 +221,19 @@ export default function InlineProductSearch({
     setSelectedTipos((prev) => prev.filter((t) => tipoOptions.includes(t)));
   }, [tipoOptions]);
 
-  const hasFilters = selectedMarcas.length > 0 || selectedCategorias.length > 0 || selectedTipos.length > 0;
+  const hasAnyFilter = selectedMarcas.length > 0 || selectedCategorias.length > 0 || selectedTipos.length > 0;
 
-  const performSearch = useCallback(async (term: string, marcas: string[], categorias: string[], tipos: string[]) => {
+  const performSearch = useCallback(async (
+    term: string,
+    marcas: string[],
+    categorias: string[],
+    tipos: string[]
+  ) => {
     const words = term.trim().split(/\s+/).filter(Boolean).map(escapeIlikeTerm).filter(Boolean);
     const hasText = words.length > 0;
-    const hasAnyFilter = marcas.length > 0 || categorias.length > 0 || tipos.length > 0;
+    const hasFilters = marcas.length > 0 || categorias.length > 0 || tipos.length > 0;
 
-    if (!hasText && !hasAnyFilter) {
+    if (!hasText && !hasFilters) {
       setResults([]);
       setResultCount(null);
       setShowDropdown(false);
@@ -226,7 +248,7 @@ export default function InlineProductSearch({
         .select('CodigoArt, DescCortaArt, DescLargaArt, Marca, Precio, UMP')
         .limit(50);
 
-      // Apply text search: each word must match at least one field
+      // Text search: each word must match at least one field (AND between words)
       for (const w of words) {
         query = query.or(
           [
@@ -240,16 +262,10 @@ export default function InlineProductSearch({
         );
       }
 
-      // Apply facet filters
-      if (marcas.length > 0) {
-        query = query.in('Marca', marcas);
-      }
-      if (categorias.length > 0) {
-        query = query.in('CategoriaArt', categorias);
-      }
-      if (tipos.length > 0) {
-        query = query.in('SubCategoriaArt', tipos);
-      }
+      // Facet filters
+      if (marcas.length > 0) query = query.in('Marca', marcas);
+      if (categorias.length > 0) query = query.in('CategoriaArt', categorias);
+      if (tipos.length > 0) query = query.in('SubCategoriaArt', tipos);
 
       const { data, error } = await query;
       if (myId !== reqIdRef.current) return;
@@ -258,9 +274,9 @@ export default function InlineProductSearch({
       setResults(items);
       setResultCount(items.length);
       setShowDropdown(true);
-    } catch (error) {
+    } catch (err) {
       if (myId !== reqIdRef.current) return;
-      console.error('Search error:', error);
+      console.error('Search error:', err);
       setResults([]);
       setResultCount(0);
     } finally {
@@ -268,15 +284,14 @@ export default function InlineProductSearch({
     }
   }, []);
 
-  // Debounced search triggered by searchTerm or filter changes
+  // Debounced trigger on text or filter changes
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    const words = searchTerm.trim().split(/\s+/).filter(Boolean);
-    const hasText = words.length >= 1 && searchTerm.trim().length >= 2;
-    const hasAnyFilter = selectedMarcas.length > 0 || selectedCategorias.length > 0 || selectedTipos.length > 0;
+    const hasText = searchTerm.trim().length >= 2;
+    const hasFilters = selectedMarcas.length > 0 || selectedCategorias.length > 0 || selectedTipos.length > 0;
 
-    if (!hasText && !hasAnyFilter) {
+    if (!hasText && !hasFilters) {
       setResults([]);
       setResultCount(null);
       setShowDropdown(false);
@@ -323,59 +338,65 @@ export default function InlineProductSearch({
     setShowDropdown(false);
   };
 
-  const clearFilters = () => {
+  const clearAll = () => {
     setSelectedMarcas([]);
     setSelectedCategorias([]);
     setSelectedTipos([]);
+    setSearchTerm('');
+    setResults([]);
+    setResultCount(null);
+    setShowDropdown(false);
+    inputRef.current?.focus();
   };
 
   let dropdownStyle: React.CSSProperties = {};
   if (showDropdown && inputRef.current) {
-    const inputRect = inputRef.current.getBoundingClientRect();
+    const rect = inputRef.current.getBoundingClientRect();
     dropdownStyle = {
       position: 'fixed',
-      top: `${inputRect.bottom + 4}px`,
-      left: `${inputRect.left}px`,
-      width: `${Math.max(inputRect.width, 480)}px`,
-      minHeight: '120px',
+      top: `${rect.bottom + 4}px`,
+      left: `${rect.left}px`,
+      width: `${Math.max(rect.width, 480)}px`,
+      minHeight: '100px',
     };
   }
 
   return (
     <div ref={containerRef} className="relative">
-      {/* Filter row */}
-      <div className="flex items-center gap-2 mb-2">
+      {/* Filters row */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
         <Filter className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
-        <MultiSelectFilter
+        <CheckboxDropdown
           label="Marca"
           options={marcaOptions}
           selected={selectedMarcas}
           onChange={setSelectedMarcas}
         />
-        <MultiSelectFilter
+        <CheckboxDropdown
           label="Categoria"
           options={categoriaOptions}
           selected={selectedCategorias}
           onChange={setSelectedCategorias}
         />
-        <MultiSelectFilter
+        <CheckboxDropdown
           label="Tipo"
           options={tipoOptions}
           selected={selectedTipos}
           onChange={setSelectedTipos}
         />
-        {hasFilters && (
+        {(hasAnyFilter || searchTerm.trim().length > 0) && (
           <button
             type="button"
-            onClick={clearFilters}
-            className="text-xs text-[#00796B] hover:text-[#004D40] whitespace-nowrap px-1"
+            onClick={clearAll}
+            className="flex items-center gap-1 text-xs text-[#00796B] hover:text-[#004D40] font-medium px-2 py-1 rounded hover:bg-[#F0FDFA] transition-colors"
           >
-            Limpiar
+            <RotateCcw className="w-3 h-3" />
+            Limpiar filtros
           </button>
         )}
       </div>
 
-      {/* Search input */}
+      {/* Text search input */}
       <div className="relative">
         <input
           ref={inputRef}
@@ -398,8 +419,11 @@ export default function InlineProductSearch({
           <button
             onClick={() => {
               setSearchTerm('');
-              setShowDropdown(false);
-              setResultCount(null);
+              if (!hasAnyFilter) {
+                setResults([]);
+                setResultCount(null);
+                setShowDropdown(false);
+              }
               inputRef.current?.focus();
             }}
             className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
@@ -411,17 +435,15 @@ export default function InlineProductSearch({
 
       {/* Result count */}
       {resultCount !== null && !loading && (
-        <div className="flex items-center justify-between mt-1.5">
-          <span className="text-xs text-gray-500">{resultCount} resultado{resultCount !== 1 ? 's' : ''}</span>
-          {hasFilters && (
-            <button type="button" onClick={clearFilters} className="text-xs text-[#00796B] hover:underline">
-              Limpiar filtros
-            </button>
-          )}
+        <div className="mt-1.5">
+          <span className="text-xs text-gray-500">
+            {resultCount} resultado{resultCount !== 1 ? 's' : ''}
+            {resultCount === 50 && ' (max)'}
+          </span>
         </div>
       )}
 
-      {/* Dropdown */}
+      {/* Results dropdown */}
       {showDropdown && (
         <div
           ref={dropdownRef}
