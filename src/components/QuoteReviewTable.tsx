@@ -32,6 +32,7 @@ interface QuoteReviewTableProps {
   editingIndex: number | null;
   editValues: EditValues;
   isManualMode?: boolean;
+  readOnly?: boolean;
   onEditStart: (index: number) => void;
   onEditCancel: () => void;
   onEditSave: () => void;
@@ -65,6 +66,7 @@ export default function QuoteReviewTable({
   editingIndex,
   editValues,
   isManualMode = false,
+  readOnly = false,
   onEditStart,
   onEditCancel,
   onEditSave,
@@ -102,7 +104,7 @@ export default function QuoteReviewTable({
                 <th className="py-3 px-4 w-20 text-center">U.M.</th>
                 <th className="py-3 px-4 w-28 text-right">Precio unit.</th>
                 <th className="py-3 px-4 w-28 text-right">Total linea</th>
-                <th className="py-3 px-4 w-36 text-center">Acciones</th>
+                {!readOnly && <th className="py-3 px-4 w-36 text-center">Acciones</th>}
               </tr>
             </thead>
             <tbody>
@@ -367,6 +369,7 @@ export default function QuoteReviewTable({
                     >
                       {!isIgnored && formatCurrency(lineTotal, currency)}
                     </td>
+                    {!readOnly && (
                     <td className="py-3.5 px-4">
                       <div className="flex items-center justify-center gap-1.5">
                         {isIgnored ? (
@@ -440,6 +443,7 @@ export default function QuoteReviewTable({
                         )}
                       </div>
                     </td>
+                    )}
                   </tr>
                 );
               })}
@@ -453,7 +457,7 @@ export default function QuoteReviewTable({
           </table>
         </div>
 
-        {onAddLine && (
+        {onAddLine && !readOnly && (
           <div className="px-4 py-3 border-t border-[#E5E5E5] bg-[#FAFAFA]">
             <button
               onClick={onAddLine}

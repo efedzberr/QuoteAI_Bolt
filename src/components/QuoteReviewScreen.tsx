@@ -37,8 +37,10 @@ interface QuoteReviewScreenProps {
   onApproved: (approvedLines: QuoteLine[], quoteData: QuoteData) => void;
   onBack: () => void;
   onBackToPreview?: () => void;
+  onGoToPdf?: () => void;
   jobId?: string;
   jobReferencia?: string;
+  readOnly?: boolean;
 }
 
 type ViewMode = 'original' | 'edited';
@@ -52,7 +54,7 @@ function formatCurrency(value: number, currency: string): string {
   }).format(value);
 }
 
-export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, jobId, jobReferencia }: QuoteReviewScreenProps) {
+export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, jobId, jobReferencia, readOnly }: QuoteReviewScreenProps) {
   const { confidenceThreshold } = useAppSettings();
 
   const [viewMode, setViewMode] = useState<ViewMode>(editedQuoteData ? 'edited' : 'original');
@@ -657,7 +659,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         </div>
       </div>
 
-      {flaggedCount > 0 && (
+      {flaggedCount > 0 && !readOnly && (
         <div className="w-full bg-[#FEF1DC] border-b border-[#FECACA]">
           <div className="max-w-[1480px] mx-auto px-7 py-3 flex items-center gap-3">
             <AlertTriangle className="w-4 h-4 text-[#B86C00] flex-shrink-0" />
@@ -686,9 +688,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             <QuoteReviewTable
               lines={linesWithReview}
               currency={activeQuoteData.currency}
-              editingIndex={editingIndex}
+              editingIndex={readOnly ? null : editingIndex}
               editValues={editValues}
               isManualMode={isManualMode}
+              readOnly={readOnly}
               onEditStart={handleEditStart}
               onEditCancel={handleEditCancel}
               onEditSave={handleEditSave}
@@ -699,9 +702,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               onQuantityChange={handleQuantityChange}
               onProductSelect={handleProductSelectInEdit}
               onApprove={handleApprove}
-              onReplaceLine={(index) => setReplaceLineIndex(index)}
-              onAddLine={() => setShowAddLineModal(true)}
-              showInlineAddRow={showInlineAddRow}
+              onReplaceLine={readOnly ? undefined : (index) => setReplaceLineIndex(index)}
+              onAddLine={readOnly ? undefined : () => setShowAddLineModal(true)}
+              showInlineAddRow={readOnly ? false : showInlineAddRow}
               onInlineAddProduct={handleInlineProductSelect}
               onCancelInlineAdd={() => setShowInlineAddRow(false)}
             />
@@ -729,7 +732,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             </div>
           )}
 
-          {isManualMode && !showInlineAddRow && lines.length > 0 && (
+          {isManualMode && !readOnly && !showInlineAddRow && lines.length > 0 && (
             <div className="px-7 pb-4">
               <button
                 onClick={() => setShowInlineAddRow(true)}
@@ -769,7 +772,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
 
       <div className="bg-[#F3F3F3]">
         <div className="max-w-[1480px] mx-auto px-7 pt-4 pb-3 flex justify-end gap-3 flex-wrap">
-          {onBackToPreview && !isManualMode && (
+          {onBackToPreview && !isManualMode && !readOnly && (
             <button
               onClick={onBackToPreview}
               className="px-5 py-3 border border-[#E5E5E5] text-[#444444] rounded-lg hover:bg-white transition-colors"
@@ -788,78 +791,94 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
 
           <div className="flex-1" />
 
-          {/* Enviar a Salesforce - disabled placeholder */}
-          <div className="relative group">
-            <button
-              disabled
-              className="px-5 py-3 rounded-lg bg-[#D1D5DB] text-[#747474] cursor-not-allowed flex items-center gap-2"
-              style={{ fontSize: 14, fontWeight: 600 }}
-            >
-              <Send className="w-4 h-4" />
-              Enviar a Salesforce
-            </button>
-            <div
-              className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-              style={{ fontSize: 11, fontWeight: 500 }}
-            >
-              Proximamente
-              <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
-            </div>
-          </div>
-
-          {/* Validar button - only visible before validation */}
-          {!isAlreadyValidated && (
-            <div className="relative group">
-              <button
-                onClick={handleValidateByUser}
-                disabled={!canValidate || validating}
-                className={`px-6 py-3 rounded-lg transition-all flex items-center gap-2 ${
-                  canValidate && !validating
-                    ? 'bg-[#2E844A] text-white hover:bg-[#236B3B]'
-                    : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
-                }`}
-                style={{ fontSize: 14, fontWeight: 700 }}
-              >
-                <ShieldCheck className="w-4 h-4" />
-                {validating ? 'Validando...' : 'Validado por el usuario'}
-              </button>
-              {!canValidate && (
+          {readOnly ? (
+            <>
+              {onGoToPdf && (
+                <button
+                  onClick={onGoToPdf}
+                  className="px-7 py-3 rounded-lg bg-[#0176D3] text-white hover:bg-[#014486] transition-all flex items-center gap-2"
+                  style={{ fontSize: 14, fontWeight: 700 }}
+                >
+                  Ver PDF →
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              {/* Enviar a Salesforce - disabled placeholder */}
+              <div className="relative group">
+                <button
+                  disabled
+                  className="px-5 py-3 rounded-lg bg-[#D1D5DB] text-[#747474] cursor-not-allowed flex items-center gap-2"
+                  style={{ fontSize: 14, fontWeight: 600 }}
+                >
+                  <Send className="w-4 h-4" />
+                  Enviar a Salesforce
+                </button>
                 <div
                   className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
                   style={{ fontSize: 11, fontWeight: 500 }}
                 >
-                  Resuelve todas las lineas pendientes para poder validar
+                  Proximamente
                   <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
 
-          {/* Generar PDF - only available after validation */}
-          {isAlreadyValidated && (
-            <div className="relative group">
-              <button
-                onClick={handleGeneratePDF}
-                disabled={!canGeneratePDF}
-                className={`px-7 py-3 rounded-lg transition-all flex items-center gap-2 ${
-                  canGeneratePDF
-                    ? 'bg-[#0176D3] text-white hover:bg-[#014486]'
-                    : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
-                }`}
-                style={{ fontSize: 14, fontWeight: 700 }}
-              >
-                Generar PDF →
-              </button>
-              {!canGeneratePDF && (
-                <div
-                  className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                  style={{ fontSize: 11, fontWeight: 500 }}
-                >
-                  Valida primero para poder generar el PDF
-                  <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
+              {/* Validar button - only visible before validation */}
+              {!isAlreadyValidated && (
+                <div className="relative group">
+                  <button
+                    onClick={handleValidateByUser}
+                    disabled={!canValidate || validating}
+                    className={`px-6 py-3 rounded-lg transition-all flex items-center gap-2 ${
+                      canValidate && !validating
+                        ? 'bg-[#2E844A] text-white hover:bg-[#236B3B]'
+                        : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
+                    }`}
+                    style={{ fontSize: 14, fontWeight: 700 }}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    {validating ? 'Validando...' : 'Validado por el usuario'}
+                  </button>
+                  {!canValidate && (
+                    <div
+                      className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                      style={{ fontSize: 11, fontWeight: 500 }}
+                    >
+                      Resuelve todas las lineas pendientes para poder validar
+                      <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
+                    </div>
+                  )}
                 </div>
               )}
-            </div>
+
+              {/* Generar PDF - only available after validation */}
+              {isAlreadyValidated && (
+                <div className="relative group">
+                  <button
+                    onClick={handleGeneratePDF}
+                    disabled={!canGeneratePDF}
+                    className={`px-7 py-3 rounded-lg transition-all flex items-center gap-2 ${
+                      canGeneratePDF
+                        ? 'bg-[#0176D3] text-white hover:bg-[#014486]'
+                        : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
+                    }`}
+                    style={{ fontSize: 14, fontWeight: 700 }}
+                  >
+                    Generar PDF →
+                  </button>
+                  {!canGeneratePDF && (
+                    <div
+                      className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                      style={{ fontSize: 11, fontWeight: 500 }}
+                    >
+                      Valida primero para poder generar el PDF
+                      <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

@@ -168,6 +168,7 @@ function App() {
   const [jobReferencia, setJobReferencia] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [progressJob, setProgressJob] = useState<Job | null>(null);
+  const [reviewReadOnly, setReviewReadOnly] = useState(false);
 
   const handleExtractionComplete = useCallback((rows: any[], customerName: string) => {
     // Anti-duplicate: if we already have a jobId for this session, skip
@@ -302,6 +303,7 @@ function App() {
     setJobReferencia(null);
     setJobId(null);
     setResumeExtraction(null);
+    setReviewReadOnly(false);
   }, []);
 
   const handleBackToPreview = useCallback(() => {
@@ -322,7 +324,7 @@ function App() {
     if (jobId && jobReferencia) {
       fetchJobLines(jobId).then((jobLines) => {
         if (jobLines.length > 0) {
-          const reconstructedLines = jobLines.map((jl: JobLine) => ({
+          const editedLines = jobLines.map((jl: JobLine) => ({
             original_text: jl.descripcion_original || '',
             original_code: jl.codigo_original || null,
             quantity: jl.cantidad || 1,
@@ -337,23 +339,49 @@ function App() {
             badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
             _lineIndex: jl.line_index,
           }));
-          const quoteData = {
+          const originalLines = jobLines.map((jl: JobLine) => ({
+            original_text: jl.descripcion_original || '',
+            original_code: jl.codigo_original || null,
+            quantity: jl.cantidad || 1,
+            matched_product_code: jl.codigo_original || null,
+            matched_product_name: jl.descripcion_original || null,
+            matched_unit_price: null,
+            matched_unit_of_measure: jl.unidad_original || jl.unidad_medida || 'PZA',
+            confidence: 0,
+            needs_review: false,
+            ignored: false,
+            approved: false,
+            _lineIndex: jl.line_index,
+          }));
+          const customerName = approvedData?.quoteData?.customerName || '';
+          const originalQuoteData = {
             status: 'completada',
             quoteReference: jobReferencia,
-            customerName: approvedData?.quoteData?.customerName || '',
+            customerName,
             generatedDate: new Date().toLocaleDateString('es-MX'),
-            totalLines: reconstructedLines.length,
+            totalLines: originalLines.length,
             currency: 'MXN',
-            subtotal: reconstructedLines.reduce((sum: number, l: any) => {
+            subtotal: 0,
+            lines: originalLines,
+          };
+          const editedQuote = {
+            status: 'completada',
+            quoteReference: jobReferencia,
+            customerName,
+            generatedDate: new Date().toLocaleDateString('es-MX'),
+            totalLines: editedLines.length,
+            currency: 'MXN',
+            subtotal: editedLines.reduce((sum: number, l: any) => {
               if (l.ignored) return sum;
               return sum + (l.quantity || 0) * (l.matched_unit_price || 0);
             }, 0),
-            lines: reconstructedLines,
+            lines: editedLines,
           };
-          setWebhookResponse(quoteData);
-          setRawResponse(JSON.stringify(quoteData));
+          setWebhookResponse(originalQuoteData);
+          setEditedQuoteData(editedQuote);
+          setRawResponse(JSON.stringify(editedQuote));
           setApprovedData(null);
-          setEditedQuoteData(null);
+          setReviewReadOnly(true);
           setCurrentScreen('review');
         }
       });
@@ -420,6 +448,7 @@ function App() {
         };
         setWebhookResponse(quoteData);
         setRawResponse(JSON.stringify(quoteData));
+        setReviewReadOnly(false);
         setCurrentScreen('review');
       }
     });
@@ -430,7 +459,7 @@ function App() {
     setJobId(job.id);
     fetchJobLines(job.id).then((jobLines) => {
       if (jobLines.length > 0) {
-        const reconstructedLines = jobLines.map((jl: JobLine) => ({
+        const editedLines = jobLines.map((jl: JobLine) => ({
           original_text: jl.descripcion_original || '',
           original_code: jl.codigo_original || null,
           quantity: jl.cantidad || 1,
@@ -445,22 +474,52 @@ function App() {
           badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
           _lineIndex: jl.line_index,
         }));
-        const quoteData = {
+
+        const originalLines = jobLines.map((jl: JobLine) => ({
+          original_text: jl.descripcion_original || '',
+          original_code: jl.codigo_original || null,
+          quantity: jl.cantidad || 1,
+          matched_product_code: jl.codigo_original || null,
+          matched_product_name: jl.descripcion_original || null,
+          matched_unit_price: null,
+          matched_unit_of_measure: jl.unidad_original || jl.unidad_medida || 'PZA',
+          confidence: 0,
+          needs_review: false,
+          ignored: false,
+          approved: false,
+          _lineIndex: jl.line_index,
+        }));
+
+        const originalQuoteData = {
           status: job.status,
           quoteReference: job.referencia,
           customerName: job.cliente || '',
           generatedDate: new Date(job.created_at).toLocaleDateString('es-MX'),
-          totalLines: reconstructedLines.length,
+          totalLines: originalLines.length,
           currency: 'MXN',
-          subtotal: reconstructedLines.reduce((sum: number, l: any) => {
+          subtotal: 0,
+          lines: originalLines,
+        };
+
+        const editedQuote = {
+          status: job.status,
+          quoteReference: job.referencia,
+          customerName: job.cliente || '',
+          generatedDate: new Date(job.created_at).toLocaleDateString('es-MX'),
+          totalLines: editedLines.length,
+          currency: 'MXN',
+          subtotal: editedLines.reduce((sum: number, l: any) => {
             if (l.ignored) return sum;
             return sum + (l.quantity || 0) * (l.matched_unit_price || 0);
           }, 0),
-          lines: reconstructedLines,
+          lines: editedLines,
         };
-        setWebhookResponse(quoteData);
-        setRawResponse(JSON.stringify(quoteData));
+
+        setWebhookResponse(originalQuoteData);
+        setEditedQuoteData(editedQuote);
+        setRawResponse(JSON.stringify(editedQuote));
         setProgressJob(null);
+        setReviewReadOnly(false);
         setCurrentScreen('review');
       }
     });
@@ -718,6 +777,13 @@ function App() {
   }
 
   if (currentScreen === 'review' && webhookResponse) {
+    const handleGoToPdfFromReview = () => {
+      const activeData = editedQuoteData || webhookResponse;
+      const pdfLines = (activeData.lines || []).filter((l: any) => !l.ignored);
+      setApprovedData({ lines: pdfLines, quoteData: { ...activeData, lines: pdfLines, totalLines: pdfLines.length } });
+      setCurrentScreen('generate');
+    };
+
     return (
       <AppLayout
         active="cotizar"
@@ -735,8 +801,10 @@ function App() {
           onApproved={handleApproved}
           onBack={() => setCurrentScreen('home')}
           onBackToPreview={uploadData ? handleBackToPreview : undefined}
+          onGoToPdf={reviewReadOnly ? handleGoToPdfFromReview : undefined}
           jobId={jobId || undefined}
           jobReferencia={jobReferencia || undefined}
+          readOnly={reviewReadOnly}
         />
       </AppLayout>
     );
