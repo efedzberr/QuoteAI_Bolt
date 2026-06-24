@@ -133,6 +133,47 @@ export interface JobLineStatsResult {
   global: GlobalLineStats;
 }
 
+async function fetchSingleJobStats(jobId: string): Promise<JobLineStat> {
+  const [countRes, reconocidosRes, detailRes] = await Promise.all([
+    supabase
+      .from('job_lines')
+      .select('*', { count: 'exact', head: true })
+      .eq('job_id', jobId),
+    supabase
+      .from('job_lines')
+      .select('*', { count: 'exact', head: true })
+      .eq('job_id', jobId)
+      .not('producto_codigo', 'is', null),
+    supabase
+      .from('job_lines')
+      .select('total_linea, confianza')
+      .eq('job_id', jobId),
+  ]);
+
+  const productos = countRes.count ?? 0;
+  const reconocidos = reconocidosRes.count ?? 0;
+
+  let total = 0;
+  let confianzaSum = 0;
+  let confianzaCount = 0;
+  if (detailRes.data) {
+    for (const row of detailRes.data) {
+      total += row.total_linea || 0;
+      if (row.confianza !== null) {
+        confianzaSum += row.confianza;
+        confianzaCount++;
+      }
+    }
+  }
+
+  return {
+    productos,
+    reconocidos,
+    total,
+    confianza: confianzaCount > 0 ? Math.round(confianzaSum / confianzaCount) : 0,
+  };
+}
+
 export async function fetchJobLineStats(jobIds: string[]): Promise<JobLineStatsResult> {
   const empty: JobLineStatsResult = {
     perJob: {},
@@ -140,15 +181,7 @@ export async function fetchJobLineStats(jobIds: string[]): Promise<JobLineStatsR
   };
   if (jobIds.length === 0) return empty;
 
-  const { data, error } = await supabase
-    .from('job_lines')
-    .select('job_id, producto_codigo, confianza, total_linea')
-    .in('job_id', jobIds);
-
-  if (error || !data) {
-    console.error('[jobLines] fetchJobLineStats error:', error);
-    return empty;
-  }
+  const results = await Promise.all(jobIds.map((id) => fetchSingleJobStats(id).then((stat) => ({ id, stat }))));
 
   const grouped: Record<string, JobLineStat> = {};
   let totalLineas = 0;
@@ -157,31 +190,18 @@ export async function fetchJobLineStats(jobIds: string[]): Promise<JobLineStatsR
   let confianzaAlta = 0;
   let confianzaMedia = 0;
   let confianzaBaja = 0;
-  let confianzaSum = 0;
+  let confianzaWeightedSum = 0;
 
-  for (const row of data) {
-    if (!grouped[row.job_id]) {
-      grouped[row.job_id] = { productos: 0, reconocidos: 0, total: 0, confianza: 0 };
-    }
-    const stat = grouped[row.job_id];
-    stat.productos++;
-    if (row.producto_codigo) stat.reconocidos++;
-    stat.total += row.total_linea || 0;
-    stat.confianza += row.confianza || 0;
+  for (const { id, stat } of results) {
+    grouped[id] = stat;
+    totalLineas += stat.productos;
+    totalValor += stat.total;
+    reconocidos += stat.reconocidos;
+    confianzaWeightedSum += stat.confianza * stat.productos;
 
-    totalLineas++;
-    totalValor += row.total_linea || 0;
-    if (row.producto_codigo) reconocidos++;
-    const conf = row.confianza || 0;
-    confianzaSum += conf;
-    if (conf >= 90) confianzaAlta++;
-    else if (conf >= 70) confianzaMedia++;
-    else confianzaBaja++;
-  }
-
-  for (const id of Object.keys(grouped)) {
-    const stat = grouped[id];
-    stat.confianza = stat.productos > 0 ? Math.round(stat.confianza / stat.productos) : 0;
+    if (stat.confianza >= 90) confianzaAlta += stat.productos;
+    else if (stat.confianza >= 70) confianzaMedia += stat.productos;
+    else if (stat.productos > 0) confianzaBaja += stat.productos;
   }
 
   return {
@@ -193,7 +213,7 @@ export async function fetchJobLineStats(jobIds: string[]): Promise<JobLineStatsR
       confianzaAlta,
       confianzaMedia,
       confianzaBaja,
-      confianzaPromedio: totalLineas > 0 ? Math.round((confianzaSum / totalLineas) * 10) / 10 : 0,
+      confianzaPromedio: totalLineas > 0 ? Math.round((confianzaWeightedSum / totalLineas) * 10) / 10 : 0,
     },
   };
 }
