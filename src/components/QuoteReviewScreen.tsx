@@ -41,6 +41,15 @@ interface QuoteReviewScreenProps {
   jobId?: string;
   jobReferencia?: string;
   readOnly?: boolean;
+  userEmail?: string;
+  salesforceAccount?: {
+    id: string;
+    noCliente: string;
+    name: string;
+    estado: string;
+    calle: string;
+    ownerId: string;
+  };
 }
 
 type ViewMode = 'original' | 'edited';
@@ -54,7 +63,7 @@ function formatCurrency(value: number, currency: string): string {
   }).format(value);
 }
 
-export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, jobId, jobReferencia, readOnly }: QuoteReviewScreenProps) {
+export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
   const { confidenceThreshold } = useAppSettings();
 
   const [viewMode, setViewMode] = useState<ViewMode>(editedQuoteData ? 'edited' : 'original');
@@ -84,6 +93,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [showAddLineModal, setShowAddLineModal] = useState(false);
   const [replaceLineIndex, setReplaceLineIndex] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [sfSending, setSfSending] = useState(false);
+  const [sfResult, setSfResult] = useState<{ success: boolean; pending?: boolean; message: string } | null>(null);
   const [jobStatus, setJobStatus] = useState<string>(quoteData.status || '');
   const [validating, setValidating] = useState(false);
   const progresoDebounceRef = useRef<ReturnType<typeof setTimeout>>();
@@ -546,6 +557,48 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     onApproved(approvedLines, { ...activeQuoteData, subtotal, lines: approvedLines, totalLines: approvedLines.length });
   }, [canGeneratePDF, lines, activeQuoteData, subtotal, onApproved]);
 
+  const handleSendToSalesforce = useCallback(async () => {
+    if (sfSending) return;
+    setSfSending(true);
+    setSfResult(null);
+
+    const validLines = lines
+      .filter((l) => !l.ignored && l.matched_product_code)
+      .map((l) => ({
+        producto_codigo: l.matched_product_code,
+        producto_descripcion: l.matched_product_name,
+        unidad_medida: l.matched_unit_of_measure,
+        cantidad: l.quantity,
+        precio_unitario: l.matched_unit_price,
+        total_linea: (l.quantity || 0) * (l.matched_unit_price || 0),
+      }));
+
+    const body: Record<string, any> = {
+      userEmail: userEmail || null,
+      referencia: jobReferencia || activeQuoteData.quoteReference || null,
+      salesforceAccountId: salesforceAccount?.id || null,
+      noCliente: salesforceAccount?.noCliente || null,
+      ownerId: salesforceAccount?.ownerId || null,
+      accountName: salesforceAccount?.name || activeQuoteData.customerName || null,
+      lineas: validLines,
+      pdfBase64: null,
+    };
+
+    try {
+      const resp = await fetch('https://quoteai-production.up.railway.app/quotes/send-to-salesforce', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      setSfResult({ success: data.success ?? false, pending: data.pending ?? true, message: data.message || 'Respuesta recibida' });
+    } catch (err: any) {
+      setSfResult({ success: false, pending: true, message: 'No se pudo conectar al servidor. La cotización queda pendiente de envío.' });
+    } finally {
+      setSfSending(false);
+    }
+  }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, salesforceAccount]);
+
   const totalLinesCount = lines.filter((l) => !l.ignored).length;
 
   if (!quoteData) {
@@ -805,24 +858,40 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             </>
           ) : (
             <>
-              {/* Enviar a Salesforce - disabled placeholder */}
-              <div className="relative group">
+              {/* Enviar a Salesforce - active after validation */}
+              {isAlreadyValidated ? (
                 <button
-                  disabled
-                  className="px-5 py-3 rounded-lg bg-[#D1D5DB] text-[#747474] cursor-not-allowed flex items-center gap-2"
+                  onClick={handleSendToSalesforce}
+                  disabled={sfSending}
+                  className={`px-5 py-3 rounded-lg flex items-center gap-2 transition-all ${
+                    sfSending
+                      ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
+                      : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
+                  }`}
                   style={{ fontSize: 14, fontWeight: 600 }}
                 >
                   <Send className="w-4 h-4" />
-                  Enviar a Salesforce
+                  {sfSending ? 'Enviando...' : 'Enviar a Salesforce'}
                 </button>
-                <div
-                  className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                  style={{ fontSize: 11, fontWeight: 500 }}
-                >
-                  Proximamente
-                  <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
+              ) : (
+                <div className="relative group">
+                  <button
+                    disabled
+                    className="px-5 py-3 rounded-lg bg-[#D1D5DB] text-[#747474] cursor-not-allowed flex items-center gap-2"
+                    style={{ fontSize: 14, fontWeight: 600 }}
+                  >
+                    <Send className="w-4 h-4" />
+                    Enviar a Salesforce
+                  </button>
+                  <div
+                    className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                    style={{ fontSize: 11, fontWeight: 500 }}
+                  >
+                    Valida primero para enviar a Salesforce
+                    <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Validar button - only visible before validation */}
               {!isAlreadyValidated && (
@@ -882,6 +951,20 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           )}
         </div>
       </div>
+
+      {sfResult && (
+        <div className="bg-[#F3F3F3]">
+          <div className="max-w-[1480px] mx-auto px-7 pb-2">
+            <div className={`px-5 py-3 rounded-lg flex items-center gap-3 ${
+              sfResult.success ? 'bg-[#DEF5E5] text-[#2E844A]' : sfResult.pending ? 'bg-[#EAF5FE] text-[#0176D3]' : 'bg-[#FEDED7] text-[#BA0517]'
+            }`} style={{ fontSize: 13, fontWeight: 500 }}>
+              <Send className="w-4 h-4 flex-shrink-0" />
+              <span>{sfResult.message}</span>
+              <button onClick={() => setSfResult(null)} className="ml-auto text-current opacity-60 hover:opacity-100">&times;</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="bg-[#F3F3F3]">
         <div className="max-w-[1480px] mx-auto px-7 pb-6 text-center">

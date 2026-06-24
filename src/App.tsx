@@ -151,6 +151,14 @@ interface UploadData {
   rows: Record<string, any>[];
   rawDoclingResponse?: any;
   mappingNotice?: string;
+  salesforceAccount?: {
+    id: string;
+    noCliente: string;
+    name: string;
+    estado: string;
+    calle: string;
+    ownerId: string;
+  };
 }
 
 function App() {
@@ -805,6 +813,8 @@ function App() {
           jobId={jobId || undefined}
           jobReferencia={jobReferencia || undefined}
           readOnly={reviewReadOnly}
+          userEmail={auth.user?.email || ''}
+          salesforceAccount={uploadData?.salesforceAccount}
         />
       </AppLayout>
     );
