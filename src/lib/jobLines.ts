@@ -170,7 +170,7 @@ async function fetchSingleJobStats(jobId: string): Promise<JobLineStat> {
     productos,
     reconocidos,
     total,
-    confianza: confianzaCount > 0 ? Math.round(confianzaSum / confianzaCount) : 0,
+    confianza: confianzaCount > 0 ? Math.round((confianzaSum / confianzaCount) * 100) : 0,
   };
 }
 
