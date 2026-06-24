@@ -17,6 +17,9 @@ export interface Job {
   error: string | null;
   created_at: string;
   updated_at: string;
+  sf_opportunity_id?: string | null;
+  sf_quote_id?: string | null;
+  sf_sent_at?: string | null;
 }
 
 export async function createJob(referencia: string, cliente: string): Promise<Job | null> {
@@ -119,4 +122,21 @@ export async function getJobByReferencia(referencia: string): Promise<Job | null
 
   if (error) return null;
   return data as Job;
+}
+
+export async function markJobSentToSalesforce(
+  referencia: string,
+  sfOpportunityId: string,
+  sfQuoteId?: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('jobs')
+    .update({
+      sf_opportunity_id: sfOpportunityId,
+      sf_quote_id: sfQuoteId || null,
+      sf_sent_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('referencia', referencia);
+  if (error) console.error('[jobs] markJobSentToSalesforce error:', error);
 }

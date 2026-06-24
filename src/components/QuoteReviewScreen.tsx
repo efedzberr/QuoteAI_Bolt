@@ -9,7 +9,7 @@ import AddLineModal, { type AddLineResult } from './quote/AddLineModal';
 import { normalizeLines } from '../lib/normalizeLines';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { upsertJobLine, getMaxLineIndex } from '../lib/jobLines';
-import { updateJobProgreso, updateJobStatus } from '../lib/jobs';
+import { updateJobProgreso, updateJobStatus, getJobByReferencia, markJobSentToSalesforce } from '../lib/jobs';
 
 interface QuoteData {
   status?: string;
@@ -94,10 +94,24 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [replaceLineIndex, setReplaceLineIndex] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [sfSending, setSfSending] = useState(false);
-  const [sfResult, setSfResult] = useState<{ success: boolean; pending?: boolean; message: string } | null>(null);
+  const [sfResult, setSfResult] = useState<{ success: boolean; message: string; quoteId?: string; opportunityId?: string } | null>(null);
+  const [sfSentData, setSfSentData] = useState<{ opportunityId: string; quoteId?: string; sentAt: string } | null>(null);
   const [jobStatus, setJobStatus] = useState<string>(quoteData.status || '');
   const [validating, setValidating] = useState(false);
   const progresoDebounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    if (!jobReferencia) return;
+    getJobByReferencia(jobReferencia).then((job) => {
+      if (job?.sf_opportunity_id) {
+        setSfSentData({
+          opportunityId: job.sf_opportunity_id,
+          quoteId: job.sf_quote_id || undefined,
+          sentAt: job.sf_sent_at || '',
+        });
+      }
+    });
+  }, [jobReferencia]);
 
   const persistLineAction = useCallback((lineIndex: number, fields: Record<string, any>) => {
     if (!jobId) return;
@@ -591,9 +605,25 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         body: JSON.stringify(body),
       });
       const data = await resp.json();
-      setSfResult({ success: data.success ?? false, pending: data.pending ?? true, message: data.message || 'Respuesta recibida' });
+      if (data.success && data.salesforce?.success) {
+        const oppId = data.salesforce.opportunityId || '';
+        const qId = data.salesforce.quoteId || '';
+        setSfResult({
+          success: true,
+          message: data.salesforce.message || 'Oportunidad creada en Salesforce',
+          quoteId: qId,
+          opportunityId: oppId,
+        });
+        if (jobReferencia && oppId) {
+          await markJobSentToSalesforce(jobReferencia, oppId, qId);
+          setSfSentData({ opportunityId: oppId, quoteId: qId || undefined, sentAt: new Date().toISOString() });
+        }
+      } else {
+        const errMsg = data.salesforce?.message || data.message || 'Error al enviar a Salesforce';
+        setSfResult({ success: false, message: errMsg });
+      }
     } catch (err: any) {
-      setSfResult({ success: false, pending: true, message: 'No se pudo conectar al servidor. La cotización queda pendiente de envío.' });
+      setSfResult({ success: false, message: 'No se pudo conectar al servidor. Intenta de nuevo.' });
     } finally {
       setSfSending(false);
     }
@@ -855,24 +885,80 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                   Ver PDF →
                 </button>
               )}
+              {/* SF button visible in readOnly (after PDF) if validated */}
+              {isAlreadyValidated && (
+                sfSentData ? (
+                  <div className="relative group">
+                    <button
+                      disabled
+                      className="px-5 py-3 rounded-lg bg-[#E5E7EB] text-[#6B7280] cursor-default flex items-center gap-2"
+                      style={{ fontSize: 14, fontWeight: 600 }}
+                    >
+                      <Check className="w-4 h-4" />
+                      Enviado a Salesforce
+                    </button>
+                    <div
+                      className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                      style={{ fontSize: 11, fontWeight: 500 }}
+                    >
+                      Opp: {sfSentData.opportunityId}{sfSentData.sentAt && ` | ${new Date(sfSentData.sentAt).toLocaleDateString('es-MX')}`}
+                      <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleSendToSalesforce}
+                    disabled={sfSending}
+                    className={`px-5 py-3 rounded-lg flex items-center gap-2 transition-all ${
+                      sfSending
+                        ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
+                        : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
+                    }`}
+                    style={{ fontSize: 14, fontWeight: 600 }}
+                  >
+                    <Send className="w-4 h-4" />
+                    {sfSending ? 'Enviando...' : 'Enviar a Salesforce'}
+                  </button>
+                )
+              )}
             </>
           ) : (
             <>
-              {/* Enviar a Salesforce - active after validation */}
+              {/* Enviar a Salesforce */}
               {isAlreadyValidated ? (
-                <button
-                  onClick={handleSendToSalesforce}
-                  disabled={sfSending}
-                  className={`px-5 py-3 rounded-lg flex items-center gap-2 transition-all ${
-                    sfSending
-                      ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
-                      : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
-                  }`}
-                  style={{ fontSize: 14, fontWeight: 600 }}
-                >
-                  <Send className="w-4 h-4" />
-                  {sfSending ? 'Enviando...' : 'Enviar a Salesforce'}
-                </button>
+                sfSentData ? (
+                  <div className="relative group">
+                    <button
+                      disabled
+                      className="px-5 py-3 rounded-lg bg-[#E5E7EB] text-[#6B7280] cursor-default flex items-center gap-2"
+                      style={{ fontSize: 14, fontWeight: 600 }}
+                    >
+                      <Check className="w-4 h-4" />
+                      Enviado a Salesforce
+                    </button>
+                    <div
+                      className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                      style={{ fontSize: 11, fontWeight: 500 }}
+                    >
+                      Opp: {sfSentData.opportunityId}{sfSentData.sentAt && ` | ${new Date(sfSentData.sentAt).toLocaleDateString('es-MX')}`}
+                      <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleSendToSalesforce}
+                    disabled={sfSending}
+                    className={`px-5 py-3 rounded-lg flex items-center gap-2 transition-all ${
+                      sfSending
+                        ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
+                        : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
+                    }`}
+                    style={{ fontSize: 14, fontWeight: 600 }}
+                  >
+                    <Send className="w-4 h-4" />
+                    {sfSending ? 'Enviando...' : 'Enviar a Salesforce'}
+                  </button>
+                )
               ) : (
                 <div className="relative group">
                   <button
@@ -952,16 +1038,52 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         </div>
       </div>
 
+      {/* Salesforce result modal */}
       {sfResult && (
-        <div className="bg-[#F3F3F3]">
-          <div className="max-w-[1480px] mx-auto px-7 pb-2">
-            <div className={`px-5 py-3 rounded-lg flex items-center gap-3 ${
-              sfResult.success ? 'bg-[#DEF5E5] text-[#2E844A]' : sfResult.pending ? 'bg-[#EAF5FE] text-[#0176D3]' : 'bg-[#FEDED7] text-[#BA0517]'
-            }`} style={{ fontSize: 13, fontWeight: 500 }}>
-              <Send className="w-4 h-4 flex-shrink-0" />
-              <span>{sfResult.message}</span>
-              <button onClick={() => setSfResult(null)} className="ml-auto text-current opacity-60 hover:opacity-100">&times;</button>
-            </div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSfResult(null)}>
+          <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
+            {sfResult.success ? (
+              <>
+                <div className="w-12 h-12 rounded-full bg-[#DEF5E5] flex items-center justify-center mx-auto mb-4">
+                  <Check className="w-6 h-6 text-[#2E844A]" />
+                </div>
+                <h3 className="text-lg font-bold text-center text-[#181818] mb-2">Oportunidad creada en Salesforce</h3>
+                <div className="bg-[#F8F9FA] rounded-lg p-4 space-y-2 mb-6">
+                  {sfResult.opportunityId && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-[#6B7280]">Opportunity ID</span>
+                      <span className="font-mono text-[#181818] text-xs">{sfResult.opportunityId}</span>
+                    </div>
+                  )}
+                  {sfResult.quoteId && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-[#6B7280]">Quote ID</span>
+                      <span className="font-mono text-[#181818] text-xs">{sfResult.quoteId}</span>
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => setSfResult(null)}
+                  className="w-full py-3 rounded-lg bg-[#2E844A] text-white font-semibold hover:bg-[#236B3B] transition-colors"
+                >
+                  Cerrar
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="w-12 h-12 rounded-full bg-[#FEDED7] flex items-center justify-center mx-auto mb-4">
+                  <AlertTriangle className="w-6 h-6 text-[#BA0517]" />
+                </div>
+                <h3 className="text-lg font-bold text-center text-[#181818] mb-2">Error al enviar a Salesforce</h3>
+                <p className="text-sm text-[#6B7280] text-center mb-6">{sfResult.message}</p>
+                <button
+                  onClick={() => setSfResult(null)}
+                  className="w-full py-3 rounded-lg bg-[#E5E7EB] text-[#181818] font-semibold hover:bg-[#D1D5DB] transition-colors"
+                >
+                  Cerrar
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
