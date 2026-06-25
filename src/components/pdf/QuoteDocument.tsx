@@ -147,10 +147,10 @@ function TableRow({ line, index }: { line: QuoteData['lines'][0]; index: number 
   return (
     <View style={rowStyle} wrap={false}>
       <View style={styles.colClave}>
-        <Text>{line.matched_product_code || '---'}</Text>
+        <Text>{line.matched_product_code || 'Especial'}</Text>
       </View>
       <View style={styles.colDescripcion}>
-        <Text>{line.matched_product_name || line.original_text}</Text>
+        <Text>{line.matched_product_name || ''}</Text>
       </View>
       <View style={styles.colAlmacen}>
         <Text>1080</Text>
