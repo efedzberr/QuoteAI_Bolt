@@ -1,11 +1,13 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck } from 'lucide-react';
+import { pdf } from '@react-pdf/renderer';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
 import type { QuoteLine, EditValues } from './QuoteReviewTable';
 import ProductLookupModal, { type ProductResult } from './ProductLookupModal';
 import { type SearchProduct } from './InlineProductSearch';
 import AddLineModal, { type AddLineResult } from './quote/AddLineModal';
+import QuoteDocument from './pdf/QuoteDocument';
 import { normalizeLines } from '../lib/normalizeLines';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { upsertJobLine, getMaxLineIndex } from '../lib/jobLines';
@@ -64,7 +66,7 @@ function formatCurrency(value: number, currency: string): string {
 }
 
 export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
-  const { confidenceThreshold } = useAppSettings();
+  const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx } = useAppSettings();
 
   const [viewMode, setViewMode] = useState<ViewMode>(editedQuoteData ? 'edited' : 'original');
 
@@ -94,7 +96,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [replaceLineIndex, setReplaceLineIndex] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [sfSending, setSfSending] = useState(false);
-  const [sfResult, setSfResult] = useState<{ success: boolean; message: string; quoteId?: string; opportunityId?: string } | null>(null);
+  const [sfSendingPhase, setSfSendingPhase] = useState<'opportunity' | 'pdf' | null>(null);
+  const [sfResult, setSfResult] = useState<{ success: boolean; message: string; quoteId?: string; opportunityId?: string; pdfWarning?: string } | null>(null);
   const [sfSentData, setSfSentData] = useState<{ opportunityId: string; quoteId?: string; sentAt: string } | null>(null);
   const [jobStatus, setJobStatus] = useState<string>(quoteData.status || '');
   const [validating, setValidating] = useState(false);
@@ -575,6 +578,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     if (sfSending) return;
     setSfSending(true);
     setSfResult(null);
+    setSfSendingPhase('opportunity');
 
     const validLines = lines
       .filter((l) => !l.ignored && l.matched_product_code)
@@ -608,15 +612,75 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       if (data.success && data.salesforce?.success) {
         const oppId = data.salesforce.opportunityId || '';
         const qId = data.salesforce.quoteId || '';
-        setSfResult({
-          success: true,
-          message: data.salesforce.message || 'Oportunidad creada en Salesforce',
-          quoteId: qId,
-          opportunityId: oppId,
-        });
+
         if (jobReferencia && oppId) {
           await markJobSentToSalesforce(jobReferencia, oppId, qId);
           setSfSentData({ opportunityId: oppId, quoteId: qId || undefined, sentAt: new Date().toISOString() });
+        }
+
+        // Attempt PDF upload if quoteId is available
+        if (qId) {
+          setSfSendingPhase('pdf');
+          let pdfWarning: string | undefined;
+
+          try {
+            // Generate PDF blob
+            const activeLines = lines.filter((l) => !l.ignored);
+            const pdfQuoteData = { ...activeQuoteData, lines: activeLines, totalLines: activeLines.length } as any;
+            const blob = await pdf(
+              <QuoteDocument quoteData={pdfQuoteData} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} />
+            ).toBlob();
+
+            // Check size limit (4 MB)
+            const MAX_PDF_BYTES = 4 * 1024 * 1024;
+            if (blob.size > MAX_PDF_BYTES) {
+              const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+              pdfWarning = `La oportunidad se creo correctamente, pero el PDF pesa ${sizeMB} MB y supera el limite de 4 MB, por lo que no se adjunto.`;
+            } else {
+              // Convert to base64
+              const arrayBuffer = await blob.arrayBuffer();
+              const bytes = new Uint8Array(arrayBuffer);
+              let binary = '';
+              for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+              }
+              const pdfBase64 = btoa(binary);
+
+              const uploadResp = await fetch('https://quoteai-production.up.railway.app/quotes/upload-pdf', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ quoteId: qId, pdfBase64 }),
+              });
+              const uploadData = await uploadResp.json();
+
+              if (!uploadData.success) {
+                if (uploadData.tooLarge) {
+                  pdfWarning = `La oportunidad se creo correctamente, pero el PDF supera el limite de tamano permitido por Salesforce y no se adjunto.`;
+                } else {
+                  pdfWarning = `La oportunidad se creo correctamente, pero el PDF no se pudo subir: ${uploadData.message || 'error desconocido'}.`;
+                }
+              }
+            }
+          } catch (pdfErr: any) {
+            pdfWarning = `La oportunidad se creo correctamente, pero el PDF no se pudo subir: ${pdfErr.message || 'error de conexion'}.`;
+          }
+
+          setSfResult({
+            success: true,
+            message: pdfWarning
+              ? pdfWarning
+              : 'Oportunidad creada y PDF adjuntado correctamente.',
+            quoteId: qId,
+            opportunityId: oppId,
+            pdfWarning,
+          });
+        } else {
+          setSfResult({
+            success: true,
+            message: data.salesforce.message || 'Oportunidad creada en Salesforce',
+            quoteId: qId,
+            opportunityId: oppId,
+          });
         }
       } else {
         const errMsg = data.salesforce?.message || data.message || 'Error al enviar a Salesforce';
@@ -626,8 +690,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       setSfResult({ success: false, message: 'No se pudo conectar al servidor. Intenta de nuevo.' });
     } finally {
       setSfSending(false);
+      setSfSendingPhase(null);
     }
-  }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, salesforceAccount]);
+  }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, salesforceAccount, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx]);
 
   const totalLinesCount = lines.filter((l) => !l.ignored).length;
 
@@ -917,7 +982,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                     style={{ fontSize: 14, fontWeight: 600 }}
                   >
                     <Send className="w-4 h-4" />
-                    {sfSending ? 'Enviando...' : 'Enviar a Salesforce'}
+                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : 'Enviando a Salesforce...') : 'Enviar a Salesforce'}
                   </button>
                 )
               )}
@@ -956,7 +1021,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                     style={{ fontSize: 14, fontWeight: 600 }}
                   >
                     <Send className="w-4 h-4" />
-                    {sfSending ? 'Enviando...' : 'Enviar a Salesforce'}
+                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : 'Enviando a Salesforce...') : 'Enviar a Salesforce'}
                   </button>
                 )
               ) : (
@@ -1044,10 +1109,19 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           <div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
             {sfResult.success ? (
               <>
-                <div className="w-12 h-12 rounded-full bg-[#DEF5E5] flex items-center justify-center mx-auto mb-4">
-                  <Check className="w-6 h-6 text-[#2E844A]" />
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-4 ${sfResult.pdfWarning ? 'bg-[#FEF3CD]' : 'bg-[#DEF5E5]'}`}>
+                  {sfResult.pdfWarning ? (
+                    <AlertTriangle className="w-6 h-6 text-[#B86C00]" />
+                  ) : (
+                    <Check className="w-6 h-6 text-[#2E844A]" />
+                  )}
                 </div>
-                <h3 className="text-lg font-bold text-center text-[#181818] mb-2">Oportunidad creada en Salesforce</h3>
+                <h3 className="text-lg font-bold text-center text-[#181818] mb-2">
+                  {sfResult.pdfWarning ? 'Oportunidad creada (PDF no adjuntado)' : 'Oportunidad creada y PDF adjuntado correctamente'}
+                </h3>
+                {sfResult.pdfWarning && (
+                  <p className="text-sm text-[#92400E] text-center mb-4 bg-[#FEF9E7] rounded-lg p-3">{sfResult.pdfWarning}</p>
+                )}
                 <div className="bg-[#F8F9FA] rounded-lg p-4 space-y-2 mb-6">
                   {sfResult.opportunityId && (
                     <div className="flex justify-between text-sm">
