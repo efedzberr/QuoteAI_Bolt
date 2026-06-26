@@ -653,6 +653,11 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     // --- STEP 2: Create opportunity ---
     setSfSendingPhase('opportunity');
 
+    // If new products were just created, wait 3s for Salesforce to index them
+    if (hadNewProducts) {
+      await new Promise((r) => setTimeout(r, 3000));
+    }
+
     const validLines = lines
       .filter((l) => !l.ignored && l.matched_product_code)
       .map((l) => ({
@@ -676,13 +681,35 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     };
 
     try {
-      const resp = await fetch('https://quoteai-production.up.railway.app/quotes/send-to-salesforce', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await resp.json();
-      if (data.success && data.salesforce?.success) {
+      const MAX_ATTEMPTS = 3;
+      let lastData: any = null;
+      let succeeded = false;
+
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        const resp = await fetch('https://quoteai-production.up.railway.app/quotes/send-to-salesforce', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        lastData = await resp.json();
+
+        if (lastData.success && lastData.salesforce?.success) {
+          succeeded = true;
+          break;
+        }
+
+        const errMsg = (lastData.salesforce?.message || lastData.message || '').toLowerCase();
+        const isProductsNotFound = errMsg.includes('product') && errMsg.includes('not found');
+
+        if (!isProductsNotFound || attempt === MAX_ATTEMPTS) {
+          break;
+        }
+
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+
+      if (succeeded) {
+        const data = lastData;
         const oppId = data.salesforce.opportunityId || '';
         const qId = data.salesforce.quoteId || '';
 
@@ -759,7 +786,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           });
         }
       } else {
-        const errMsg = data.salesforce?.message || data.message || 'Error al enviar a Salesforce';
+        const errMsg = lastData?.salesforce?.message || lastData?.message || 'Error al enviar a Salesforce';
         setSfResult({ success: false, message: errMsg });
       }
     } catch (err: any) {
