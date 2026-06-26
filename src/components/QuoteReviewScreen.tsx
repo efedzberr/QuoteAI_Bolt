@@ -10,6 +10,7 @@ import AddLineModal, { type AddLineResult } from './quote/AddLineModal';
 import QuoteDocument from './pdf/QuoteDocument';
 import { normalizeLines } from '../lib/normalizeLines';
 import { useAppSettings } from '../hooks/useAppSettings';
+import { supabase } from '../lib/supabase';
 import { upsertJobLine, getMaxLineIndex } from '../lib/jobLines';
 import { updateJobProgreso, updateJobStatus, getJobByReferencia, markJobSentToSalesforce } from '../lib/jobs';
 
@@ -96,7 +97,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [replaceLineIndex, setReplaceLineIndex] = useState<number | null>(null);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [sfSending, setSfSending] = useState(false);
-  const [sfSendingPhase, setSfSendingPhase] = useState<'opportunity' | 'pdf' | null>(null);
+  const [sfSendingPhase, setSfSendingPhase] = useState<'products' | 'opportunity' | 'pdf' | null>(null);
   const [sfResult, setSfResult] = useState<{ success: boolean; message: string; quoteId?: string; opportunityId?: string; pdfWarning?: string } | null>(null);
   const [sfSentData, setSfSentData] = useState<{ opportunityId: string; quoteId?: string; sentAt: string } | null>(null);
   const [jobStatus, setJobStatus] = useState<string>(quoteData.status || '');
@@ -578,6 +579,78 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     if (sfSending) return;
     setSfSending(true);
     setSfResult(null);
+
+    let hadNewProducts = false;
+
+    // --- STEP 1: Create new products in Salesforce ---
+    setSfSendingPhase('products');
+    try {
+      const newProductLines = lines.filter(
+        (l: any) => !l.ignored && l.badgeType === 'producto_nuevo' && l.matched_product_name
+      );
+
+      if (newProductLines.length > 0) {
+        const uniqueDescs = [...new Set(newProductLines.map((l) => l.matched_product_name!))];
+
+        const { data: pendingProducts } = await supabase
+          .from('productos_nuevos')
+          .select('id, descripcion_corta, codigo, marca, categoria, unidad_medida, precio_unitario')
+          .in('descripcion_corta', uniqueDescs)
+          .eq('sincronizado_sf', false);
+
+        if (pendingProducts && pendingProducts.length > 0) {
+          const seenIds = new Set<string>();
+          const productos = pendingProducts.filter((p) => {
+            if (seenIds.has(p.id)) return false;
+            seenIds.add(p.id);
+            return true;
+          }).map((p) => ({
+            id: p.id,
+            descripcion_corta: p.descripcion_corta,
+            codigo: p.codigo || '',
+            marca: p.marca || '',
+            categoria: p.categoria || '',
+            unidad_medida: p.unidad_medida,
+            precio_unitario: Number(p.precio_unitario),
+          }));
+
+          const createResp = await fetch('https://quoteai-production.up.railway.app/products/create-in-salesforce', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userEmail: userEmail || null, productos }),
+          });
+          const createData = await createResp.json();
+
+          if (!createData.success) {
+            setSfResult({
+              success: false,
+              message: `No se pudieron crear los productos nuevos en Salesforce: ${createData.message || 'error desconocido'}. No se creo la oportunidad.`,
+            });
+            setSfSending(false);
+            setSfSendingPhase(null);
+            return;
+          }
+
+          hadNewProducts = true;
+          if (createData.idsEnviados && createData.idsEnviados.length > 0) {
+            await supabase
+              .from('productos_nuevos')
+              .update({ sincronizado_sf: true })
+              .in('id', createData.idsEnviados);
+          }
+        }
+      }
+    } catch (err: any) {
+      setSfResult({
+        success: false,
+        message: `No se pudieron crear los productos nuevos en Salesforce: ${err.message || 'error de conexion'}. No se creo la oportunidad.`,
+      });
+      setSfSending(false);
+      setSfSendingPhase(null);
+      return;
+    }
+
+    // --- STEP 2: Create opportunity ---
     setSfSendingPhase('opportunity');
 
     const validLines = lines
@@ -618,26 +691,23 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           setSfSentData({ opportunityId: oppId, quoteId: qId || undefined, sentAt: new Date().toISOString() });
         }
 
-        // Attempt PDF upload if quoteId is available
+        // --- STEP 3: Upload PDF ---
         if (qId) {
           setSfSendingPhase('pdf');
           let pdfWarning: string | undefined;
 
           try {
-            // Generate PDF blob
             const activeLines = lines.filter((l) => !l.ignored);
             const pdfQuoteData = { ...activeQuoteData, lines: activeLines, totalLines: activeLines.length } as any;
             const blob = await pdf(
               <QuoteDocument quoteData={pdfQuoteData} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} />
             ).toBlob();
 
-            // Check size limit (4 MB)
             const MAX_PDF_BYTES = 4 * 1024 * 1024;
             if (blob.size > MAX_PDF_BYTES) {
               const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
               pdfWarning = `La oportunidad se creo correctamente, pero el PDF pesa ${sizeMB} MB y supera el limite de 4 MB, por lo que no se adjunto.`;
             } else {
-              // Convert to base64
               const arrayBuffer = await blob.arrayBuffer();
               const bytes = new Uint8Array(arrayBuffer);
               let binary = '';
@@ -665,11 +735,15 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             pdfWarning = `La oportunidad se creo correctamente, pero el PDF no se pudo subir: ${pdfErr.message || 'error de conexion'}.`;
           }
 
+          const successMsg = pdfWarning
+            ? pdfWarning
+            : hadNewProducts
+              ? 'Productos creados, oportunidad creada y PDF adjuntado correctamente.'
+              : 'Oportunidad creada y PDF adjuntado correctamente.';
+
           setSfResult({
             success: true,
-            message: pdfWarning
-              ? pdfWarning
-              : 'Oportunidad creada y PDF adjuntado correctamente.',
+            message: successMsg,
             quoteId: qId,
             opportunityId: oppId,
             pdfWarning,
@@ -677,7 +751,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         } else {
           setSfResult({
             success: true,
-            message: data.salesforce.message || 'Oportunidad creada en Salesforce',
+            message: hadNewProducts
+              ? 'Productos creados y oportunidad creada en Salesforce.'
+              : (data.salesforce.message || 'Oportunidad creada en Salesforce'),
             quoteId: qId,
             opportunityId: oppId,
           });
@@ -982,7 +1058,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                     style={{ fontSize: 14, fontWeight: 600 }}
                   >
                     <Send className="w-4 h-4" />
-                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : 'Enviando a Salesforce...') : 'Enviar a Salesforce'}
+                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : 'Enviar a Salesforce'}
                   </button>
                 )
               )}
@@ -1021,7 +1097,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                     style={{ fontSize: 14, fontWeight: 600 }}
                   >
                     <Send className="w-4 h-4" />
-                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : 'Enviando a Salesforce...') : 'Enviar a Salesforce'}
+                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : 'Enviar a Salesforce'}
                   </button>
                 )
               ) : (
@@ -1117,7 +1193,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                   )}
                 </div>
                 <h3 className="text-lg font-bold text-center text-[#181818] mb-2">
-                  {sfResult.pdfWarning ? 'Oportunidad creada (PDF no adjuntado)' : 'Oportunidad creada y PDF adjuntado correctamente'}
+                  {sfResult.pdfWarning ? 'Oportunidad creada (PDF no adjuntado)' : sfResult.message}
                 </h3>
                 {sfResult.pdfWarning && (
                   <p className="text-sm text-[#92400E] text-center mb-4 bg-[#FEF9E7] rounded-lg p-3">{sfResult.pdfWarning}</p>
