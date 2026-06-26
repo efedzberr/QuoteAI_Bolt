@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import HomeDashboard from './components/HomeDashboard';
 import QuoteUploadScreen from './components/QuoteUploadScreen';
 import PayloadPreviewScreen from './components/PayloadPreviewScreen';
@@ -6,9 +6,11 @@ import QuoteReviewScreen from './components/QuoteReviewScreen';
 import PDFPreviewScreen from './components/PDFPreviewScreen';
 import AdminScreen from './components/AdminScreen';
 import AuthScreen from './components/AuthScreen';
+import SetPasswordScreen from './components/SetPasswordScreen';
 import JobProgressScreen from './components/JobProgressScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
+import { supabase } from './lib/supabase';
 import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus } from './lib/jobs';
 import { createJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 import type { Job } from './lib/jobs';
@@ -177,6 +179,27 @@ function App() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [progressJob, setProgressJob] = useState<Job | null>(null);
   const [reviewReadOnly, setReviewReadOnly] = useState(false);
+  const [needsPasswordSet, setNeedsPasswordSet] = useState(false);
+
+  // Detect invite/recovery flow from URL hash or query params
+  useEffect(() => {
+    const hash = window.location.hash;
+    const search = window.location.search;
+    if (hash.includes('type=invite') || hash.includes('type=recovery') ||
+        search.includes('type=invite') || search.includes('type=recovery')) {
+      setNeedsPasswordSet(true);
+    }
+  }, []);
+
+  // Listen for PASSWORD_RECOVERY event from Supabase auth
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setNeedsPasswordSet(true);
+      }
+    });
+    return () => { sub.subscription.unsubscribe(); };
+  }, []);
 
   const handleExtractionComplete = useCallback((rows: any[], customerName: string) => {
     // Anti-duplicate: if we already have a jobId for this session, skip
@@ -623,6 +646,17 @@ function App() {
 
   if (!auth.session) {
     return <AuthScreen />;
+  }
+
+  if (needsPasswordSet) {
+    return (
+      <SetPasswordScreen
+        onDone={() => {
+          setNeedsPasswordSet(false);
+          window.history.replaceState(null, '', window.location.pathname);
+        }}
+      />
+    );
   }
 
   const handleLayoutNavigate = (section: string) => {

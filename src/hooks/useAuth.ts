@@ -23,7 +23,6 @@ function deriveName(user: User | null): { displayName: string; initials: string 
 
 export function useAuth(): AuthState & {
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string) => Promise<void>;
   signOut: () => Promise<void>;
 } {
   const [session, setSession] = useState<Session | null>(null);
@@ -50,18 +49,10 @@ export function useAuth(): AuthState & {
     if (error) throw error;
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
-    const { error } = await supabase.auth.signUp({
-      email, password,
-      options: { data: { full_name: fullName } }
-    });
-    if (error) throw error;
-  };
-
   const signOut = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   };
 
-  return { session, user, loading, displayName, initials, signIn, signUp, signOut };
+  return { session, user, loading, displayName, initials, signIn, signOut };
 }

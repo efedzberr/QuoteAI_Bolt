@@ -1,23 +1,14 @@
 import { useState } from 'react';
-import { FileText, Eye, EyeOff, Loader2, Shield } from 'lucide-react';
+import { FileText, Eye, EyeOff, Loader2, KeyRound } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
-function translateError(msg: string): string {
-  const lower = msg.toLowerCase();
-  if (lower.includes('invalid login credentials') || lower.includes('invalid_credentials'))
-    return 'Email o contrasena incorrectos.';
-  if (lower.includes('password') && lower.includes('least'))
-    return 'La contrasena debe tener al menos 6 caracteres.';
-  if (lower.includes('email') && lower.includes('valid'))
-    return 'Ingresa un email valido.';
-  if (lower.includes('rate') || lower.includes('too many'))
-    return 'Demasiados intentos. Espera un momento antes de reintentar.';
-  return msg;
+interface SetPasswordScreenProps {
+  onDone: () => void;
 }
 
-export default function AuthScreen() {
-  const [email, setEmail] = useState('');
+export default function SetPasswordScreen({ onDone }: SetPasswordScreenProps) {
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -25,13 +16,23 @@ export default function AuthScreen() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    setSubmitting(true);
 
+    if (password.length < 8) {
+      setError('La contrasena debe tener al menos 8 caracteres.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('Las contrasenas no coinciden.');
+      return;
+    }
+
+    setSubmitting(true);
     try {
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      const { error: err } = await supabase.auth.updateUser({ password });
       if (err) throw err;
+      onDone();
     } catch (err: any) {
-      setError(translateError(err.message || 'Error desconocido'));
+      setError(err.message || 'Error al guardar la contrasena.');
     } finally {
       setSubmitting(false);
     }
@@ -52,8 +53,11 @@ export default function AuthScreen() {
 
         {/* Card */}
         <div className="bg-white rounded-hero shadow-lg border border-rule-soft p-6 sm:p-8">
-          <h2 className="text-lg font-bold text-ink mb-1">Iniciar sesion</h2>
-          <p className="text-sm text-ink-faint mb-6">Ingresa tus credenciales para continuar.</p>
+          <div className="flex items-center gap-2 mb-1">
+            <KeyRound className="w-5 h-5 text-brand" />
+            <h2 className="text-lg font-bold text-ink">Define tu contrasena</h2>
+          </div>
+          <p className="text-sm text-ink-faint mb-6">Crea una contrasena para acceder a Cotizador.</p>
 
           {/* Error */}
           {error && (
@@ -66,32 +70,17 @@ export default function AuthScreen() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-ink-soft uppercase tracking-wide mb-1.5">
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="tu@empresa.com"
-                required
-                autoComplete="email"
-                className="w-full h-11 px-4 border border-rule rounded-lg text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-ink-soft uppercase tracking-wide mb-1.5">
-                Contrasena
+                Nueva contrasena
               </label>
               <div className="relative">
                 <input
                   type={showPwd ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min. 6 caracteres"
+                  placeholder="Min. 8 caracteres"
                   required
-                  minLength={6}
-                  autoComplete="current-password"
+                  minLength={8}
+                  autoComplete="new-password"
                   className="w-full h-11 px-4 pr-11 border border-rule rounded-lg text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft transition"
                 />
                 <button
@@ -105,21 +94,31 @@ export default function AuthScreen() {
               </div>
             </div>
 
+            <div>
+              <label className="block text-xs font-semibold text-ink-soft uppercase tracking-wide mb-1.5">
+                Confirmar contrasena
+              </label>
+              <input
+                type={showPwd ? 'text' : 'password'}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repite tu contrasena"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                className="w-full h-11 px-4 border border-rule rounded-lg text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft transition"
+              />
+            </div>
+
             <button
               type="submit"
               disabled={submitting}
               className="w-full h-11 bg-brand text-white font-semibold text-sm rounded-lg hover:bg-brand-deep active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
             >
               {submitting && <Loader2 className="w-4 h-4 animate-spin" />}
-              Iniciar sesion
+              Guardar contrasena
             </button>
           </form>
-
-          {/* Footer copy */}
-          <div className="mt-5 flex items-start gap-2 text-[11px] text-ink-faint">
-            <Shield className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-            <span>El acceso es solo por invitacion. Si necesitas una cuenta, contacta al administrador.</span>
-          </div>
         </div>
       </div>
     </div>
