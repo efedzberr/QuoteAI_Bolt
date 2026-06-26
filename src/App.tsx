@@ -10,7 +10,7 @@ import SetPasswordScreen from './components/SetPasswordScreen';
 import JobProgressScreen from './components/JobProgressScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
-import { supabase } from './lib/supabase';
+import { supabase, isPasswordSetupRedirect } from './lib/supabase';
 import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus } from './lib/jobs';
 import { createJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 import type { Job } from './lib/jobs';
@@ -179,7 +179,7 @@ function App() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [progressJob, setProgressJob] = useState<Job | null>(null);
   const [reviewReadOnly, setReviewReadOnly] = useState(false);
-  const [needsPasswordSet, setNeedsPasswordSet] = useState(false);
+  const [needsPasswordSet, setNeedsPasswordSet] = useState(isPasswordSetupRedirect);
 
   // Detect invite/recovery flow from URL hash or query params
   useEffect(() => {
@@ -644,11 +644,16 @@ function App() {
     );
   }
 
-  if (!auth.session) {
-    return <AuthScreen />;
-  }
-
+  // Flujo de invitacion/recuperacion: mostrar SetPasswordScreen en cuanto la
+  // sesion del enlace este lista (sin rebotar a AuthScreen mientras llega).
   if (needsPasswordSet) {
+    if (!auth.session) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[#F3F3F3]">
+          <div className="text-gray-500 font-medium">Cargando...</div>
+        </div>
+      );
+    }
     return (
       <SetPasswordScreen
         onDone={() => {
@@ -657,6 +662,10 @@ function App() {
         }}
       />
     );
+  }
+
+  if (!auth.session) {
+    return <AuthScreen />;
   }
 
   const handleLayoutNavigate = (section: string) => {
