@@ -127,6 +127,8 @@ export default function CreateProductModal({ open, onClose, onProductCreated, pr
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
+    const codigoNorm = codigo.trim().toUpperCase();
+    if (!codigoNorm) e.codigo = 'El codigo es obligatorio.';
     if (!descripcionCorta.trim()) e.descripcionCorta = 'La descripcion corta es obligatoria.';
     if (!marca.trim()) e.marca = 'La marca es obligatoria.';
     if (!unidadMedida.trim()) e.unidadMedida = 'La unidad de medida es obligatoria.';
@@ -140,6 +142,35 @@ export default function CreateProductModal({ open, onClose, onProductCreated, pr
     }
     setErrors(e);
     return Object.keys(e).length === 0;
+  };
+
+  const checkCodigoUniqueness = async (): Promise<string | null> => {
+    const codigoNorm = codigo.trim().toUpperCase();
+    if (!codigoNorm) return null;
+
+    const codTerm = escapeIlikeTerm(codigoNorm);
+
+    const { data: catMatch } = await productsClient
+      .from('products')
+      .select('CodigoArt')
+      .ilike('CodigoArt', codTerm)
+      .limit(1);
+
+    if (catMatch && catMatch.length > 0) {
+      return 'Ese codigo ya existe en el catalogo de productos. Usa uno diferente.';
+    }
+
+    const { data: newMatch } = await supabase
+      .from('productos_nuevos')
+      .select('id')
+      .ilike('codigo', codTerm)
+      .limit(1);
+
+    if (newMatch && newMatch.length > 0) {
+      return 'Ese codigo ya existe en productos nuevos. Usa uno diferente.';
+    }
+
+    return null;
   };
 
   const checkDuplicates = async (): Promise<DuplicateMatch | null> => {
@@ -235,26 +266,37 @@ export default function CreateProductModal({ open, onClose, onProductCreated, pr
   const handleSave = async (forceSave = false) => {
     if (!validate()) return;
 
-    if (!forceSave) {
-      const dup = await checkDuplicates();
-      if (dup) {
-        setDuplicate(dup);
-        return;
-      }
-    }
-
     setSaving(true);
     try {
+      const codigoNorm = codigo.trim().toUpperCase();
+
+      // Check code uniqueness
+      const codeError = await checkCodigoUniqueness();
+      if (codeError) {
+        setErrors({ codigo: codeError });
+        setSaving(false);
+        return;
+      }
+
+      if (!forceSave) {
+        const dup = await checkDuplicates();
+        if (dup) {
+          setDuplicate(dup);
+          setSaving(false);
+          return;
+        }
+      }
+
       const precio = parseFloat(precioUnitario);
       const qty = parseInt(cantidad, 10);
 
       const insertData: Record<string, any> = {
+        codigo: codigoNorm,
         descripcion_corta: descripcionCorta.trim(),
         marca: marca.trim(),
         unidad_medida: unidadMedida.trim(),
         precio_unitario: precio,
       };
-      if (codigo.trim()) insertData.codigo = codigo.trim();
       if (descripcionLarga.trim()) insertData.descripcion_larga = descripcionLarga.trim();
       if (departamento.trim()) insertData.departamento = departamento.trim();
       if (categoria.trim()) insertData.categoria = categoria.trim();
@@ -273,14 +315,18 @@ export default function CreateProductModal({ open, onClose, onProductCreated, pr
         .single();
 
       if (error) {
-        setErrors({ general: `Error al guardar: ${error.message}` });
+        if (error.code === '23505' || (error.message && error.message.toLowerCase().includes('ya existe'))) {
+          setErrors({ codigo: 'Ese codigo ya existe, usa uno diferente.' });
+        } else {
+          setErrors({ general: `Error al guardar: ${error.message}` });
+        }
         return;
       }
 
       onProductCreated(
         {
           id: data.id,
-          codigo: codigo.trim(),
+          codigo: codigoNorm,
           descripcion_corta: descripcionCorta.trim(),
           descripcion_larga: descripcionLarga.trim(),
           marca: marca.trim(),
@@ -374,6 +420,16 @@ export default function CreateProductModal({ open, onClose, onProductCreated, pr
             </div>
           )}
 
+          <FormField label="Codigo *" error={errors.codigo}>
+            <input
+              type="text"
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value)}
+              placeholder="Codigo del producto"
+              className="form-input-style"
+            />
+          </FormField>
+
           <FormField label="Descripcion corta *" error={errors.descripcionCorta}>
             <input
               type="text"
@@ -436,16 +492,6 @@ export default function CreateProductModal({ open, onClose, onProductCreated, pr
               min="1"
               step="1"
               className="form-input-style w-28"
-            />
-          </FormField>
-
-          <FormField label="Codigo (opcional)">
-            <input
-              type="text"
-              value={codigo}
-              onChange={(e) => setCodigo(e.target.value)}
-              placeholder="Codigo del producto"
-              className="form-input-style"
             />
           </FormField>
 
