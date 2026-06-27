@@ -20,6 +20,7 @@ import {
 interface HomeDashboardProps {
   onNewQuote: () => void;
   onOpenAdmin?: () => void;
+  onOpenCatalog?: () => void;
   onResumeJob?: (job: Job) => void;
   onReexecuteJob?: (job: Job) => void;
   onJobClick?: (job: Job) => void;
@@ -173,7 +174,7 @@ function getFormattedDate(): string {
 
 /* ─── Main Component ─── */
 
-function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, onJobClick }: HomeDashboardProps) {
+function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, onReexecuteJob, onJobClick }: HomeDashboardProps) {
   const auth = useAuth();
   const [activeFilter, setActiveFilter] = useState(0);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -250,6 +251,7 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
 
   const handleNavigate = (section: string) => {
     if (section === 'cotizar') onNewQuote();
+    else if (section === 'catalogo') onOpenCatalog?.();
     else if (section === 'ajustes') onOpenAdmin?.();
   };
 

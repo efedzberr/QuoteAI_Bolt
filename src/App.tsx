@@ -689,6 +689,7 @@ function App() {
           setCurrentScreen('upload');
         }}
         onOpenAdmin={() => setCurrentScreen('admin')}
+        onOpenCatalog={() => setCurrentScreen('catalogo')}
         onReexecuteJob={(job) => setReexecJob(job)}
         onJobClick={handleJobClick}
         onResumeJob={(job) => navigateToJobScreen(job)}
