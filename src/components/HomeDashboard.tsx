@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import AppLayout from './layout/AppLayout';
-import { fetchRecentJobs, type Job, type JobStatus } from '../lib/jobs';
+import { fetchRecentJobs, countJobs, countJobsByStatus, type Job, type JobStatus } from '../lib/jobs';
 import { fetchJobLineStats, type JobLineStat, type GlobalLineStats } from '../lib/jobLines';
 import { getStageInfo, isResumableStage, isProcessingStage, isFinalStage, isValidatedStage } from '../lib/jobStages';
 import {
@@ -180,12 +180,20 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [jobStats, setJobStats] = useState<Record<string, JobLineStat>>({});
   const [globalStats, setGlobalStats] = useState<GlobalLineStats>({ totalLineas: 0, totalValor: 0, reconocidos: 0, confianzaAlta: 0, confianzaMedia: 0, confianzaBaja: 0, confianzaPromedio: 0 });
+  const [totalCotizaciones, setTotalCotizaciones] = useState(0);
+  const [totalGeneradas, setTotalGeneradas] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadJobs = async () => {
-    const data = await fetchRecentJobs(20);
+    const [data, total, generadas] = await Promise.all([
+      fetchRecentJobs(20),
+      countJobs(),
+      countJobsByStatus(['pdf_generado']),
+    ]);
     setJobs(data);
     setLoadingJobs(false);
+    setTotalCotizaciones(total);
+    setTotalGeneradas(generadas);
     const ids = data.map((j) => j.id).filter(Boolean);
     if (ids.length > 0) {
       const result = await fetchJobLineStats(ids);
@@ -200,22 +208,27 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
-  const isGenerada = (s: JobStatus) => s === 'completado' || s === 'completada' || s === 'pdf_generado';
-  const isEnRevision = (s: JobStatus) => s === 'revision_datos' || s === 'validacion' || s === 'matching_completado' || s === 'en_revision' || s === 'enviado_validacion';
-  const isBorrador = (s: JobStatus) => s === 'procesando' || s === 'matching' || s === 'extraccion' || s === 'extraccion_completada' || s === 'nueva_solicitud' || s === 'generacion';
+  const isGenerada = (s: JobStatus) => s === 'pdf_generado';
+  const isPendiente = (s: JobStatus) =>
+    s === 'completado' || s === 'completada' ||
+    s === 'validacion' || s === 'matching_completado' || s === 'en_revision' ||
+    s === 'revision_datos' || s === 'enviado_validacion';
+  const isBorrador = (s: JobStatus) =>
+    s === 'nueva_solicitud' || s === 'extraccion' || s === 'extraccion_completada' ||
+    s === 'matching' || s === 'procesando' || s === 'generacion';
 
   const filteredJobs = activeFilter === 0
     ? jobs
     : activeFilter === 1
     ? jobs.filter((j) => isGenerada(j.status))
     : activeFilter === 2
-    ? jobs.filter((j) => isEnRevision(j.status))
+    ? jobs.filter((j) => isPendiente(j.status))
     : jobs.filter((j) => isBorrador(j.status));
 
   const filterTabs = [
     { label: 'Todas', count: jobs.length },
     { label: 'Generadas', count: jobs.filter((j) => isGenerada(j.status)).length },
-    { label: 'En revisión', count: jobs.filter((j) => isEnRevision(j.status)).length },
+    { label: 'Pendientes', count: jobs.filter((j) => isPendiente(j.status)).length },
     { label: 'Borrador', count: jobs.filter((j) => isBorrador(j.status)).length },
   ];
 
@@ -224,11 +237,10 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(value);
   };
 
-  const kpiCotizaciones = jobs.length;
+  const kpiCotizaciones = totalCotizaciones;
   const kpiValorTotal = globalStats.totalValor;
   const kpiProductosPorCotizacion = jobs.length > 0 ? (globalStats.totalLineas / jobs.length).toFixed(1) : '0';
-  const completados = jobs.filter((j) => j.status === 'completado').length;
-  const kpiTasaGeneracion = jobs.length > 0 ? Math.round((completados / jobs.length) * 100) : 0;
+  const kpiTasaGeneracion = totalCotizaciones > 0 ? Math.round((totalGeneradas / totalCotizaciones) * 100) : 0;
 
   const confTotal = globalStats.totalLineas;
   const confAltaPct = confTotal > 0 ? Math.round((globalStats.confianzaAlta / confTotal) * 100) : 0;
@@ -290,7 +302,7 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
               iconBg="bg-brand-soft"
               title="Cotizaciones"
               value={String(kpiCotizaciones)}
-              sub="trabajos procesados"
+              sub="cotizaciones en total"
             />
             <KpiCard
               icon={DollarSign}
@@ -314,7 +326,7 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onResumeJob, onReexecuteJob, o
               iconBg="bg-warn-soft"
               title="Tasa de generación"
               value={`${kpiTasaGeneracion}%`}
-              sub={`${completados} de ${kpiCotizaciones}`}
+              sub={`${totalGeneradas} de ${totalCotizaciones}`}
             />
           </section>
 

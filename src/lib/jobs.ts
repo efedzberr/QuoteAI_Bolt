@@ -124,6 +124,21 @@ export async function getJobByReferencia(referencia: string): Promise<Job | null
   return data as Job;
 }
 
+export async function countJobs(): Promise<number> {
+  const { count } = await supabase
+    .from('jobs')
+    .select('*', { count: 'exact', head: true });
+  return count ?? 0;
+}
+
+export async function countJobsByStatus(statuses: string[]): Promise<number> {
+  const { count } = await supabase
+    .from('jobs')
+    .select('*', { count: 'exact', head: true })
+    .in('status', statuses);
+  return count ?? 0;
+}
+
 export async function markJobSentToSalesforce(
   referencia: string,
   sfOpportunityId: string,
