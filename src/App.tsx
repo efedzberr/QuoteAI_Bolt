@@ -5,6 +5,7 @@ import PayloadPreviewScreen from './components/PayloadPreviewScreen';
 import QuoteReviewScreen from './components/QuoteReviewScreen';
 import PDFPreviewScreen from './components/PDFPreviewScreen';
 import AdminScreen from './components/AdminScreen';
+import CatalogScreen from './components/CatalogScreen';
 import AuthScreen from './components/AuthScreen';
 import SetPasswordScreen from './components/SetPasswordScreen';
 import JobProgressScreen from './components/JobProgressScreen';
@@ -21,7 +22,7 @@ const PROCESSING_RULES = [
   'A valid product row must have at least a description and ideally a quantity.',
 ];
 
-type Screen = 'home' | 'upload' | 'preview' | 'review' | 'generate' | 'admin' | 'job_progress';
+type Screen = 'home' | 'upload' | 'preview' | 'review' | 'generate' | 'admin' | 'job_progress' | 'catalogo';
 
 function parseLineItem(line: any): any {
   if (typeof line === 'string') {
@@ -673,6 +674,7 @@ function App() {
     else if (section === 'cotizar') {
       setCurrentScreen('upload');
     }
+    else if (section === 'catalogo') setCurrentScreen('catalogo');
     else if (section === 'ajustes') setCurrentScreen('admin');
   };
 
@@ -859,6 +861,21 @@ function App() {
           userEmail={auth.user?.email || ''}
           salesforceAccount={uploadData?.salesforceAccount}
         />
+      </AppLayout>
+    );
+  }
+
+  if (currentScreen === 'catalogo') {
+    return (
+      <AppLayout
+        active="catalogo"
+        breadcrumbs={[
+          { label: 'Inicio', onClick: () => setCurrentScreen('home') },
+          { label: 'Catalogo' },
+        ]}
+        onNavigate={handleLayoutNavigate}
+      >
+        <CatalogScreen />
       </AppLayout>
     );
   }
