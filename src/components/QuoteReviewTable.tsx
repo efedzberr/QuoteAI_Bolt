@@ -1,4 +1,5 @@
-import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle } from 'lucide-react';
+import { useState } from 'react';
+import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle, MessageSquare } from 'lucide-react';
 import ConfidenceBadge from './ConfidenceBadge';
 import InlineProductSearch, { type SearchProduct } from './InlineProductSearch';
 import InlineProductLineRow from './InlineProductLineRow';
@@ -16,6 +17,7 @@ export interface QuoteLine {
   ignored?: boolean;
   approved?: boolean;
   badgeType?: 'auto' | 'manual' | 'producto_nuevo';
+  comentario?: string | null;
 }
 
 export interface EditValues {
@@ -48,6 +50,7 @@ interface QuoteReviewTableProps {
   showInlineAddRow?: boolean;
   onInlineAddProduct?: (product: SearchProduct) => void;
   onCancelInlineAdd?: () => void;
+  onCommentSave?: (index: number, comentario: string | null) => void;
 }
 
 function formatCurrency(value: number | null, currency: string): string {
@@ -58,6 +61,39 @@ function formatCurrency(value: number | null, currency: string): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+function CommentPopover({ value, onSave, onCancel }: { value: string; onSave: (v: string | null) => void; onCancel: () => void }) {
+  const [text, setText] = useState(value);
+  return (
+    <div className="absolute top-full left-0 mt-1 z-50 bg-white border border-[#E5E5E5] rounded-lg shadow-lg p-3 w-72" onClick={(e) => e.stopPropagation()}>
+      <textarea
+        value={text}
+        onChange={(e) => { if (e.target.value.length <= 200) setText(e.target.value); }}
+        placeholder="Escribe una anotacion (color, talla, precision)..."
+        className="w-full border border-[#E5E5E5] rounded-md px-3 py-2 text-sm resize-none focus:outline-none focus:border-[#0176D3] focus:ring-2 focus:ring-[#EAF5FE]"
+        rows={3}
+        autoFocus
+      />
+      <div className="flex items-center justify-between mt-2">
+        <span className="text-[10px] text-[#747474]">{text.length}/200</span>
+        <div className="flex gap-1.5">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-[11px] font-semibold text-[#444444] bg-[#F0F0F0] rounded-md hover:bg-[#E5E5E5] transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => onSave(text.trim() || null)}
+            className="px-3 py-1.5 text-[11px] font-semibold text-white bg-[#0176D3] rounded-md hover:bg-[#014486] transition-colors"
+          >
+            Guardar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function QuoteReviewTable({
@@ -82,7 +118,9 @@ export default function QuoteReviewTable({
   showInlineAddRow,
   onInlineAddProduct,
   onCancelInlineAdd,
+  onCommentSave,
 }: QuoteReviewTableProps) {
+  const [commentingIndex, setCommentingIndex] = useState<number | null>(null);
   return (
     <div className="px-7 pb-4">
       <div
@@ -296,15 +334,29 @@ export default function QuoteReviewTable({
                               {line.matched_product_code}
                             </div>
                           )}
+                          {line.comentario && (
+                            <div className="mt-1 text-xs text-gray-500 italic">
+                              <MessageSquare className="w-3 h-3 inline-block mr-1 -mt-0.5" />
+                              {line.comentario}
+                            </div>
+                          )}
                         </div>
                       ) : (
-                        <span
-                          className="inline-flex items-center gap-1.5 text-[#BA0517]"
-                          style={{ fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}
-                        >
-                          <XCircle className="w-3.5 h-3.5" />
-                          Sin coincidencia
-                        </span>
+                        <div>
+                          <span
+                            className="inline-flex items-center gap-1.5 text-[#BA0517]"
+                            style={{ fontSize: 12, fontStyle: 'italic', fontWeight: 600 }}
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            Sin coincidencia
+                          </span>
+                          {line.comentario && (
+                            <div className="mt-1 text-xs text-gray-500 italic">
+                              <MessageSquare className="w-3 h-3 inline-block mr-1 -mt-0.5" />
+                              {line.comentario}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </td>
                     <td className="py-3.5 px-4 text-center">
@@ -371,23 +423,71 @@ export default function QuoteReviewTable({
                     </td>
                     {!readOnly && (
                     <td className="py-3.5 px-4">
-                      <div className="flex items-center justify-center gap-1.5">
+                      <div className="flex items-center justify-center gap-1.5 relative">
                         {isIgnored ? (
-                          <button
-                            onClick={() => onRestore(index)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#E5E5E5] text-[#444444] rounded-md hover:bg-[#FAFAFA] transition-colors"
-                            style={{ fontSize: 11, fontWeight: 600 }}
-                          >
-                            <RotateCcw className="w-3.5 h-3.5" />
-                            Restaurar
-                          </button>
+                          <>
+                            <button
+                              onClick={() => onRestore(index)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-[#E5E5E5] text-[#444444] rounded-md hover:bg-[#FAFAFA] transition-colors"
+                              style={{ fontSize: 11, fontWeight: 600 }}
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              Restaurar
+                            </button>
+                            {onCommentSave && (
+                              <div className="relative">
+                                <button
+                                  onClick={() => setCommentingIndex(commentingIndex === index ? null : index)}
+                                  className={`inline-flex items-center px-2 py-1.5 border rounded-md transition-colors ${
+                                    line.comentario
+                                      ? 'border-[#0176D3] text-[#0176D3] bg-[#EAF5FE]'
+                                      : 'border-[#E5E5E5] text-[#747474] hover:bg-[#EAF5FE] hover:text-[#0176D3] hover:border-[#0176D3]'
+                                  }`}
+                                  title="Agregar comentario"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" fill={line.comentario ? '#0176D3' : 'none'} />
+                                </button>
+                                {commentingIndex === index && (
+                                  <CommentPopover
+                                    value={line.comentario || ''}
+                                    onSave={(v) => { onCommentSave(index, v); setCommentingIndex(null); }}
+                                    onCancel={() => setCommentingIndex(null)}
+                                  />
+                                )}
+                              </div>
+                            )}
+                          </>
                         ) : line.approved ? (
-                          <div
-                            className="inline-flex items-center gap-1 px-2 py-1 bg-[#DEF5E5] text-[#2E844A] rounded-md"
-                            style={{ fontSize: 11, fontWeight: 700 }}
-                          >
-                            <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
-                          </div>
+                          <>
+                            <div
+                              className="inline-flex items-center gap-1 px-2 py-1 bg-[#DEF5E5] text-[#2E844A] rounded-md"
+                              style={{ fontSize: 11, fontWeight: 700 }}
+                            >
+                              <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
+                            </div>
+                            {onCommentSave && (
+                              <div className="relative">
+                                <button
+                                  onClick={() => setCommentingIndex(commentingIndex === index ? null : index)}
+                                  className={`inline-flex items-center px-2 py-1.5 border rounded-md transition-colors ${
+                                    line.comentario
+                                      ? 'border-[#0176D3] text-[#0176D3] bg-[#EAF5FE]'
+                                      : 'border-[#E5E5E5] text-[#747474] hover:bg-[#EAF5FE] hover:text-[#0176D3] hover:border-[#0176D3]'
+                                  }`}
+                                  title="Agregar comentario"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" fill={line.comentario ? '#0176D3' : 'none'} />
+                                </button>
+                                {commentingIndex === index && (
+                                  <CommentPopover
+                                    value={line.comentario || ''}
+                                    onSave={(v) => { onCommentSave(index, v); setCommentingIndex(null); }}
+                                    onCancel={() => setCommentingIndex(null)}
+                                  />
+                                )}
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <>
                             <button
@@ -407,6 +507,28 @@ export default function QuoteReviewTable({
                               >
                                 <PackagePlus className="w-3.5 h-3.5" />
                               </button>
+                            )}
+                            {onCommentSave && (
+                              <div className="relative">
+                                <button
+                                  onClick={() => setCommentingIndex(commentingIndex === index ? null : index)}
+                                  className={`inline-flex items-center px-2 py-1.5 border rounded-md transition-colors ${
+                                    line.comentario
+                                      ? 'border-[#0176D3] text-[#0176D3] bg-[#EAF5FE]'
+                                      : 'border-[#E5E5E5] text-[#747474] hover:bg-[#EAF5FE] hover:text-[#0176D3] hover:border-[#0176D3]'
+                                  }`}
+                                  title="Agregar comentario"
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5" fill={line.comentario ? '#0176D3' : 'none'} />
+                                </button>
+                                {commentingIndex === index && (
+                                  <CommentPopover
+                                    value={line.comentario || ''}
+                                    onSave={(v) => { onCommentSave(index, v); setCommentingIndex(null); }}
+                                    onCancel={() => setCommentingIndex(null)}
+                                  />
+                                )}
+                              </div>
                             )}
                             {isManualMode && line.original_text === 'Agregado manualmente' && onDeleteLine && (
                               <button

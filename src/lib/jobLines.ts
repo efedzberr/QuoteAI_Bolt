@@ -18,6 +18,7 @@ export interface JobLine {
   requiere_revision: boolean;
   total_linea: number | null;
   notas: string | null;
+  comentario?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -9,6 +9,7 @@ export interface QuoteLine {
   matched_unit_price: number | null;
   needs_review: boolean;
   ignored?: boolean;
+  comentario?: string | null;
 }
 
 export interface QuoteData {

@@ -464,6 +464,7 @@ function App() {
           ignored: jl.estado === 'ignorada',
           approved: jl.estado === 'aprobada',
           badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
+          comentario: jl.comentario || null,
           _lineIndex: jl.line_index,
         }));
         const quoteData = {
@@ -504,6 +505,7 @@ function App() {
           ignored: jl.estado === 'ignorada',
           approved: jl.estado === 'aprobada',
           badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
+          comentario: jl.comentario || null,
           _lineIndex: jl.line_index,
         }));
 
@@ -575,6 +577,7 @@ function App() {
           ignored: jl.estado === 'ignorada',
           approved: jl.estado === 'aprobada',
           badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
+          comentario: jl.comentario || null,
           _lineIndex: jl.line_index,
         }));
         const quoteData = {

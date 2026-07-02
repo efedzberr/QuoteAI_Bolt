@@ -200,6 +200,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     (l: any) => l.needs_review && !l.ignored && !l.approved
   ).length;
   const ignoredCount = linesWithReview.filter((l: any) => l.ignored).length;
+  const okCount = linesWithReview.filter((l: any) => !l.ignored && !l.needs_review || (!l.ignored && l.approved)).length;
   const formattedDebugJson = useMemo(() => {
     try {
       return JSON.stringify(JSON.parse(rawResponse), null, 2);
@@ -547,6 +548,19 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     [lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso]
   );
 
+  const handleCommentSave = useCallback(
+    (index: number, comentario: string | null) => {
+      const updatedLines = [...lines];
+      updatedLines[index] = { ...updatedLines[index], comentario };
+      setLines(updatedLines);
+      if (jobId) {
+        const lineIdx = getLineIndex(index);
+        upsertJobLine(jobId, lineIdx, { comentario } as any);
+      }
+    },
+    [lines, jobId, getLineIndex]
+  );
+
   const handleBack = useCallback(() => {
     setShowBackConfirm(true);
   }, []);
@@ -797,7 +811,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     }
   }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, salesforceAccount, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx]);
 
-  const totalLinesCount = lines.filter((l) => !l.ignored).length;
+  const totalLinesCount = lines.length;
 
   if (!quoteData) {
     return (
@@ -875,22 +889,34 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               {flaggedCount}
             </span>
           </div>
-          {ignoredCount > 0 && (
-            <div className="flex flex-col">
-              <span
-                className="uppercase text-[#747474]"
-                style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}
-              >
-                Ignoradas
-              </span>
-              <span
-                className="mt-1 text-[#A3A3A3]"
-                style={{ fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
-              >
-                {ignoredCount}
-              </span>
-            </div>
-          )}
+          <div className="flex flex-col">
+            <span
+              className="uppercase text-[#747474]"
+              style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}
+            >
+              Ignoradas
+            </span>
+            <span
+              className="mt-1 text-[#A3A3A3]"
+              style={{ fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+            >
+              {ignoredCount}
+            </span>
+          </div>
+          <div className="flex flex-col">
+            <span
+              className="uppercase text-[#747474]"
+              style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}
+            >
+              OK
+            </span>
+            <span
+              className="mt-1 text-[#2E844A]"
+              style={{ fontSize: 16, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+            >
+              {okCount}
+            </span>
+          </div>
           <SummaryField label="Subtotal" value={formatCurrency(subtotal, activeQuoteData.currency)} />
           {jobId && saveStatus !== 'idle' && (
             <div className="flex items-center gap-1.5 self-center ml-auto">
@@ -958,6 +984,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               showInlineAddRow={readOnly ? false : showInlineAddRow}
               onInlineAddProduct={handleInlineProductSelect}
               onCancelInlineAdd={() => setShowInlineAddRow(false)}
+              onCommentSave={readOnly ? undefined : handleCommentSave}
             />
           ) : (
             <div className="px-7 py-16 text-center">

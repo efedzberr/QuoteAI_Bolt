@@ -143,6 +143,7 @@ function TableHeaderRow() {
 function TableRow({ line, index }: { line: QuoteData['lines'][0]; index: number }) {
   const importe = (line.quantity || 0) * (line.matched_unit_price || 0);
   const rowStyle = index % 2 === 1 ? styles.tableRowAlt : styles.tableRow;
+  const comentario = (line as any).comentario;
 
   return (
     <View style={rowStyle} wrap={false}>
@@ -151,6 +152,9 @@ function TableRow({ line, index }: { line: QuoteData['lines'][0]; index: number 
       </View>
       <View style={styles.colDescripcion}>
         <Text>{line.matched_product_name || ''}</Text>
+        {comentario ? (
+          <Text style={{ fontSize: 6, color: '#6B7280', marginTop: 2 }}>{comentario}</Text>
+        ) : null}
       </View>
       <View style={styles.colAlmacen}>
         <Text>1080</Text>
