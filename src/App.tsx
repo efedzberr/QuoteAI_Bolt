@@ -12,7 +12,7 @@ import JobProgressScreen from './components/JobProgressScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
 import { supabase, isPasswordSetupRedirect } from './lib/supabase';
-import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus } from './lib/jobs';
+import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus, reopenJobForEdit } from './lib/jobs';
 import { createJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 import type { Job } from './lib/jobs';
 
@@ -605,6 +605,52 @@ function App() {
     });
   }, []);
 
+  const handleEditQuote = useCallback(async () => {
+    if (!jobReferencia || !jobId) return;
+    await reopenJobForEdit(jobReferencia);
+    fetchJobLines(jobId).then((jobLines) => {
+      if (jobLines.length > 0) {
+        const editedLines = jobLines.map((jl: JobLine) => ({
+          original_text: jl.descripcion_original || '',
+          original_code: jl.codigo_original || null,
+          quantity: jl.cantidad || 1,
+          matched_product_code: jl.producto_codigo || null,
+          matched_product_name: jl.producto_descripcion || null,
+          matched_unit_price: jl.precio_unitario ?? null,
+          matched_unit_of_measure: jl.unidad_medida || jl.unidad_original || 'PZA',
+          confidence: jl.confianza ?? 0,
+          needs_review: false,
+          ignored: jl.estado === 'ignorada',
+          approved: jl.estado === 'aprobada',
+          badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
+          comentario: jl.comentario || null,
+          _lineIndex: jl.line_index,
+        }));
+
+        const editedQuote = {
+          status: 'validacion',
+          quoteReference: jobReferencia,
+          customerName: editedQuoteData?.customerName || webhookResponse?.customerName || '',
+          generatedDate: new Date().toLocaleDateString('es-MX'),
+          totalLines: editedLines.length,
+          currency: 'MXN',
+          subtotal: editedLines.reduce((sum: number, l: any) => {
+            if (l.ignored) return sum;
+            return sum + (l.quantity || 0) * (l.matched_unit_price || 0);
+          }, 0),
+          lines: editedLines,
+        };
+
+        setWebhookResponse(editedQuote);
+        setEditedQuoteData(editedQuote);
+        setRawResponse(JSON.stringify(editedQuote));
+        setReviewReadOnly(false);
+        setApprovedData(null);
+        setCurrentScreen('review');
+      }
+    });
+  }, [jobReferencia, jobId, editedQuoteData, webhookResponse]);
+
   const navigateToJobScreen = useCallback((job: Job) => {
     const s = job.status;
     setJobReferencia(job.referencia);
@@ -859,6 +905,7 @@ function App() {
           onBack={() => setCurrentScreen('home')}
           onBackToPreview={uploadData ? handleBackToPreview : undefined}
           onGoToPdf={reviewReadOnly ? handleGoToPdfFromReview : undefined}
+          onEditQuote={jobId ? handleEditQuote : undefined}
           jobId={jobId || undefined}
           jobReferencia={jobReferencia || undefined}
           readOnly={reviewReadOnly}

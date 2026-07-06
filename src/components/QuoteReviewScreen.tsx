@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, PenSquare } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
@@ -41,6 +41,7 @@ interface QuoteReviewScreenProps {
   onBack: () => void;
   onBackToPreview?: () => void;
   onGoToPdf?: () => void;
+  onEditQuote?: () => void;
   jobId?: string;
   jobReferencia?: string;
   readOnly?: boolean;
@@ -66,7 +67,7 @@ function formatCurrency(value: number, currency: string): string {
   }).format(value);
 }
 
-export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
+export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, onEditQuote, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
   const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx } = useAppSettings();
 
   const [viewMode, setViewMode] = useState<ViewMode>(editedQuoteData ? 'edited' : 'original');
@@ -102,6 +103,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [sfSentData, setSfSentData] = useState<{ opportunityId: string; quoteId?: string; sentAt: string } | null>(null);
   const [jobStatus, setJobStatus] = useState<string>(quoteData.status || '');
   const [validating, setValidating] = useState(false);
+  const [showEditConfirm, setShowEditConfirm] = useState(false);
   const progresoDebounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
@@ -1071,6 +1073,16 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
 
           {readOnly ? (
             <>
+              {onEditQuote && isAlreadyValidated && (
+                <button
+                  onClick={() => setShowEditConfirm(true)}
+                  className="px-5 py-3 rounded-lg border border-[#0176D3] text-[#0176D3] hover:bg-[#EAF5FE] transition-all flex items-center gap-2"
+                  style={{ fontSize: 14, fontWeight: 600 }}
+                >
+                  <PenSquare className="w-4 h-4" />
+                  Editar cotizacion
+                </button>
+              )}
               {onGoToPdf && (
                 <button
                   onClick={onGoToPdf}
@@ -1227,6 +1239,17 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                     </div>
                   )}
                 </div>
+              )}
+
+              {onEditQuote && isAlreadyValidated && (
+                <button
+                  onClick={() => setShowEditConfirm(true)}
+                  className="px-5 py-3 rounded-lg border border-[#0176D3] text-[#0176D3] hover:bg-[#EAF5FE] transition-all flex items-center gap-2"
+                  style={{ fontSize: 14, fontWeight: 600 }}
+                >
+                  <PenSquare className="w-4 h-4" />
+                  Editar cotizacion
+                </button>
               )}
             </>
           )}
@@ -1398,6 +1421,51 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                 style={{ fontSize: 13, fontWeight: 600 }}
               >
                 Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditConfirm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div
+            className="bg-white rounded-xl p-7 max-w-md w-full mx-4 border border-[#E5E5E5]"
+            style={{ boxShadow: '0 12px 24px rgba(0,0,0,.15)' }}
+          >
+            <div className="w-12 h-12 rounded-full bg-[#EAF5FE] flex items-center justify-center mx-auto mb-4">
+              <PenSquare className="w-6 h-6 text-[#0176D3]" />
+            </div>
+            <h3
+              className="text-[#181818] mb-2 text-center"
+              style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.01em' }}
+            >
+              ¿Editar esta cotizacion?
+            </h3>
+            <p className="text-[#444444] mb-6 text-center" style={{ fontSize: 13, lineHeight: 1.6 }}>
+              La cotizacion regresara al estado de validacion para que puedas hacer cambios manuales.
+              Se trabajara sobre la version ya revisada (productos confirmados, ignorados y comentarios).
+              Al terminar deberas generar el PDF nuevamente.
+              {sfSentData && (
+                <span className="block mt-2 text-[#B86C00]">
+                  Esta cotizacion ya fue enviada a Salesforce. Si la reenvias, se creara una nueva oportunidad.
+                </span>
+              )}
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setShowEditConfirm(false)}
+                className="px-4 py-2 text-[#444444] bg-[#F0F0F0] rounded-lg hover:bg-[#E5E5E5] transition-colors"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => { setShowEditConfirm(false); onEditQuote?.(); }}
+                className="px-4 py-2 text-white bg-[#0176D3] rounded-lg hover:bg-[#014486] transition-colors"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Si, editar
               </button>
             </div>
           </div>

@@ -155,3 +155,24 @@ export async function markJobSentToSalesforce(
     .eq('referencia', referencia);
   if (error) console.error('[jobs] markJobSentToSalesforce error:', error);
 }
+
+export async function reopenJobForEdit(referencia: string): Promise<void> {
+  const { data: job } = await supabase
+    .from('jobs')
+    .select('veces_editada')
+    .eq('referencia', referencia)
+    .single();
+
+  const currentCount = (job as any)?.veces_editada ?? 0;
+
+  const { error } = await supabase
+    .from('jobs')
+    .update({
+      status: 'validacion',
+      reabierta_at: new Date().toISOString(),
+      veces_editada: currentCount + 1,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('referencia', referencia);
+  if (error) console.error('[jobs] reopenJobForEdit error:', error);
+}
