@@ -176,3 +176,25 @@ export async function reopenJobForEdit(referencia: string): Promise<void> {
     .eq('referencia', referencia);
   if (error) console.error('[jobs] reopenJobForEdit error:', error);
 }
+
+export async function deleteJobCascade(jobId: string): Promise<boolean> {
+  const { error: linesErr } = await supabase
+    .from('job_lines')
+    .delete()
+    .eq('job_id', jobId);
+  if (linesErr) {
+    console.error('[jobs] deleteJobCascade job_lines error:', linesErr);
+    return false;
+  }
+
+  const { error: jobErr } = await supabase
+    .from('jobs')
+    .delete()
+    .eq('id', jobId);
+  if (jobErr) {
+    console.error('[jobs] deleteJobCascade jobs error:', jobErr);
+    return false;
+  }
+
+  return true;
+}

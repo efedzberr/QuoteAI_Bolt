@@ -135,37 +135,33 @@ export interface JobLineStatsResult {
 }
 
 async function fetchSingleJobStats(jobId: string): Promise<JobLineStat> {
-  const [countRes, reconocidosRes, detailRes] = await Promise.all([
-    supabase
-      .from('job_lines')
-      .select('*', { count: 'exact', head: true })
-      .eq('job_id', jobId),
-    supabase
-      .from('job_lines')
-      .select('*', { count: 'exact', head: true })
-      .eq('job_id', jobId)
-      .not('producto_codigo', 'is', null),
-    supabase
-      .from('job_lines')
-      .select('total_linea, confianza')
-      .eq('job_id', jobId),
-  ]);
+  const { data, error } = await supabase
+    .from('job_lines')
+    .select('producto_codigo, total_linea, confianza')
+    .eq('job_id', jobId);
 
-  const productos = countRes.count ?? 0;
-  const reconocidos = reconocidosRes.count ?? 0;
+  if (error) {
+    console.error('[jobLines] fetchSingleJobStats error:', error);
+    return { productos: 0, reconocidos: 0, total: 0, confianza: 0 };
+  }
 
+  const rows = data || [];
+  const productos = rows.length;
+  let reconocidos = 0;
   let total = 0;
   let confianzaSum = 0;
   let confianzaCount = 0;
-  if (detailRes.data) {
-    for (const row of detailRes.data) {
-      total += row.total_linea || 0;
-      if (row.confianza !== null) {
-        confianzaSum += row.confianza;
-        confianzaCount++;
-      }
+
+  for (const row of rows) {
+    if (row.producto_codigo !== null && row.producto_codigo !== undefined) reconocidos++;
+    total += row.total_linea || 0;
+    if (row.confianza !== null && row.confianza !== undefined) {
+      confianzaSum += row.confianza;
+      confianzaCount++;
     }
   }
+
+  reconocidos = Math.min(reconocidos, productos);
 
   return {
     productos,

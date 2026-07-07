@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import AppLayout from './layout/AppLayout';
-import { fetchRecentJobs, countJobs, countJobsByStatus, type Job, type JobStatus } from '../lib/jobs';
+import { fetchRecentJobs, countJobs, countJobsByStatus, deleteJobCascade, type Job, type JobStatus } from '../lib/jobs';
 import { fetchJobLineStats, type JobLineStat, type GlobalLineStats } from '../lib/jobLines';
 import { getStageInfo, isResumableStage, isProcessingStage, isFinalStage, isValidatedStage } from '../lib/jobStages';
 import {
@@ -15,6 +15,7 @@ import {
   RefreshCw,
   AlertCircle,
   Loader2,
+  Trash2,
 } from 'lucide-react';
 
 interface HomeDashboardProps {
@@ -183,23 +184,48 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
   const [globalStats, setGlobalStats] = useState<GlobalLineStats>({ totalLineas: 0, totalValor: 0, reconocidos: 0, confianzaAlta: 0, confianzaMedia: 0, confianzaBaja: 0, confianzaPromedio: 0 });
   const [totalCotizaciones, setTotalCotizaciones] = useState(0);
   const [totalGeneradas, setTotalGeneradas] = useState(0);
+  const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const loadingRef = useRef(false);
+  const seqRef = useRef(0);
 
   const loadJobs = async () => {
-    const [data, total, generadas] = await Promise.all([
-      fetchRecentJobs(20),
-      countJobs(),
-      countJobsByStatus(['pdf_generado']),
-    ]);
-    setJobs(data);
-    setLoadingJobs(false);
-    setTotalCotizaciones(total);
-    setTotalGeneradas(generadas);
-    const ids = data.map((j) => j.id).filter(Boolean);
-    if (ids.length > 0) {
-      const result = await fetchJobLineStats(ids);
-      setJobStats(result.perJob);
-      setGlobalStats(result.global);
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+    const mySeq = ++seqRef.current;
+
+    try {
+      const [data, total, generadas] = await Promise.all([
+        fetchRecentJobs(20),
+        countJobs(),
+        countJobsByStatus(['pdf_generado']),
+      ]);
+      if (mySeq !== seqRef.current) return;
+
+      const ids = data.map((j) => j.id).filter(Boolean);
+
+      let stats: { perJob: Record<string, JobLineStat>; global: GlobalLineStats };
+      if (ids.length > 0) {
+        stats = await fetchJobLineStats(ids);
+      } else {
+        stats = {
+          perJob: {},
+          global: { totalLineas: 0, totalValor: 0, reconocidos: 0, confianzaAlta: 0, confianzaMedia: 0, confianzaBaja: 0, confianzaPromedio: 0 },
+        };
+      }
+      if (mySeq !== seqRef.current) return;
+
+      setJobs(data);
+      setTotalCotizaciones(total);
+      setTotalGeneradas(generadas);
+      setJobStats(stats.perJob);
+      setGlobalStats(stats.global);
+      setLoadingJobs(false);
+    } catch (e) {
+      console.error('[HomeDashboard] loadJobs error:', e);
+    } finally {
+      loadingRef.current = false;
     }
   };
 
@@ -244,10 +270,25 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
   const kpiTasaGeneracion = totalCotizaciones > 0 ? Math.round((totalGeneradas / totalCotizaciones) * 100) : 0;
 
   const confTotal = globalStats.totalLineas;
-  const confAltaPct = confTotal > 0 ? Math.round((globalStats.confianzaAlta / confTotal) * 100) : 0;
-  const confMediaPct = confTotal > 0 ? Math.round((globalStats.confianzaMedia / confTotal) * 100) : 0;
-  const confBajaPct = confTotal > 0 ? Math.round((globalStats.confianzaBaja / confTotal) * 100) : 0;
-  const precisionLectura = confTotal > 0 ? Math.round((globalStats.reconocidos / confTotal) * 100) : 0;
+  const confAltaPct = confTotal > 0 ? Math.min(100, Math.round((globalStats.confianzaAlta / confTotal) * 100)) : 0;
+  const confMediaPct = confTotal > 0 ? Math.min(100, Math.round((globalStats.confianzaMedia / confTotal) * 100)) : 0;
+  const confBajaPct = confTotal > 0 ? Math.min(100, Math.round((globalStats.confianzaBaja / confTotal) * 100)) : 0;
+  const precisionLectura = confTotal > 0 ? Math.min(100, Math.round((globalStats.reconocidos / confTotal) * 100)) : 0;
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const ok = await deleteJobCascade(deleteTarget.id);
+    const removedId = deleteTarget.id;
+    setDeleting(false);
+    setDeleteTarget(null);
+    if (ok) {
+      setJobs((prev) => prev.filter((j) => j.id !== removedId));
+      loadJobs();
+    } else {
+      alert('No se pudo eliminar la cotizacion. Intenta de nuevo.');
+    }
+  };
 
   const handleNavigate = (section: string) => {
     if (section === 'cotizar') onNewQuote();
@@ -484,6 +525,16 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
                             })}
                           </td>
                           <td className="py-3 px-3 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                            {job.status !== 'pdf_generado' && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(job); }}
+                                className="inline-flex items-center justify-center w-7 h-7 text-[#BA0517] hover:bg-[#FEDED7] rounded-md transition-colors"
+                                title="Eliminar cotizacion"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             {(isResumableStage(job.status) || isValidatedStage(job.status)) && onResumeJob && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); onResumeJob(job); }}
@@ -525,6 +576,7 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
                                 {job.error.substring(0, 30)}
                               </span>
                             )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -535,6 +587,40 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
             </div>
           </section>
       </div>
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-7 max-w-md w-full mx-4 border border-[#E5E5E5]" style={{ boxShadow: '0 12px 24px rgba(0,0,0,.15)' }}>
+            <h3 className="text-[#181818] mb-2" style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.01em' }}>
+              Eliminar cotizacion
+            </h3>
+            <p className="text-[#444444] mb-1" style={{ fontSize: 13, lineHeight: 1.5 }}>
+              Esta accion elimina la cotizacion y sus lineas de forma permanente. No se puede deshacer.
+            </p>
+            <p className="text-[#747474] mb-6" style={{ fontSize: 12 }}>
+              {deleteTarget.referencia} — {deleteTarget.cliente || 'Sin cliente'}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 text-[#444444] bg-[#F0F0F0] rounded-lg hover:bg-[#E5E5E5] transition-colors disabled:opacity-50"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmDelete}
+                disabled={deleting}
+                className="flex-1 px-4 py-2.5 text-white bg-[#BA0517] rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                {deleting ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

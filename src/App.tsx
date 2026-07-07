@@ -555,6 +555,8 @@ function App() {
         setProgressJob(null);
         setReviewReadOnly(false);
         setCurrentScreen('review');
+      } else {
+        alert('Esta cotizacion quedo incompleta durante el procesamiento y no tiene lineas guardadas. Puedes eliminarla con el boton de basura en su fila del Tablero.');
       }
     });
   }, []);
@@ -601,6 +603,8 @@ function App() {
         setApprovedData({ lines: normalized.lines || [], quoteData: normalized });
         setEditedQuoteData(normalized);
         setCurrentScreen('generate');
+      } else {
+        alert('Esta cotizacion no tiene datos para mostrar. Puedes eliminarla con el boton de basura en su fila del Tablero.');
       }
     });
   }, []);
