@@ -521,6 +521,24 @@ export default function QuoteReviewTable({
                             >
                               <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
                             </div>
+                            <button
+                              onClick={() => onEditStart(index)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 border border-[#E5E5E5] text-[#0176D3] rounded-md hover:bg-[#EAF5FE] hover:border-[#0176D3] transition-colors"
+                              style={{ fontSize: 11, fontWeight: 600 }}
+                              title="Editar"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              Editar
+                            </button>
+                            {onReplaceLine && (
+                              <button
+                                onClick={() => onReplaceLine(index)}
+                                className="inline-flex items-center px-2 py-1.5 border border-[#E5E5E5] text-[#747474] rounded-md hover:bg-[#EAF5FE] hover:text-[#0176D3] hover:border-[#0176D3] transition-colors"
+                                title="Reemplazar producto"
+                              >
+                                <PackagePlus className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             {onCommentSave && (
                               <button
                                 onClick={(e) => openComment(index, e.currentTarget)}
