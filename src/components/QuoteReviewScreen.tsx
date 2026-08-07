@@ -630,7 +630,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             precio_unitario: Number(p.precio_unitario),
           }));
 
-          const createResp = await fetch('https://quoteai-production.up.railway.app/products/create-in-salesforce', {
+          const createResp = await fetch(`${import.meta.env.VITE_RAILWAY_MATCH_URL}/products/create-in-salesforce`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userEmail: userEmail || null, productos }),
@@ -702,7 +702,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       let succeeded = false;
 
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        const resp = await fetch('https://quoteai-production.up.railway.app/quotes/send-to-salesforce', {
+        const resp = await fetch(`${import.meta.env.VITE_RAILWAY_MATCH_URL}/quotes/send-to-salesforce`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -759,7 +759,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               }
               const pdfBase64 = btoa(binary);
 
-              const uploadResp = await fetch('https://quoteai-production.up.railway.app/quotes/upload-pdf', {
+              const uploadResp = await fetch(`${import.meta.env.VITE_RAILWAY_MATCH_URL}/quotes/upload-pdf`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ quoteId: qId, pdfBase64 }),

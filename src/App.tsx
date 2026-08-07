@@ -280,7 +280,7 @@ function App() {
       return { ...row, Cant: String(cantInt) };
     });
 
-    fetch('https://quoteai-production.up.railway.app/match/start', {
+    fetch(`${import.meta.env.VITE_RAILWAY_MATCH_URL}/match/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

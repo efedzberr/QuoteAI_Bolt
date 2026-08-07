@@ -1,9 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-
-const productsClient = createClient(
-  'https://sfwblexfjrctgokscuqz.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmd2JsZXhmanJjdGdva3NjdXF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NzU1OTQsImV4cCI6MjA4ODA1MTU5NH0.OEIpY8e5oAW0RlzBODZ-t2ofiJ7VZxtxrmggLDZxKdA'
-);
+import { supabase as productsClient } from './supabase';
 
 export interface Product {
   ProductCode: string;

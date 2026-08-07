@@ -39,8 +39,8 @@ interface QuoteUploadScreenProps {
 
 type ParseStatus = 'idle' | 'processing' | 'success' | 'error';
 
-const RAILWAY_EXTRACT_URL = 'https://quoteai-production.up.railway.app/extract';
-const RAILWAY_ACCOUNTS_URL = 'https://quoteai-production.up.railway.app/accounts/search';
+const RAILWAY_EXTRACT_URL = `${import.meta.env.VITE_RAILWAY_MATCH_URL}/extract`;
+const RAILWAY_ACCOUNTS_URL = `${import.meta.env.VITE_RAILWAY_MATCH_URL}/accounts/search`;
 
 const SUPPORTED_EXTENSIONS = ['xlsx', 'xls', 'csv', 'pdf', 'docx', 'doc', 'txt', 'png', 'jpg', 'jpeg', 'webp'];
 

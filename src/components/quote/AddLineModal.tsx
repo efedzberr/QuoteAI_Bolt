@@ -1,14 +1,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { X, Search, Loader2, PackagePlus } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-import { supabase } from '../../lib/supabase';
+import { supabase, supabase as productsClient } from '../../lib/supabase';
 import { escapeIlikeTerm } from '../../lib/productDatabase';
 import CreateProductModal, { type NewProductData, type PrefillData } from './CreateProductModal';
-
-const productsClient = createClient(
-  'https://sfwblexfjrctgokscuqz.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmd2JsZXhmanJjdGdva3NjdXF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NzU1OTQsImV4cCI6MjA4ODA1MTU5NH0.OEIpY8e5oAW0RlzBODZ-t2ofiJ7VZxtxrmggLDZxKdA'
-);
 
 export interface AddLineResult {
   matched_product_code: string;

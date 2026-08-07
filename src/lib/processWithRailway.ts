@@ -1,4 +1,4 @@
-const RAILWAY_OCR_URL = 'https://cotizaciones-docling-production.up.railway.app/ocr';
+const RAILWAY_OCR_URL = `${import.meta.env.VITE_RAILWAY_OCR_URL}/ocr`;
 
 export interface DoclingResult {
   rawResponse: any;
