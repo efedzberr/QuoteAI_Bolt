@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, PenSquare } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, Loader2 } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
@@ -10,8 +10,9 @@ import AddLineModal, { type AddLineResult } from './quote/AddLineModal';
 import QuoteDocument from './pdf/QuoteDocument';
 import { normalizeLines } from '../lib/normalizeLines';
 import { useAppSettings } from '../hooks/useAppSettings';
+import { usePermissions } from '../hooks/usePermissions';
 import { supabase } from '../lib/supabase';
-import { upsertJobLine, getMaxLineIndex } from '../lib/jobLines';
+import { upsertJobLine, getMaxLineIndex, fetchJobLines as fetchJobLinesFromLib } from '../lib/jobLines';
 import { updateJobProgreso, updateJobStatus, getJobByReferencia, markJobSentToSalesforce } from '../lib/jobs';
 
 interface QuoteData {
@@ -69,6 +70,7 @@ function formatCurrency(value: number, currency: string): string {
 
 export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, onEditQuote, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
   const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx } = useAppSettings();
+  const { verInventario } = usePermissions();
 
   const [viewMode, setViewMode] = useState<ViewMode>(editedQuoteData ? 'edited' : 'original');
 
@@ -104,6 +106,12 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [jobStatus, setJobStatus] = useState<string>(quoteData.status || '');
   const [validating, setValidating] = useState(false);
   const [showEditConfirm, setShowEditConfirm] = useState(false);
+  const [jobNoCliente, setJobNoCliente] = useState<string | null>(null);
+  const [jobGrupo, setJobGrupo] = useState<string | null>(null);
+  const [precioSeleccionado, setPrecioSeleccionado] = useState<'grupo' | 'lista'>('grupo');
+  const [showPriceConfirm, setShowPriceConfirm] = useState(false);
+  const [priceToggleTarget, setPriceToggleTarget] = useState<'grupo' | 'lista'>('grupo');
+  const [priceLoading, setPriceLoading] = useState(false);
   const progresoDebounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
@@ -116,6 +124,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           sentAt: job.sf_sent_at || '',
         });
       }
+      setJobNoCliente(job?.no_cliente ?? null);
+      setJobGrupo(job?.grupo ?? null);
+      if (job?.precio_seleccionado) setPrecioSeleccionado(job.precio_seleccionado);
     });
   }, [jobReferencia]);
 
@@ -223,6 +234,60 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     }, 0);
     setSubtotal(total);
   }, []);
+
+  const handlePriceToggleRequest = useCallback((target: 'grupo' | 'lista') => {
+    if (target === precioSeleccionado) return;
+    setPriceToggleTarget(target);
+    setShowPriceConfirm(true);
+  }, [precioSeleccionado]);
+
+  const confirmPriceToggle = useCallback(async () => {
+    if (!jobId) return;
+    setPriceLoading(true);
+    setShowPriceConfirm(false);
+    const { error } = await supabase.rpc('aplicar_precio_seleccionado', {
+      p_job_id: jobId,
+      p_modo: priceToggleTarget,
+    });
+    if (error) {
+      console.error('[PriceToggle] RPC error:', error);
+      setPriceLoading(false);
+      alert('Error al cambiar el precio: ' + (error.message || 'Error desconocido'));
+      return;
+    }
+    setPrecioSeleccionado(priceToggleTarget);
+    const reloadedLines = await fetchJobLinesFromLib(jobId);
+    if (reloadedLines.length > 0) {
+      const mapped: QuoteLine[] = reloadedLines.map((jl) => ({
+        original_text: jl.descripcion_original || '',
+        original_code: jl.codigo_original || null,
+        quantity: jl.cantidad || 1,
+        matched_product_code: jl.producto_codigo || null,
+        matched_product_name: jl.producto_descripcion || null,
+        matched_unit_price: jl.precio_unitario ?? null,
+        matched_unit_of_measure: jl.unidad_medida || jl.unidad_original || 'PZA',
+        confidence: jl.confianza ?? 0,
+        needs_review: jl.requiere_revision,
+        ignored: jl.estado === 'ignorada',
+        approved: jl.estado === 'aprobada',
+        badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
+        comentario: jl.comentario || null,
+        precio_lista: jl.precio_lista ?? null,
+        precio_grupo: jl.precio_grupo ?? null,
+        descuento_pct: jl.descuento_pct ?? null,
+        inventario_total: jl.inventario_total ?? null,
+        inventario_almacenes: jl.inventario_almacenes ?? null,
+        _lineIndex: jl.line_index,
+      } as any));
+      setLines(mapped);
+      const total = mapped.reduce((sum, l) => {
+        if (l.ignored) return sum;
+        return sum + (l.quantity || 0) * (l.matched_unit_price || 0);
+      }, 0);
+      setSubtotal(total);
+    }
+    setPriceLoading(false);
+  }, [jobId, priceToggleTarget]);
 
   const handleProductSelect = useCallback((product: ProductResult) => {
     ensureEditedMode();
@@ -867,9 +932,85 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       )}
 
       <div className="w-full bg-white border-b border-[#E5E5E5]">
-        <div className="max-w-[1480px] mx-auto px-7 py-5 flex flex-wrap items-start gap-x-9 gap-y-3">
+        <div className="max-w-[1480px] mx-auto px-7 pt-5 pb-3 flex flex-wrap items-center gap-x-8 gap-y-2">
           <SummaryField label="Referencia" value={activeQuoteData.quoteReference} />
           <SummaryField label="Cliente" value={activeQuoteData.customerName} />
+          <SummaryField label="No. cliente" value={jobNoCliente || '\u2014'} />
+          <div className="flex flex-col">
+            <span
+              className="uppercase text-[#747474]"
+              style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}
+            >
+              Grupo
+            </span>
+            {jobGrupo ? (
+              <span
+                className="mt-1 inline-block px-2.5 py-0.5 rounded-full text-white bg-[#0176D3]"
+                style={{ fontSize: 12, fontWeight: 700 }}
+              >
+                {jobGrupo}
+              </span>
+            ) : (
+              <span className="mt-1 text-[#A3A3A3]" style={{ fontSize: 14, fontWeight: 700 }}>{'\u2014'}</span>
+            )}
+          </div>
+          {jobId && (
+            <div className="flex flex-col ml-auto">
+              <span
+                className="uppercase text-[#747474] mb-1"
+                style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}
+              >
+                Precio
+              </span>
+              <div className="inline-flex rounded-lg border border-[#E5E5E5] overflow-hidden">
+                <button
+                  onClick={() => handlePriceToggleRequest('grupo')}
+                  disabled={readOnly || priceLoading}
+                  className={`px-3 py-1.5 transition-colors ${
+                    precioSeleccionado === 'grupo'
+                      ? 'bg-[#0176D3] text-white'
+                      : 'bg-white text-[#444444] hover:bg-[#F0F0F0]'
+                  } disabled:opacity-50`}
+                  style={{ fontSize: 11, fontWeight: 600 }}
+                >
+                  {priceLoading && priceToggleTarget === 'grupo' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : 'Precio grupo'}
+                </button>
+                <button
+                  onClick={() => handlePriceToggleRequest('lista')}
+                  disabled={readOnly || priceLoading}
+                  className={`px-3 py-1.5 transition-colors border-l border-[#E5E5E5] ${
+                    precioSeleccionado === 'lista'
+                      ? 'bg-[#0176D3] text-white'
+                      : 'bg-white text-[#444444] hover:bg-[#F0F0F0]'
+                  } disabled:opacity-50`}
+                  style={{ fontSize: 11, fontWeight: 600 }}
+                >
+                  {priceLoading && priceToggleTarget === 'lista' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : 'Precio lista'}
+                </button>
+              </div>
+            </div>
+          )}
+          {jobId && saveStatus !== 'idle' && (
+            <div className="flex items-center gap-1.5 self-center">
+              {saveStatus === 'saving' ? (
+                <>
+                  <CloudOff className="w-3.5 h-3.5 text-[#747474] animate-pulse" />
+                  <span className="text-[#747474]" style={{ fontSize: 11, fontWeight: 500 }}>Guardando...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5 text-[#2E844A]" />
+                  <span className="text-[#2E844A]" style={{ fontSize: 11, fontWeight: 500 }}>Avance guardado</span>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="max-w-[1480px] mx-auto px-7 pb-4 flex flex-wrap items-start gap-x-9 gap-y-2">
           <SummaryField label="Fecha" value={activeQuoteData.generatedDate} />
           <SummaryField label="Total de lineas" value={String(totalLinesCount)} />
           <div className="flex flex-col">
@@ -920,21 +1061,6 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             </span>
           </div>
           <SummaryField label="Subtotal" value={formatCurrency(subtotal, activeQuoteData.currency)} />
-          {jobId && saveStatus !== 'idle' && (
-            <div className="flex items-center gap-1.5 self-center ml-auto">
-              {saveStatus === 'saving' ? (
-                <>
-                  <CloudOff className="w-3.5 h-3.5 text-[#747474] animate-pulse" />
-                  <span className="text-[#747474]" style={{ fontSize: 11, fontWeight: 500 }}>Guardando...</span>
-                </>
-              ) : (
-                <>
-                  <Check className="w-3.5 h-3.5 text-[#2E844A]" />
-                  <span className="text-[#2E844A]" style={{ fontSize: 11, fontWeight: 500 }}>Avance guardado</span>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
@@ -987,6 +1113,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               onInlineAddProduct={handleInlineProductSelect}
               onCancelInlineAdd={() => setShowInlineAddRow(false)}
               onCommentSave={readOnly ? undefined : handleCommentSave}
+              verInventario={verInventario}
             />
           ) : (
             <div className="px-7 py-16 text-center">
@@ -1391,6 +1518,38 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           unitOfMeasure: lines[replaceLineIndex]?.matched_unit_of_measure || 'PZ',
         } : null}
       />
+
+      {showPriceConfirm && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div
+            className="bg-white rounded-xl p-7 max-w-md w-full mx-4 border border-[#E5E5E5]"
+            style={{ boxShadow: '0 12px 24px rgba(0,0,0,.15)' }}
+          >
+            <h3 className="text-[#181818] mb-3" style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.01em' }}>
+              Cambiar precio
+            </h3>
+            <p className="text-[#444444] mb-6" style={{ fontSize: 13, lineHeight: 1.6 }}>
+              ¿Cambiar todos los precios de la cotizacion a <strong>{priceToggleTarget === 'grupo' ? 'precio de grupo' : 'precio de lista'}</strong>? Esto recalculara todas las lineas y sobrescribira precios editados manualmente.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowPriceConfirm(false)}
+                className="px-4 py-2.5 text-[#444444] bg-[#F0F0F0] rounded-lg hover:bg-[#E5E5E5] transition-colors"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmPriceToggle}
+                className="px-4 py-2.5 text-white bg-[#0176D3] rounded-lg hover:bg-[#014486] transition-colors"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteConfirmIndex !== null && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">

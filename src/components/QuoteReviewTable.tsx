@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { createPortal } from 'react-dom';
-import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle, MessageSquare } from 'lucide-react';
+import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
 import ConfidenceBadge from './ConfidenceBadge';
 import InlineProductSearch, { type SearchProduct } from './InlineProductSearch';
 import InlineProductLineRow from './InlineProductLineRow';
@@ -19,6 +19,11 @@ export interface QuoteLine {
   approved?: boolean;
   badgeType?: 'auto' | 'manual' | 'producto_nuevo';
   comentario?: string | null;
+  precio_lista?: number | null;
+  precio_grupo?: number | null;
+  descuento_pct?: number | null;
+  inventario_total?: number | null;
+  inventario_almacenes?: { almacen_id: string; almacen_nombre: string; cantidad: number }[] | null;
 }
 
 export interface EditValues {
@@ -36,6 +41,7 @@ interface QuoteReviewTableProps {
   editValues: EditValues;
   isManualMode?: boolean;
   readOnly?: boolean;
+  verInventario?: boolean;
   onEditStart: (index: number) => void;
   onEditCancel: () => void;
   onEditSave: () => void;
@@ -168,9 +174,11 @@ export default function QuoteReviewTable({
   onInlineAddProduct,
   onCancelInlineAdd,
   onCommentSave,
+  verInventario = false,
 }: QuoteReviewTableProps) {
   const [commentingIndex, setCommentingIndex] = useState<number | null>(null);
   const [commentAnchorEl, setCommentAnchorEl] = useState<HTMLElement | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
   const openComment = useCallback((index: number, el: HTMLElement) => {
     if (commentingIndex === index) {
@@ -207,6 +215,10 @@ export default function QuoteReviewTable({
                 <th className="py-3 px-4 w-20 text-center">U.M.</th>
                 <th className="py-3 px-4 w-28 text-right">Precio unit.</th>
                 <th className="py-3 px-4 w-28 text-right">Total linea</th>
+                <th className="py-3 px-4 w-20 text-right">Desc.</th>
+                <th className="py-3 px-4 w-28 text-right">Precio c/desc.</th>
+                {verInventario && <th className="py-3 px-4 w-28 text-right">Disponib.</th>}
+                {verInventario && <th className="py-3 px-4 w-36">Almacen</th>}
                 {!readOnly && <th className="py-3 px-4 w-36 text-center">Acciones</th>}
               </tr>
             </thead>
@@ -335,9 +347,8 @@ export default function QuoteReviewTable({
 
                 const isIgnored = line.ignored === true;
 
-                return (
+                return (<Fragment key={index}>
                   <tr
-                    key={index}
                     className={`border-b border-[#F0F0F0] transition-colors ${
                       isIgnored
                         ? 'bg-[#FAFAFA] opacity-60'
@@ -478,7 +489,7 @@ export default function QuoteReviewTable({
                       className="py-3.5 px-4 text-right text-[#444444]"
                       style={{ fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {!isIgnored && formatCurrency(line.matched_unit_price, currency)}
+                      {!isIgnored && formatCurrency(line.precio_lista ?? line.matched_unit_price, currency)}
                     </td>
                     <td
                       className="py-3.5 px-4 text-right text-[#181818]"
@@ -486,6 +497,67 @@ export default function QuoteReviewTable({
                     >
                       {!isIgnored && formatCurrency(lineTotal, currency)}
                     </td>
+                    <td
+                      className="py-3.5 px-4 text-right"
+                      style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12 }}
+                    >
+                      {!isIgnored && (
+                        line.descuento_pct != null
+                          ? <span className={line.descuento_pct < 0 ? 'text-[#BA0517] font-semibold' : 'text-[#444444]'}>{line.descuento_pct.toFixed(1)}%</span>
+                          : <span className="text-[#A3A3A3]">&mdash;</span>
+                      )}
+                    </td>
+                    <td
+                      className="py-3.5 px-4 text-right text-[#444444]"
+                      style={{ fontVariantNumeric: 'tabular-nums' }}
+                    >
+                      {!isIgnored && (
+                        line.precio_grupo != null
+                          ? formatCurrency(line.precio_grupo, currency)
+                          : <span className="text-[#A3A3A3]">&mdash;</span>
+                      )}
+                    </td>
+                    {verInventario && (
+                      <td
+                        className="py-3.5 px-4 text-right"
+                        style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12 }}
+                      >
+                        {!isIgnored && (
+                          line.inventario_total != null
+                            ? line.inventario_total > 0
+                              ? <span className="text-[#2E844A] font-semibold">{line.inventario_total}</span>
+                              : <span className="text-[#BA0517] font-medium" style={{ fontSize: 11 }}>Sin disponibilidad</span>
+                            : <span className="text-[#A3A3A3]">&mdash;</span>
+                        )}
+                      </td>
+                    )}
+                    {verInventario && (
+                      <td className="py-3.5 px-4" style={{ fontSize: 12 }}>
+                        {!isIgnored && (() => {
+                          const almacenes = line.inventario_almacenes?.filter(a => a.cantidad > 0) || [];
+                          if (line.inventario_total == null || line.inventario_total === 0 || almacenes.length === 0) {
+                            return <span className="text-[#A3A3A3]">&mdash;</span>;
+                          }
+                          if (almacenes.length === 1) {
+                            return <span className="text-[#444444]">{almacenes[0].almacen_nombre}</span>;
+                          }
+                          return (
+                            <button
+                              onClick={() => setExpandedRows(prev => {
+                                const next = new Set(prev);
+                                next.has(index) ? next.delete(index) : next.add(index);
+                                return next;
+                              })}
+                              className="inline-flex items-center gap-1 text-[#0176D3] hover:underline font-medium"
+                              style={{ fontSize: 12 }}
+                            >
+                              Varios almacenes
+                              {expandedRows.has(index) ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            </button>
+                          );
+                        })()}
+                      </td>
+                    )}
                     {!readOnly && (
                     <td className="py-3.5 px-4">
                       <div className="flex items-center justify-center gap-1.5 relative">
@@ -623,7 +695,26 @@ export default function QuoteReviewTable({
                     </td>
                     )}
                   </tr>
-                );
+                  {expandedRows.has(index) && verInventario && (() => {
+                    const almacenes = line.inventario_almacenes?.filter(a => a.cantidad > 0) || [];
+                    if (almacenes.length < 2) return null;
+                    const colCount = 8 + 2 + (verInventario ? 2 : 0) + (!readOnly ? 1 : 0);
+                    return (
+                      <tr key={`${index}-expand`} className="bg-[#F8FBFE] border-b border-[#E5E5E5]">
+                        <td colSpan={colCount} className="py-2 px-4 pl-12">
+                          <div className="flex flex-wrap gap-x-6 gap-y-1">
+                            {almacenes.map((a, ai) => (
+                              <span key={ai} className="text-[#444444]" style={{ fontSize: 12 }}>
+                                <span className="font-medium">{a.almacen_nombre}</span>
+                                <span className="text-[#747474] ml-1">&mdash; {a.cantidad} pzas</span>
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })()}
+                </Fragment>);
               })}
               {showInlineAddRow && onInlineAddProduct && onCancelInlineAdd && (
                 <InlineProductLineRow

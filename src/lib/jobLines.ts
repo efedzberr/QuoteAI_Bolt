@@ -19,6 +19,11 @@ export interface JobLine {
   total_linea: number | null;
   notas: string | null;
   comentario?: string | null;
+  precio_lista?: number | null;
+  precio_grupo?: number | null;
+  descuento_pct?: number | null;
+  inventario_total?: number | null;
+  inventario_almacenes?: { almacen_id: string; almacen_nombre: string; cantidad: number }[] | null;
   created_at: string;
   updated_at: string;
 }

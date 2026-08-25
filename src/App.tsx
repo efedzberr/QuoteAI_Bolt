@@ -286,6 +286,7 @@ function App() {
       body: JSON.stringify({
         referencia: jobReferencia,
         customerName: uploadData.customerName,
+        noCliente: uploadData.salesforceAccount?.noCliente || null,
         rows: sanitizedRows,
       }),
     }).catch((err) => {
@@ -369,6 +370,11 @@ function App() {
             ignored: jl.estado === 'ignorada',
             approved: jl.estado === 'aprobada',
             badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
+            precio_lista: jl.precio_lista ?? null,
+            precio_grupo: jl.precio_grupo ?? null,
+            descuento_pct: jl.descuento_pct ?? null,
+            inventario_total: jl.inventario_total ?? null,
+            inventario_almacenes: jl.inventario_almacenes ?? null,
             _lineIndex: jl.line_index,
           }));
           const originalLines = jobLines.map((jl: JobLine) => ({
@@ -465,6 +471,11 @@ function App() {
           approved: jl.estado === 'aprobada',
           badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
           comentario: jl.comentario || null,
+          precio_lista: jl.precio_lista ?? null,
+          precio_grupo: jl.precio_grupo ?? null,
+          descuento_pct: jl.descuento_pct ?? null,
+          inventario_total: jl.inventario_total ?? null,
+          inventario_almacenes: jl.inventario_almacenes ?? null,
           _lineIndex: jl.line_index,
         }));
         const quoteData = {
@@ -506,6 +517,11 @@ function App() {
           approved: jl.estado === 'aprobada',
           badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
           comentario: jl.comentario || null,
+          precio_lista: jl.precio_lista ?? null,
+          precio_grupo: jl.precio_grupo ?? null,
+          descuento_pct: jl.descuento_pct ?? null,
+          inventario_total: jl.inventario_total ?? null,
+          inventario_almacenes: jl.inventario_almacenes ?? null,
           _lineIndex: jl.line_index,
         }));
 
@@ -580,6 +596,11 @@ function App() {
           approved: jl.estado === 'aprobada',
           badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
           comentario: jl.comentario || null,
+          precio_lista: jl.precio_lista ?? null,
+          precio_grupo: jl.precio_grupo ?? null,
+          descuento_pct: jl.descuento_pct ?? null,
+          inventario_total: jl.inventario_total ?? null,
+          inventario_almacenes: jl.inventario_almacenes ?? null,
           _lineIndex: jl.line_index,
         }));
         const quoteData = {
@@ -628,6 +649,11 @@ function App() {
           approved: jl.estado === 'aprobada',
           badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
           comentario: jl.comentario || null,
+          precio_lista: jl.precio_lista ?? null,
+          precio_grupo: jl.precio_grupo ?? null,
+          descuento_pct: jl.descuento_pct ?? null,
+          inventario_total: jl.inventario_total ?? null,
+          inventario_almacenes: jl.inventario_almacenes ?? null,
           _lineIndex: jl.line_index,
         }));
 

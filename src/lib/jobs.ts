@@ -20,6 +20,9 @@ export interface Job {
   sf_opportunity_id?: string | null;
   sf_quote_id?: string | null;
   sf_sent_at?: string | null;
+  no_cliente?: string | null;
+  grupo?: string | null;
+  precio_seleccionado?: 'grupo' | 'lista';
 }
 
 export async function createJob(referencia: string, cliente: string): Promise<Job | null> {
