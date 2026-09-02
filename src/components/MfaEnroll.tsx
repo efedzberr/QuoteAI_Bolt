@@ -241,6 +241,3 @@ export default function MfaEnroll({ onComplete, onSignOut }: Props) {
     </div>
   );
 }
-
-
-export default MfaEnroll

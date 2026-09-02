@@ -1,13 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { X, ChevronDown, ChevronRight, AlertTriangle, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { createClient } from '@supabase/supabase-js';
 import { escapeIlikeTerm } from '../../lib/productDatabase';
-
-const productsClient = createClient(
-  'https://sfwblexfjrctgokscuqz.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmd2JsZXhmanJjdGdva3NjdXF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NzU1OTQsImV4cCI6MjA4ODA1MTU5NH0.OEIpY8e5oAW0RlzBODZ-t2ofiJ7VZxtxrmggLDZxKdA'
-);
 
 export interface NewProductData {
   id: string;
@@ -150,7 +144,7 @@ export default function CreateProductModal({ open, onClose, onProductCreated, pr
 
     const codTerm = escapeIlikeTerm(codigoNorm);
 
-    const { data: catMatch } = await productsClient
+    const { data: catMatch } = await supabase
       .from('products')
       .select('CodigoArt')
       .ilike('CodigoArt', codTerm)
@@ -180,7 +174,7 @@ export default function CreateProductModal({ open, onClose, onProductCreated, pr
 
       if (codigo.trim()) {
         const codTerm = escapeIlikeTerm(codigo.trim());
-        const { data: catMatch } = await productsClient
+        const { data: catMatch } = await supabase
           .from('products')
           .select('CodigoArt, DescCortaArt, Marca, Precio')
           .ilike('CodigoArt', codTerm)
@@ -215,7 +209,7 @@ export default function CreateProductModal({ open, onClose, onProductCreated, pr
 
       const descTerm = escapeIlikeTerm(descripcionCorta.trim());
       if (descTerm.length >= 3) {
-        const { data: catDescMatch } = await productsClient
+        const { data: catDescMatch } = await supabase
           .from('products')
           .select('CodigoArt, DescCortaArt, Marca, Precio')
           .ilike('DescCortaArt', descTerm)

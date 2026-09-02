@@ -1,12 +1,7 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Loader2, X, ChevronDown, Filter, RotateCcw } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from '../lib/supabase';
 import { escapeIlikeTerm } from '../lib/productDatabase';
-
-const productsClient = createClient(
-  'https://sfwblexfjrctgokscuqz.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmd2JsZXhmanJjdGdva3NjdXF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NzU1OTQsImV4cCI6MjA4ODA1MTU5NH0.OEIpY8e5oAW0RlzBODZ-t2ofiJ7VZxtxrmggLDZxKdA'
-);
 
 export interface SearchProduct {
   CodigoArt: string;
@@ -171,7 +166,7 @@ export default function InlineProductSearch({
   useEffect(() => {
     if (facetsLoaded.current) return;
     facetsLoaded.current = true;
-    productsClient.rpc('get_product_facets').then(({ data }) => {
+    supabase.rpc('get_product_facets').then(({ data }) => {
       if (data) setFacets(data as FacetRow[]);
     });
   }, []);
@@ -264,7 +259,7 @@ export default function InlineProductSearch({
     const myId = ++reqIdRef.current;
     setLoading(true);
     try {
-      let query = productsClient
+      let query = supabase
         .from('products')
         .select('CodigoArt, DescCortaArt, DescLargaArt, Marca, Precio, UMP')
         .limit(50);

@@ -1,9 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-
-const productsClient = createClient(
-  'https://sfwblexfjrctgokscuqz.supabase.co',
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNmd2JsZXhmanJjdGdva3NjdXF6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0NzU1OTQsImV4cCI6MjA4ODA1MTU5NH0.OEIpY8e5oAW0RlzBODZ-t2ofiJ7VZxtxrmggLDZxKdA'
-);
+import { supabase } from './supabase';
 
 export interface Product {
   ProductCode: string;
@@ -29,7 +24,7 @@ export async function searchProducts(
   category: string,
   department: string
 ): Promise<Product[]> {
-  let dbQuery = productsClient
+  let dbQuery = supabase
     .from('products')
     .select(
       'CodigoArt, DescCortaArt, DescLargaArt, Precio, UMP, CategoriaArt, DeptoArt, Marca, CodBarras, ValorAtrib4, ValorAtrib5, ValorAtrib6, ValorAtrib7, ValorAtrib8'
@@ -84,7 +79,7 @@ export async function searchProducts(
 }
 
 export async function getCategories(): Promise<string[]> {
-  const { data, error } = await productsClient
+  const { data, error } = await supabase
     .from('products')
     .select('CategoriaArt');
 
@@ -102,7 +97,7 @@ export async function getCategories(): Promise<string[]> {
 }
 
 export async function getDepartments(): Promise<string[]> {
-  const { data, error } = await productsClient
+  const { data, error } = await supabase
     .from('products')
     .select('DeptoArt');
 
