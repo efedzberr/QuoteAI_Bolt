@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Search, HelpCircle, Bell, LogOut } from 'lucide-react';
+import { Search, HelpCircle, Bell, LogOut, ShieldCheck } from 'lucide-react';
 
 interface Breadcrumb {
   label: string;
@@ -177,6 +177,19 @@ function AppTopbar({ breadcrumbs, displayName, initials, email, onSignOut }: App
                 <p className="truncate" style={{ fontSize: 12, color: '#747474', marginTop: 2 }}>
                   {email}
                 </p>
+              </div>
+              <div
+                className="flex items-center"
+                style={{
+                  padding: '8px 16px',
+                  fontSize: 12,
+                  color: '#2E844A',
+                  gap: 8,
+                  borderBottom: '1px solid #F0F0F0',
+                }}
+              >
+                <ShieldCheck size={14} />
+                <span style={{ fontWeight: 500 }}>Segundo factor: activo</span>
               </div>
               <button
                 onClick={onSignOut}

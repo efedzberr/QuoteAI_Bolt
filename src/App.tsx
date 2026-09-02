@@ -12,6 +12,8 @@ import JobProgressScreen from './components/JobProgressScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
 import { supabase, isPasswordSetupRedirect } from './lib/supabase';
+import MfaEnroll from './components/MfaEnroll';
+import MfaVerify from './components/MfaVerify';
 import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus, reopenJobForEdit } from './lib/jobs';
 import { createJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 import type { Job } from './lib/jobs';
@@ -22,7 +24,7 @@ const PROCESSING_RULES = [
   'A valid product row must have at least a description and ideally a quantity.',
 ];
 
-type Screen = 'home' | 'upload' | 'preview' | 'review' | 'generate' | 'admin' | 'job_progress' | 'catalogo';
+type Screen = 'home' | 'upload' | 'preview' | 'review' | 'generate' | 'admin' | 'job_progress' | 'catalogo' | 'mfa_enroll' | 'mfa_verify';
 
 function parseLineItem(line: any): any {
   if (typeof line === 'string') {
@@ -181,6 +183,24 @@ function App() {
   const [progressJob, setProgressJob] = useState<Job | null>(null);
   const [reviewReadOnly, setReviewReadOnly] = useState(false);
   const [needsPasswordSet, setNeedsPasswordSet] = useState(isPasswordSetupRedirect);
+  const [mfaStatus, setMfaStatus] = useState<'loading' | 'aal2' | 'needs_enroll' | 'needs_verify'>('loading');
+
+  const checkMfaLevel = useCallback(async () => {
+    setMfaStatus('loading');
+    const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (error || !data) { setMfaStatus('needs_enroll'); return; }
+    if (data.currentLevel === 'aal2') { setMfaStatus('aal2'); return; }
+    if (data.nextLevel === 'aal2') { setMfaStatus('needs_verify'); return; }
+    setMfaStatus('needs_enroll');
+  }, []);
+
+  useEffect(() => {
+    if (auth.session && !auth.loading && !needsPasswordSet) {
+      checkMfaLevel();
+    } else if (!auth.session && !auth.loading) {
+      setMfaStatus('loading');
+    }
+  }, [auth.session, auth.loading, needsPasswordSet, checkMfaLevel]);
 
   // Detect invite/recovery flow from URL hash or query params
   useEffect(() => {
@@ -746,6 +766,32 @@ function App() {
 
   if (!auth.session) {
     return <AuthScreen />;
+  }
+
+  if (mfaStatus === 'loading') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#F3F3F3]">
+        <div className="text-gray-500 font-medium">Cargando...</div>
+      </div>
+    );
+  }
+
+  if (mfaStatus === 'needs_enroll') {
+    return (
+      <MfaEnroll
+        onComplete={checkMfaLevel}
+        onSignOut={async () => { await supabase.auth.signOut(); }}
+      />
+    );
+  }
+
+  if (mfaStatus === 'needs_verify') {
+    return (
+      <MfaVerify
+        onComplete={checkMfaLevel}
+        onSignOut={async () => { await supabase.auth.signOut(); }}
+      />
+    );
   }
 
   const handleLayoutNavigate = (section: string) => {
