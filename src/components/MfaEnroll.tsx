@@ -15,35 +15,44 @@ export default function MfaEnroll({ onComplete, onSignOut }: Props) {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [setupError, setSetupError] = useState('');
+  const [setupErrorDetail, setSetupErrorDetail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [copied, setCopied] = useState(false);
   const [initializing, setInitializing] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
+  const enrollInFlight = useRef(false);
 
   const initEnroll = useCallback(async () => {
+    if (enrollInFlight.current) return;
+    enrollInFlight.current = true;
     setInitializing(true);
     setSetupError('');
+    setSetupErrorDetail('');
     try {
       const { data: factors } = await supabase.auth.mfa.listFactors();
-      if (factors?.totp) {
-        for (const f of factors.totp) {
-          if (f.status === 'unverified') {
-            await supabase.auth.mfa.unenroll({ factorId: f.id });
-          }
+      const stale = (factors?.totp ?? []).filter(f => f.status === 'unverified');
+      for (const f of stale) {
+        try {
+          await supabase.auth.mfa.unenroll({ factorId: f.id });
+        } catch (e) {
+          console.warn('[MfaEnroll] Failed to unenroll stale factor', f.id, e);
         }
       }
+      const friendlyName = `QuoteAI ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`;
       const { data, error: enrollErr } = await supabase.auth.mfa.enroll({
         factorType: 'totp',
-        friendlyName: 'QuoteAI',
+        friendlyName,
       });
       if (enrollErr || !data) throw enrollErr || new Error('No data');
       setFactorId(data.id);
       setQrCode(data.totp.qr_code);
       setSecret(data.totp.secret);
-    } catch {
+    } catch (err: any) {
       setSetupError('No pudimos iniciar la configuracion. Vuelve a intentarlo.');
+      if (err?.message) setSetupErrorDetail(err.message);
     } finally {
       setInitializing(false);
+      enrollInFlight.current = false;
     }
   }, []);
 
@@ -117,7 +126,11 @@ export default function MfaEnroll({ onComplete, onSignOut }: Props) {
           </div>
           <div className="bg-white rounded-hero shadow-lg border border-rule-soft p-6 sm:p-8 text-center">
             <AlertCircle className="w-10 h-10 text-bad mx-auto mb-4" />
-            <p className="text-sm text-ink mb-6">{setupError}</p>
+            <p className="text-sm text-ink mb-2">{setupError}</p>
+            {setupErrorDetail && (
+              <p className="text-[11px] text-ink-faint mb-6 font-mono break-all">{setupErrorDetail}</p>
+            )}
+            {!setupErrorDetail && <div className="mb-6" />}
             <button
               onClick={initEnroll}
               className="inline-flex items-center gap-2 h-11 px-6 bg-brand text-white font-semibold text-sm rounded-lg hover:bg-brand-deep active:scale-[0.98] transition-all"
@@ -228,3 +241,6 @@ export default function MfaEnroll({ onComplete, onSignOut }: Props) {
     </div>
   );
 }
+
+
+export default MfaEnroll
