@@ -6,6 +6,8 @@ interface Permissions {
   loading: boolean;
 }
 
+const INVENTARIO_HABILITADO = false;
+
 export function usePermissions(): Permissions {
   const [verInventario, setVerInventario] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -40,5 +42,5 @@ export function usePermissions(): Permissions {
     return () => { cancelled = true; };
   }, []);
 
-  return { verInventario, loading };
+  return { verInventario: INVENTARIO_HABILITADO && verInventario, loading };
 }

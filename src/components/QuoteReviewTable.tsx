@@ -215,8 +215,6 @@ export default function QuoteReviewTable({
                 <th className="py-3 px-4 w-20 text-center">U.M.</th>
                 <th className="py-3 px-4 w-28 text-right">Precio unit.</th>
                 <th className="py-3 px-4 w-28 text-right">Total linea</th>
-                <th className="py-3 px-4 w-20 text-right">Desc.</th>
-                <th className="py-3 px-4 w-28 text-right">Precio c/desc.</th>
                 {verInventario && <th className="py-3 px-4 w-28 text-right">Disponib.</th>}
                 {verInventario && <th className="py-3 px-4 w-36">Almacen</th>}
                 {!readOnly && <th className="py-3 px-4 w-36 text-center">Acciones</th>}
@@ -489,7 +487,7 @@ export default function QuoteReviewTable({
                       className="py-3.5 px-4 text-right text-[#444444]"
                       style={{ fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {!isIgnored && formatCurrency(line.precio_lista ?? line.matched_unit_price, currency)}
+                      {!isIgnored && formatCurrency(line.matched_unit_price, currency)}
                     </td>
                     <td
                       className="py-3.5 px-4 text-right text-[#181818]"
@@ -497,26 +495,7 @@ export default function QuoteReviewTable({
                     >
                       {!isIgnored && formatCurrency(lineTotal, currency)}
                     </td>
-                    <td
-                      className="py-3.5 px-4 text-right"
-                      style={{ fontVariantNumeric: 'tabular-nums', fontSize: 12 }}
-                    >
-                      {!isIgnored && (
-                        line.descuento_pct != null
-                          ? <span className={line.descuento_pct < 0 ? 'text-[#BA0517] font-semibold' : 'text-[#444444]'}>{line.descuento_pct.toFixed(1)}%</span>
-                          : <span className="text-[#A3A3A3]">&mdash;</span>
-                      )}
-                    </td>
-                    <td
-                      className="py-3.5 px-4 text-right text-[#444444]"
-                      style={{ fontVariantNumeric: 'tabular-nums' }}
-                    >
-                      {!isIgnored && (
-                        line.precio_grupo != null
-                          ? formatCurrency(line.precio_grupo, currency)
-                          : <span className="text-[#A3A3A3]">&mdash;</span>
-                      )}
-                    </td>
+
                     {verInventario && (
                       <td
                         className="py-3.5 px-4 text-right"
@@ -698,7 +677,7 @@ export default function QuoteReviewTable({
                   {expandedRows.has(index) && verInventario && (() => {
                     const almacenes = line.inventario_almacenes?.filter(a => a.cantidad > 0) || [];
                     if (almacenes.length < 2) return null;
-                    const colCount = 8 + 2 + (verInventario ? 2 : 0) + (!readOnly ? 1 : 0);
+                    const colCount = 8 + (verInventario ? 2 : 0) + (!readOnly ? 1 : 0);
                     return (
                       <tr key={`${index}-expand`} className="bg-[#F8FBFE] border-b border-[#E5E5E5]">
                         <td colSpan={colCount} className="py-2 px-4 pl-12">
