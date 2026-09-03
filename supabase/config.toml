@@ -1,0 +1,8 @@
+[functions.extract-products]
+verify_jwt = true
+
+[functions.match-products]
+verify_jwt = true
+
+[functions.admin-users]
+verify_jwt = true
