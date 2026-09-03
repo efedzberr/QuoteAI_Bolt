@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import HomeDashboard from './components/HomeDashboard';
 import QuoteUploadScreen from './components/QuoteUploadScreen';
 import PayloadPreviewScreen from './components/PayloadPreviewScreen';
@@ -8,10 +8,11 @@ import AdminScreen from './components/AdminScreen';
 import CatalogScreen from './components/CatalogScreen';
 import AuthScreen from './components/AuthScreen';
 import SetPasswordScreen from './components/SetPasswordScreen';
+import ConfirmLinkScreen from './components/ConfirmLinkScreen';
 import JobProgressScreen from './components/JobProgressScreen';
 import AppLayout from './components/layout/AppLayout';
 import { useAuth } from './hooks/useAuth';
-import { supabase, isPasswordSetupRedirect } from './lib/supabase';
+import { supabase, isPasswordSetupRedirect, confirmLinkParams } from './lib/supabase';
 import MfaEnroll from './components/MfaEnroll';
 import MfaVerify from './components/MfaVerify';
 import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus, reopenJobForEdit } from './lib/jobs';
@@ -183,6 +184,9 @@ function App() {
   const [progressJob, setProgressJob] = useState<Job | null>(null);
   const [reviewReadOnly, setReviewReadOnly] = useState(false);
   const [needsPasswordSet, setNeedsPasswordSet] = useState(isPasswordSetupRedirect);
+  const [confirmLink, setConfirmLink] = useState(confirmLinkParams);
+  // Evita que el evento PASSWORD_RECOVERY vuelva a pedir la contrasena despues de definirla
+  const passwordDoneRef = useRef(false);
   const [mfaStatus, setMfaStatus] = useState<'loading' | 'aal2' | 'needs_enroll' | 'needs_verify'>('loading');
 
   const checkMfaLevel = useCallback(async () => {
@@ -204,6 +208,7 @@ function App() {
 
   // Detect invite/recovery flow from URL hash or query params
   useEffect(() => {
+    if (confirmLinkParams) return;
     const hash = window.location.hash;
     const search = window.location.search;
     if (hash.includes('type=invite') || hash.includes('type=recovery') ||
@@ -215,7 +220,7 @@ function App() {
   // Listen for PASSWORD_RECOVERY event from Supabase auth
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') {
+      if (event === 'PASSWORD_RECOVERY' && !passwordDoneRef.current) {
         setNeedsPasswordSet(true);
       }
     });
@@ -736,6 +741,26 @@ function App() {
     navigateToJobScreen(job);
   }, [navigateToJobScreen]);
 
+  // Enlace de acceso a prueba de escaneres: el token se verifica al presionar el boton
+  if (confirmLink) {
+    return (
+      <ConfirmLinkScreen
+        tokenHash={confirmLink.tokenHash}
+        type={confirmLink.type}
+        onVerified={() => {
+          passwordDoneRef.current = false;
+          setNeedsPasswordSet(true);
+          setConfirmLink(null);
+          window.history.replaceState(null, '', window.location.pathname);
+        }}
+        onCancel={() => {
+          setConfirmLink(null);
+          window.history.replaceState(null, '', window.location.pathname);
+        }}
+      />
+    );
+  }
+
   if (auth.loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F3F3F3]">
@@ -757,6 +782,7 @@ function App() {
     return (
       <SetPasswordScreen
         onDone={() => {
+          passwordDoneRef.current = true;
           setNeedsPasswordSet(false);
           window.history.replaceState(null, '', window.location.pathname);
         }}
