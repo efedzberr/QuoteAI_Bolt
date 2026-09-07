@@ -199,6 +199,19 @@ async function sendAccessLink(
 }
 
 // ------------------------------------------------------------
+// Perfil / rol: validación de ids
+// ------------------------------------------------------------
+async function resolvePerfil(serviceClient: ReturnType<typeof createClient>, perfilId: string) {
+  const { data } = await serviceClient.from("perfiles").select("id, name, administrar_usuarios").eq("id", perfilId).maybeSingle();
+  return (data as { id: string; name: string; administrar_usuarios: boolean } | null) ?? null;
+}
+
+async function rolExists(serviceClient: ReturnType<typeof createClient>, rolId: string) {
+  const { data } = await serviceClient.from("roles").select("id").eq("id", rolId).maybeSingle();
+  return !!data;
+}
+
+// ------------------------------------------------------------
 // user_permissions (ver_inventario) — leer y escribir sin asumir índice único
 // ------------------------------------------------------------
 async function setVerInventario(serviceClient: ReturnType<typeof createClient>, userId: string, value: boolean) {
@@ -219,7 +232,10 @@ async function handleList(serviceClient: ReturnType<typeof createClient>) {
   const users = usersData?.users || [];
   const ids = users.map((u) => u.id);
 
-  const { data: profiles } = await serviceClient.from("user_profiles").select("*").in("id", ids);
+  const { data: profiles } = await serviceClient
+    .from("user_profiles")
+    .select("*, perfil:perfiles!user_profiles_perfil_id_fkey(id, name), rol:roles!user_profiles_rol_id_fkey(id, name)")
+    .in("id", ids);
   const { data: perms } = await serviceClient.from("user_permissions").select("user_id, ver_inventario").in("user_id", ids);
   const profileById = new Map((profiles || []).map((p: Json) => [p.id as string, p]));
   const permById = new Map((perms || []).map((p: Json) => [p.user_id as string, p.ver_inventario === true]));
@@ -246,6 +262,10 @@ async function handleList(serviceClient: ReturnType<typeof createClient>) {
       phone: (p.phone as string | null) ?? null,
       salesforce_id: (p.salesforce_id as string | null) ?? null,
       is_admin: p.is_admin === true,
+      perfil_id: ((p.perfil as Json | null)?.id as string | null) ?? (p.perfil_id as string | null) ?? null,
+      perfil_nombre: ((p.perfil as Json | null)?.name as string | null) ?? null,
+      rol_id: ((p.rol as Json | null)?.id as string | null) ?? (p.rol_id as string | null) ?? null,
+      rol_nombre: ((p.rol as Json | null)?.name as string | null) ?? null,
       is_active: p.is_active !== false && !banned,
       ver_inventario: permById.get(u.id) === true,
       mfa_enrolled: mfaById.get(u.id) === true,
@@ -269,10 +289,16 @@ async function handleCreate(
   if (!full_name) return jsonResponse({ error: "El nombre completo es obligatorio" }, 400);
   const phone = cleanStr(body.phone);
   const salesforce_id = cleanStr(body.salesforce_id);
-  const is_admin = body.is_admin === true;
   const ver_inventario = body.ver_inventario === true;
   const password = cleanStr(body.password);
   if (password !== null && password.length < 8) return jsonResponse({ error: "La contraseña debe tener al menos 8 caracteres" }, 400);
+
+  const perfil_id = cleanStr(body.perfil_id);
+  if (!perfil_id) return jsonResponse({ error: "El perfil es obligatorio" }, 400);
+  const perfil = await resolvePerfil(serviceClient, perfil_id);
+  if (!perfil) return jsonResponse({ error: "El perfil indicado no existe" }, 400);
+  const rol_id = cleanStr(body.rol_id);
+  if (rol_id && !(await rolExists(serviceClient, rol_id))) return jsonResponse({ error: "El rol indicado no existe" }, 400);
 
   const { data: created, error: createErr } = await serviceClient.auth.admin.createUser({
     email,
@@ -288,7 +314,7 @@ async function handleCreate(
   const userId = created.user.id;
 
   // El trigger crea la fila; aseguramos los datos completos
-  await serviceClient.from("user_profiles").upsert({ id: userId, email, full_name, phone, salesforce_id, is_admin, is_active: true }, { onConflict: "id" });
+  await serviceClient.from("user_profiles").upsert({ id: userId, email, full_name, phone, salesforce_id, perfil_id, rol_id, is_active: true }, { onConflict: "id" });
   await setVerInventario(serviceClient, userId, ver_inventario);
 
   const baseUrl = appBaseUrl(req, body);
@@ -315,9 +341,20 @@ async function handleUpdate(
   }
   if ("phone" in body) patch.phone = cleanStr(body.phone);
   if ("salesforce_id" in body) patch.salesforce_id = cleanStr(body.salesforce_id);
-  if ("is_admin" in body) {
-    if (userId === caller.id && body.is_admin !== true) return jsonResponse({ error: "No puedes quitarte a ti mismo el rol de administrador" }, 400);
-    patch.is_admin = body.is_admin === true;
+  if ("perfil_id" in body) {
+    const perfilId = cleanStr(body.perfil_id);
+    if (!perfilId) return jsonResponse({ error: "El perfil es obligatorio" }, 400);
+    const perfil = await resolvePerfil(serviceClient, perfilId);
+    if (!perfil) return jsonResponse({ error: "El perfil indicado no existe" }, 400);
+    if (userId === caller.id && !perfil.administrar_usuarios) {
+      return jsonResponse({ error: "No puedes asignarte un perfil sin permiso de administrar usuarios" }, 400);
+    }
+    patch.perfil_id = perfilId;
+  }
+  if ("rol_id" in body) {
+    const rolId = cleanStr(body.rol_id);
+    if (rolId && !(await rolExists(serviceClient, rolId))) return jsonResponse({ error: "El rol indicado no existe" }, 400);
+    patch.rol_id = rolId;
   }
   if ("is_active" in body) {
     if (userId === caller.id && body.is_active !== true) return jsonResponse({ error: "No puedes desactivar tu propia cuenta" }, 400);
@@ -393,6 +430,16 @@ async function handleDelete(
   const userId = cleanStr(body.user_id);
   if (!userId) return jsonResponse({ error: "user_id es obligatorio" }, 400);
   if (userId === caller.id) return jsonResponse({ error: "No puedes eliminar tu propia cuenta" }, 400);
+
+  const reassignTo = cleanStr(body.reassign_to);
+  if (reassignTo) {
+    if (reassignTo === userId) return jsonResponse({ error: "No puedes reasignar las cotizaciones al mismo usuario que eliminas" }, 400);
+    const { data: target } = await serviceClient.from("user_profiles").select("id").eq("id", reassignTo).maybeSingle();
+    if (!target) return jsonResponse({ error: "El usuario destino de la reasignación no existe" }, 400);
+    const { error: reErr } = await serviceClient.from("jobs").update({ owner_id: reassignTo }).eq("owner_id", userId);
+    if (reErr) return jsonResponse({ error: `No se pudieron reasignar las cotizaciones: ${reErr.message}` }, 500);
+  }
+
   await serviceClient.from("user_permissions").delete().eq("user_id", userId);
   const { error } = await serviceClient.auth.admin.deleteUser(userId);
   if (error) return jsonResponse({ error: error.message }, 500);
