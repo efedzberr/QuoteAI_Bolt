@@ -23,6 +23,20 @@ export interface Job {
   no_cliente?: string | null;
   grupo?: string | null;
   precio_seleccionado?: 'grupo' | 'lista';
+  owner_id?: string | null;
+  owner?: { id: string; full_name: string | null; email: string } | null;
+}
+
+export async function reassignJobOwner(jobId: string, ownerId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from('jobs')
+    .update({ owner_id: ownerId, updated_at: new Date().toISOString() })
+    .eq('id', jobId);
+  if (error) {
+    console.error('[jobs] reassignJobOwner error:', error);
+    return false;
+  }
+  return true;
 }
 
 export async function createJob(referencia: string, cliente: string): Promise<Job | null> {
@@ -97,7 +111,7 @@ export async function updateJobPayloadDebounced(
 export async function fetchRecentJobs(limit = 10): Promise<Job[]> {
   const { data, error } = await supabase
     .from('jobs')
-    .select('*')
+    .select('*, owner:user_profiles!jobs_owner_id_fkey(id, full_name, email)')
     .order('created_at', { ascending: false })
     .limit(limit);
 

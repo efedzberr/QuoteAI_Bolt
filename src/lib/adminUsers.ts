@@ -7,6 +7,10 @@ export interface AdminUserRow {
   phone: string | null;
   salesforce_id: string | null;
   is_admin: boolean;
+  perfil_id: string | null;
+  perfil_nombre: string | null;
+  rol_id: string | null;
+  rol_nombre: string | null;
   is_active: boolean;
   ver_inventario: boolean;
   mfa_enrolled: boolean;

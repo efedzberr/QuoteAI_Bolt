@@ -3,6 +3,8 @@ import { Search, X, ChevronDown, Lock } from 'lucide-react';
 import { usePermissions } from '../hooks/usePermissions';
 import GeneralSettingsTab from './admin/GeneralSettingsTab';
 import UsersTab from './admin/UsersTab';
+import PerfilesTab from './admin/PerfilesTab';
+import RolesTab from './admin/RolesTab';
 
 interface AdminScreenProps {
   onBack: () => void;
@@ -17,8 +19,8 @@ const MENU: MenuSection[] = [
   {
     id: 'users_permissions', label: 'Usuarios y permisos', items: [
       { id: 'users', label: 'Usuarios', adminOnly: true },
-      { id: 'profiles', label: 'Perfiles', adminOnly: true, soon: true },
-      { id: 'roles', label: 'Roles y jerarquía', adminOnly: true, soon: true },
+      { id: 'profiles', label: 'Perfiles', adminOnly: true },
+      { id: 'roles', label: 'Roles y jerarquía', adminOnly: true },
     ],
   },
   {
@@ -160,12 +162,8 @@ export default function AdminScreen(_props: AdminScreenProps) {
             <div className="bg-white rounded-card shadow-sm border border-rule p-6">
               {active === 'general' && <GeneralSettingsTab />}
               {active === 'users' && isAdmin && <UsersTab onToast={handleToast} />}
-              {(active === 'profiles' || active === 'roles') && isAdmin && (
-                <div className="border-2 border-dashed border-rule rounded-card p-12 text-center">
-                  <p className="text-sm font-semibold text-ink">{activeItem?.label}</p>
-                  <p className="text-sm text-ink-faint mt-1">Esta sección estará disponible próximamente.</p>
-                </div>
-              )}
+              {active === 'profiles' && isAdmin && <PerfilesTab onToast={handleToast} />}
+              {active === 'roles' && isAdmin && <RolesTab onToast={handleToast} />}
             </div>
           </div>
         </div>

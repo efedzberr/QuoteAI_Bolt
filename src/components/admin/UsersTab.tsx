@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, X, UserPlus, Shield, Ban, CheckCircle, KeyRound, MoreHorizontal, Users, Trash2, Pencil, Mail, Copy, Loader2, RefreshCw, Smartphone } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth';
 import { callAdminUsers, type AdminUserRow, type LinkResult } from '../../lib/adminUsers';
+import { fetchPerfiles, fetchRoles, type Perfil, type Rol } from '../../lib/seguridad';
 
 interface UsersTabProps {
   onToast: (message: string, type: 'success' | 'error') => void;
@@ -55,6 +56,7 @@ export default function UsersTab({ onToast }: UsersTabProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<AdminUserRow | null>(null);
   const [deleteUser, setDeleteUser] = useState<AdminUserRow | null>(null);
+  const [reassignTo, setReassignTo] = useState('');
   const [resetMfaUser, setResetMfaUser] = useState<AdminUserRow | null>(null);
   const [linkResult, setLinkResult] = useState<LinkResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -128,6 +130,7 @@ export default function UsersTab({ onToast }: UsersTabProps) {
               <th className="text-left px-4 py-2.5 text-xs font-semibold text-ink-soft uppercase tracking-wider">Teléfono</th>
               <th className="text-left px-4 py-2.5 text-xs font-semibold text-ink-soft uppercase tracking-wider">ID Salesforce</th>
               <th className="text-left px-4 py-2.5 text-xs font-semibold text-ink-soft uppercase tracking-wider">Perfil</th>
+              <th className="text-left px-4 py-2.5 text-xs font-semibold text-ink-soft uppercase tracking-wider">Rol</th>
               <th className="text-left px-4 py-2.5 text-xs font-semibold text-ink-soft uppercase tracking-wider">Estado</th>
               <th className="text-left px-4 py-2.5 text-xs font-semibold text-ink-soft uppercase tracking-wider">2FA</th>
               <th className="text-left px-4 py-2.5 text-xs font-semibold text-ink-soft uppercase tracking-wider">Último acceso</th>
@@ -136,9 +139,9 @@ export default function UsersTab({ onToast }: UsersTabProps) {
           </thead>
           <tbody>
             {loading && users.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-ink-faint">Cargando…</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-ink-faint">Cargando…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-ink-faint">{q ? `Sin resultados para "${search}".` : 'Aún no hay usuarios.'}</td></tr>
+              <tr><td colSpan={9} className="px-4 py-8 text-center text-ink-faint">{q ? `Sin resultados para "${search}".` : 'Aún no hay usuarios.'}</td></tr>
             ) : filtered.map(u => {
               const pending = !u.last_sign_in_at;
               const isMe = me?.id === u.id;
@@ -152,9 +155,10 @@ export default function UsersTab({ onToast }: UsersTabProps) {
                   <td className="px-4 py-3 text-ink-soft font-mono text-xs">{u.salesforce_id || '—'}</td>
                   <td className="px-4 py-3">
                     {u.is_admin
-                      ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-purple bg-purple-soft px-2 py-0.5 rounded-full"><Shield className="w-3 h-3" /> Administrador</span>
-                      : <span className="text-xs font-semibold text-ink-soft bg-rule-soft px-2 py-0.5 rounded-full">Usuario</span>}
+                      ? <span className="inline-flex items-center gap-1 text-xs font-semibold text-purple bg-purple-soft px-2 py-0.5 rounded-full"><Shield className="w-3 h-3" /> {u.perfil_nombre || 'Administrador'}</span>
+                      : <span className="text-xs font-semibold text-ink-soft bg-rule-soft px-2 py-0.5 rounded-full">{u.perfil_nombre || 'Sin perfil'}</span>}
                   </td>
+                  <td className="px-4 py-3 text-xs text-ink-soft">{u.rol_nombre || <span className="text-ink-faint">Sin rol</span>}</td>
                   <td className="px-4 py-3">
                     {!u.is_active
                       ? <span className="text-xs font-semibold text-bad bg-bad-soft px-2 py-0.5 rounded-full">Inactivo</span>
@@ -245,11 +249,21 @@ export default function UsersTab({ onToast }: UsersTabProps) {
       )}
 
       {deleteUser && (
-        <Modal title="Eliminar usuario" subtitle={deleteUser.email} onClose={() => setDeleteUser(null)}>
-          <p className="text-sm text-ink-soft mb-5">Esta acción es permanente: se elimina la cuenta y su acceso a Cotizador. Las cotizaciones existentes no se borran. Si solo quieres bloquear el acceso temporalmente, usa <strong>Desactivar</strong>.</p>
+        <Modal title="Eliminar usuario" subtitle={deleteUser.email} onClose={() => { setDeleteUser(null); setReassignTo(''); }}>
+          <p className="text-sm text-ink-soft mb-4">Esta acción es permanente: se elimina la cuenta y su acceso a Cotizador. Las cotizaciones existentes no se borran. Si solo quieres bloquear el acceso temporalmente, usa <strong>Desactivar</strong>.</p>
+          <div className="mb-5">
+            <label className={label}>Reasignar sus cotizaciones a <span className="text-ink-faint font-normal normal-case tracking-normal">(recomendado)</span></label>
+            <select value={reassignTo} onChange={e => setReassignTo(e.target.value)} className={field}>
+              <option value="">— No reasignar (quedan sin dueño) —</option>
+              {users.filter(x => x.id !== deleteUser.id && x.is_active).map(x => (
+                <option key={x.id} value={x.id}>{x.full_name || x.email}{x.full_name ? ` · ${x.email}` : ''}</option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-ink-faint">Las cotizaciones sin dueño solo las verán los perfiles con "Ver todos los datos".</p>
+          </div>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setDeleteUser(null)} className={secondaryBtn}>Cancelar</button>
-            <button disabled={busy !== null} className="inline-flex items-center gap-2 h-10 px-4 bg-bad text-white font-semibold text-sm rounded-lg hover:opacity-90 disabled:opacity-60" onClick={() => { const u = deleteUser; setDeleteUser(null); run(`del-${u.id}`, async () => { await callAdminUsers('delete_user', { user_id: u.id }); onToast('Usuario eliminado', 'success'); await loadUsers(); }); }}>
+            <button onClick={() => { setDeleteUser(null); setReassignTo(''); }} className={secondaryBtn}>Cancelar</button>
+            <button disabled={busy !== null} className="inline-flex items-center gap-2 h-10 px-4 bg-bad text-white font-semibold text-sm rounded-lg hover:opacity-90 disabled:opacity-60" onClick={() => { const u = deleteUser; const target = reassignTo || null; setDeleteUser(null); setReassignTo(''); run(`del-${u.id}`, async () => { await callAdminUsers('delete_user', { user_id: u.id, reassign_to: target }); onToast('Usuario eliminado', 'success'); await loadUsers(); }); }}>
               <Trash2 className="w-4 h-4" /> Eliminar definitivamente
             </button>
           </div>
@@ -273,8 +287,36 @@ function UserFormModal({ user, isMe, onClose, onSaved, onToast }: { user?: Admin
   const [fullName, setFullName] = useState(user?.full_name || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [salesforceId, setSalesforceId] = useState(user?.salesforce_id || '');
-  const [isAdmin, setIsAdmin] = useState(user?.is_admin || false);
+  const [perfilId, setPerfilId] = useState(user?.perfil_id || '');
+  const [rolId, setRolId] = useState(user?.rol_id || '');
+  const [perfiles, setPerfiles] = useState<Perfil[]>([]);
+  const [roles, setRoles] = useState<Rol[]>([]);
   const [verInventario, setVerInventario] = useState(user?.ver_inventario || false);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([fetchPerfiles(), fetchRoles()])
+      .then(([{ perfiles: ps }, rs]) => {
+        if (cancelled) return;
+        setPerfiles(ps); setRoles(rs);
+        if (!user && !perfilId) {
+          const std = ps.find(p => !p.is_system);
+          if (std) setPerfilId(std.id);
+        }
+      })
+      .catch(e => onToast(e.message || 'No se pudieron cargar perfiles y roles.', 'error'));
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const rolOptions = (() => {
+    const byParent: Record<string, Rol[]> = {};
+    for (const r of roles) (byParent[r.parent_id || 'root'] ||= []).push(r);
+    const out: { id: string; label: string }[] = [];
+    const walk = (pid: string, depth: number) => (byParent[pid] || []).forEach(r => { out.push({ id: r.id, label: `${'— '.repeat(depth)}${r.name}` }); walk(r.id, depth + 1); });
+    walk('root', 0);
+    return out;
+  })();
   const [setPasswordNow, setSetPasswordNow] = useState(false);
   const [password, setPassword] = useState('');
   const [saving, setSaving] = useState(false);
@@ -284,19 +326,20 @@ function UserFormModal({ user, isMe, onClose, onSaved, onToast }: { user?: Admin
     setError('');
     if (!fullName.trim()) { setError('El nombre completo es obligatorio.'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Escribe un correo válido.'); return; }
+    if (!perfilId) { setError('Selecciona un perfil.'); return; }
     if (!editing && setPasswordNow && password.length < 8) { setError('La contraseña debe tener al menos 8 caracteres.'); return; }
     setSaving(true);
     try {
       if (editing && user) {
         await callAdminUsers('update_user', {
           user_id: user.id, email: email.trim(), full_name: fullName.trim(), phone: phone.trim() || null,
-          salesforce_id: salesforceId.trim() || null, is_admin: isAdmin, ver_inventario: verInventario,
+          salesforce_id: salesforceId.trim() || null, perfil_id: perfilId, rol_id: rolId || null, ver_inventario: verInventario,
         });
         onSaved();
       } else {
         const res = await callAdminUsers<LinkResult & { user_id: string }>('create', {
           email: email.trim(), full_name: fullName.trim(), phone: phone.trim() || null,
-          salesforce_id: salesforceId.trim() || null, is_admin: isAdmin, ver_inventario: verInventario,
+          salesforce_id: salesforceId.trim() || null, perfil_id: perfilId, rol_id: rolId || null, ver_inventario: verInventario,
           password: setPasswordNow ? password : null,
         });
         onToast(`Usuario ${email.trim()} creado`, 'success');
@@ -331,8 +374,25 @@ function UserFormModal({ user, isMe, onClose, onSaved, onToast }: { user?: Admin
             <input value={salesforceId} onChange={e => setSalesforceId(e.target.value)} className={`${field} font-mono`} placeholder="005…" />
           </div>
         </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className={label}>Perfil *</label>
+            <select value={perfilId} onChange={e => setPerfilId(e.target.value)} className={field}>
+              <option value="">— Selecciona —</option>
+              {perfiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-ink-faint">{isMe ? 'No puedes asignarte un perfil sin permiso de administrar usuarios.' : 'Define qué puede hacer.'}</p>
+          </div>
+          <div>
+            <label className={label}>Rol</label>
+            <select value={rolId} onChange={e => setRolId(e.target.value)} className={field}>
+              <option value="">— Sin rol —</option>
+              {rolOptions.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-ink-faint">Define qué puede ver (jerarquía).</p>
+          </div>
+        </div>
         <div className="space-y-3 pt-1">
-          <Toggle checked={isAdmin} onChange={setIsAdmin} text="Administrador" hint={isMe ? 'No puedes quitarte tu propio rol de administrador.' : 'Puede administrar usuarios y la configuración del sistema.'} />
           <Toggle checked={verInventario} onChange={setVerInventario} text="Puede ver inventario" hint="Se aplicará cuando la visualización de inventario esté habilitada." />
           {!editing && (
             <Toggle checked={setPasswordNow} onChange={v => { setSetPasswordNow(v); if (!v) setPassword(''); }} text="Definir contraseña inicial ahora" hint="Si no la defines, el usuario la creará desde el enlace del correo." />

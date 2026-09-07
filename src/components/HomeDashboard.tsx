@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import AppLayout from './layout/AppLayout';
-import { fetchRecentJobs, countJobs, countJobsByStatus, deleteJobCascade, type Job, type JobStatus } from '../lib/jobs';
+import { fetchRecentJobs, countJobs, countJobsByStatus, deleteJobCascade, reassignJobOwner, type Job, type JobStatus } from '../lib/jobs';
+import { usePermissions } from '../hooks/usePermissions';
+import { fetchUsuariosVisibles, type UsuarioVisible } from '../lib/seguridad';
 import { fetchJobLineStats, type JobLineStat, type GlobalLineStats } from '../lib/jobLines';
 import { getStageInfo, isResumableStage, isProcessingStage, isFinalStage, isValidatedStage } from '../lib/jobStages';
 import {
@@ -16,6 +18,7 @@ import {
   AlertCircle,
   Loader2,
   Trash2,
+  UserCog,
 } from 'lucide-react';
 
 interface HomeDashboardProps {
@@ -185,6 +188,33 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
   const [totalCotizaciones, setTotalCotizaciones] = useState(0);
   const [totalGeneradas, setTotalGeneradas] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<Job | null>(null);
+  const [reassignTarget, setReassignTarget] = useState<Job | null>(null);
+  const [reassignTo, setReassignTo] = useState('');
+  const [reassigning, setReassigning] = useState(false);
+  const [usuarios, setUsuarios] = useState<UsuarioVisible[]>([]);
+  const perms = usePermissions();
+  const puedeCrear = perms.loading || perms.can('cotizaciones', 'crear');
+  const puedeEditar = !perms.loading && perms.can('cotizaciones', 'editar');
+  const puedeEliminar = !perms.loading && perms.can('cotizaciones', 'eliminar');
+
+  const openReassign = async (job: Job) => {
+    setReassignTarget(job);
+    setReassignTo(job.owner_id || '');
+    try { setUsuarios(await fetchUsuariosVisibles()); } catch { setUsuarios([]); }
+  };
+
+  const handleConfirmReassign = async () => {
+    if (!reassignTarget || !reassignTo) return;
+    setReassigning(true);
+    const ok = await reassignJobOwner(reassignTarget.id, reassignTo);
+    setReassigning(false);
+    if (ok) {
+      setReassignTarget(null);
+      loadJobs();
+    } else {
+      alert('No se pudo reasignar la cotización. Verifica que tengas permiso sobre el nuevo propietario.');
+    }
+  };
   const [deleting, setDeleting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const loadingRef = useRef(false);
@@ -328,7 +358,9 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
               <div className="flex gap-3 flex-wrap">
                 <button
                   onClick={onNewQuote}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-brand font-semibold text-sm rounded-lg hover:bg-white/90 transition-all shadow-md hover:shadow-lg active:scale-[0.98]"
+                  disabled={!puedeCrear}
+                  title={puedeCrear ? undefined : 'Tu perfil no tiene permiso para crear cotizaciones'}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-brand font-semibold text-sm rounded-lg hover:bg-white/90 transition-all shadow-md hover:shadow-lg active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <Plus className="w-4 h-4" />
                   Nueva cotización
@@ -442,6 +474,7 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
                 <thead>
                   <tr className="text-xs text-ink-faint uppercase tracking-wider border-b border-rule-soft">
                     <th className="text-left py-3 px-5 font-medium">Cliente / Propuesta</th>
+                    <th className="text-left py-3 px-3 font-medium">Propietario</th>
                     <th className="text-center py-3 px-3 font-medium">Líneas</th>
                     <th className="text-center py-3 px-3 font-medium">Productos</th>
                     <th className="text-center py-3 px-3 font-medium">Reconocidos</th>
@@ -455,13 +488,13 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
                 <tbody>
                   {loadingJobs ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-sm text-ink-faint">
+                      <td colSpan={10} className="py-8 text-center text-sm text-ink-faint">
                         Cargando trabajos...
                       </td>
                     </tr>
                   ) : filteredJobs.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="py-8 text-center text-sm text-ink-faint">
+                      <td colSpan={10} className="py-8 text-center text-sm text-ink-faint">
                         No hay propuestas en esta categoría.
                       </td>
                     </tr>
@@ -485,6 +518,9 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
                           <td className="py-3 px-5">
                             <p className="font-medium text-ink text-sm">{job.cliente || 'Sin cliente'}</p>
                             <p className="text-[11px] text-ink-faint font-mono">{job.referencia}</p>
+                          </td>
+                          <td className="py-3 px-3 text-xs text-ink-soft whitespace-nowrap">
+                            {job.owner?.full_name || job.owner?.email || <span className="text-ink-faint">Sin dueño</span>}
                           </td>
                           <td className="py-3 px-3 text-center text-ink-soft">
                             {job.total_lineas || 0}
@@ -526,7 +562,16 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
                           </td>
                           <td className="py-3 px-3 text-center">
                             <div className="flex items-center justify-center gap-1">
-                            {job.status !== 'pdf_generado' && (
+                            {puedeEditar && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); openReassign(job); }}
+                                className="inline-flex items-center justify-center w-7 h-7 text-ink-faint hover:text-brand hover:bg-brand-soft rounded-md transition-colors"
+                                title="Cambiar propietario"
+                              >
+                                <UserCog className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {puedeEliminar && job.status !== 'pdf_generado' && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); setDeleteTarget(job); }}
                                 className="inline-flex items-center justify-center w-7 h-7 text-[#BA0517] hover:bg-[#FEDED7] rounded-md transition-colors"
@@ -587,6 +632,49 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
             </div>
           </section>
       </div>
+
+      {reassignTarget && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-7 max-w-md w-full mx-4 border border-[#E5E5E5]" style={{ boxShadow: '0 12px 24px rgba(0,0,0,.15)' }}>
+            <h3 className="text-[#181818] mb-2" style={{ fontSize: 17, fontWeight: 700, letterSpacing: '-0.01em' }}>
+              Cambiar propietario
+            </h3>
+            <p className="text-[#747474] mb-4" style={{ fontSize: 12 }}>
+              {reassignTarget.referencia} — {reassignTarget.cliente || 'Sin cliente'}
+            </p>
+            <label className="block text-xs font-semibold text-ink-soft uppercase tracking-wide mb-1.5">Nuevo propietario</label>
+            <select
+              value={reassignTo}
+              onChange={(e) => setReassignTo(e.target.value)}
+              className="w-full h-10 px-3 border border-rule rounded-lg text-sm text-ink focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft mb-1.5"
+            >
+              <option value="">— Selecciona —</option>
+              {usuarios.filter(u => u.is_active).map(u => (
+                <option key={u.id} value={u.id}>{u.full_name || u.email}{u.full_name ? ` · ${u.email}` : ''}</option>
+              ))}
+            </select>
+            <p className="text-[#747474] mb-6" style={{ fontSize: 12 }}>Solo aparecen los usuarios dentro de tu jerarquía.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setReassignTarget(null)}
+                disabled={reassigning}
+                className="flex-1 px-4 py-2.5 text-[#444444] bg-[#F0F0F0] rounded-lg hover:bg-[#E5E5E5] transition-colors disabled:opacity-50"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleConfirmReassign}
+                disabled={reassigning || !reassignTo || reassignTo === (reassignTarget.owner_id || '')}
+                className="flex-1 px-4 py-2.5 text-white bg-brand rounded-lg hover:opacity-90 transition-colors disabled:opacity-50"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                {reassigning ? 'Guardando...' : 'Reasignar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {deleteTarget && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
