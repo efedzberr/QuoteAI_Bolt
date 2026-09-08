@@ -58,6 +58,11 @@ export default function UsersTab({ onToast }: UsersTabProps) {
   const [editUser, setEditUser] = useState<AdminUserRow | null>(null);
   const [deleteUser, setDeleteUser] = useState<AdminUserRow | null>(null);
   const [vistaUser, setVistaUser] = useState<AdminUserRow | null>(null);
+  const [resetPwdUser, setResetPwdUser] = useState<AdminUserRow | null>(null);
+  const [resetPwdMode, setResetPwdMode] = useState<'email' | 'temp'>('email');
+  const [resetPwdCustom, setResetPwdCustom] = useState('');
+  const [resetPwdResult, setResetPwdResult] = useState<{ email: string; temp_password: string } | null>(null);
+  const [copiedPwd, setCopiedPwd] = useState(false);
   const [reassignTo, setReassignTo] = useState('');
   const [resetMfaUser, setResetMfaUser] = useState<AdminUserRow | null>(null);
   const [linkResult, setLinkResult] = useState<LinkResult | null>(null);
@@ -179,7 +184,8 @@ export default function UsersTab({ onToast }: UsersTabProps) {
                     {menuId === u.id && (
                       <div ref={menuRef} className="absolute right-2 top-10 z-30 w-60 bg-white border border-rule rounded-card shadow-md py-1">
                         <MenuItem icon={<Pencil className="w-4 h-4" />} text="Editar" onClick={() => { setMenuId(null); setEditUser(u); }} />
-                        <MenuItem icon={<Mail className="w-4 h-4" />} text={pending ? 'Reenviar invitación' : 'Enviar enlace de acceso'} onClick={() => { setMenuId(null); sendLink(u); }} />
+                        {pending && <MenuItem icon={<Mail className="w-4 h-4" />} text="Reenviar invitación" onClick={() => { setMenuId(null); sendLink(u); }} />}
+                        <MenuItem icon={<KeyRound className="w-4 h-4" />} text="Restablecer contraseña" disabled={isMe} onClick={() => { setMenuId(null); setResetPwdMode('email'); setResetPwdCustom(''); setResetPwdResult(null); setCopiedPwd(false); setResetPwdUser(u); }} />
                         <MenuItem icon={<Smartphone className="w-4 h-4" />} text="Restablecer 2FA" disabled={!u.mfa_enrolled} onClick={() => { setMenuId(null); setResetMfaUser(u); }} />
                         <MenuItem icon={<Eye className="w-4 h-4" />} text="Iniciar sesión como" disabled={isMe || !u.is_active} onClick={() => { setMenuId(null); setVistaUser(u); }} />
                         <MenuItem icon={u.is_active ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />} text={u.is_active ? 'Desactivar' : 'Activar'} disabled={isMe} onClick={() => { setMenuId(null); toggleActive(u); }} />
@@ -248,6 +254,72 @@ export default function UsersTab({ onToast }: UsersTabProps) {
               <KeyRound className="w-4 h-4" /> Restablecer
             </button>
           </div>
+        </Modal>
+      )}
+
+      {resetPwdUser && (
+        <Modal title="Restablecer contraseña" subtitle={resetPwdUser.email} onClose={() => { setResetPwdUser(null); setResetPwdResult(null); }}>
+          {resetPwdResult ? (
+            <div>
+              <p className="text-sm text-ink-soft mb-3">Contraseña temporal asignada a <strong>{resetPwdResult.email}</strong>. Cópiala ahora: <strong>no se vuelve a mostrar</strong>.</p>
+              <div className="flex items-center gap-2 mb-2">
+                <code className="flex-1 h-11 px-3 flex items-center bg-rule-soft border border-rule rounded-lg font-mono text-base tracking-wider text-ink select-all">{resetPwdResult.temp_password}</code>
+                <button
+                  onClick={() => { navigator.clipboard.writeText(resetPwdResult.temp_password).then(() => { setCopiedPwd(true); setTimeout(() => setCopiedPwd(false), 2000); }); }}
+                  className={secondaryBtn}
+                  title="Copiar"
+                >
+                  {copiedPwd ? <CheckCircle className="w-4 h-4 text-good" /> : <Copy className="w-4 h-4" />} {copiedPwd ? 'Copiada' : 'Copiar'}
+                </button>
+              </div>
+              <p className="text-xs text-ink-faint mb-5">Compártela por un canal seguro y pídele al usuario que la cambie desde su perfil. Su 2FA no cambia; si también la perdió, usa "Restablecer 2FA".</p>
+              <div className="flex justify-end">
+                <button onClick={() => { setResetPwdUser(null); setResetPwdResult(null); }} className={primaryBtn}>Listo</button>
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="space-y-2 mb-4">
+                <label className={`flex items-start gap-3 p-3 border rounded-card cursor-pointer ${resetPwdMode === 'email' ? 'border-brand bg-brand-soft/40' : 'border-rule hover:bg-rule-soft'}`}>
+                  <input type="radio" className="mt-0.5 accent-[#0176D3]" checked={resetPwdMode === 'email'} onChange={() => setResetPwdMode('email')} />
+                  <span>
+                    <span className="block text-sm font-semibold text-ink">Enviar correo de restablecimiento</span>
+                    <span className="block text-xs text-ink-faint">El usuario recibe un enlace y define su contraseña nueva. Es la opción recomendada.</span>
+                  </span>
+                </label>
+                <label className={`flex items-start gap-3 p-3 border rounded-card cursor-pointer ${resetPwdMode === 'temp' ? 'border-brand bg-brand-soft/40' : 'border-rule hover:bg-rule-soft'}`}>
+                  <input type="radio" className="mt-0.5 accent-[#0176D3]" checked={resetPwdMode === 'temp'} onChange={() => setResetPwdMode('temp')} />
+                  <span>
+                    <span className="block text-sm font-semibold text-ink">Asignar contraseña temporal</span>
+                    <span className="block text-xs text-ink-faint">Tú se la comunicas. Útil si el correo no le llega o está contigo en la llamada.</span>
+                  </span>
+                </label>
+              </div>
+              {resetPwdMode === 'temp' && (
+                <div className="mb-4">
+                  <label className={label}>Contraseña <span className="text-ink-faint font-normal normal-case tracking-normal">(déjala vacía para generar una)</span></label>
+                  <input type="text" value={resetPwdCustom} onChange={e => setResetPwdCustom(e.target.value)} className={`${field} font-mono`} placeholder="Mín. 8 caracteres" autoComplete="off" />
+                </div>
+              )}
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setResetPwdUser(null)} className={secondaryBtn} disabled={busy !== null}>Cancelar</button>
+                <button
+                  disabled={busy !== null || (resetPwdMode === 'temp' && resetPwdCustom !== '' && resetPwdCustom.length < 8)}
+                  className={primaryBtn}
+                  onClick={() => {
+                    const u = resetPwdUser;
+                    if (resetPwdMode === 'email') { setResetPwdUser(null); sendLink(u); return; }
+                    run(`pwd-${u.id}`, async () => {
+                      const res = await callAdminUsers('reset_password', { user_id: u.id, password: resetPwdCustom || null }) as { email: string; temp_password: string };
+                      setResetPwdResult({ email: res.email, temp_password: res.temp_password });
+                    });
+                  }}
+                >
+                  <KeyRound className="w-4 h-4" /> {resetPwdMode === 'email' ? 'Enviar correo' : 'Asignar contraseña'}
+                </button>
+              </div>
+            </div>
+          )}
         </Modal>
       )}
 

@@ -409,6 +409,39 @@ async function handleSendLink(
   return jsonResponse({ success: true, email: user.email, ...notify });
 }
 
+function generateTempPassword(): string {
+  // 12 caracteres legibles (sin 0/O/1/l/I), con mayúscula, minúscula y dígito garantizados
+  const upper = "ABCDEFGHJKMNPQRSTUVWXYZ", lower = "abcdefghjkmnpqrstuvwxyz", digits = "23456789";
+  const all = upper + lower + digits;
+  const pick = (s: string) => s[Math.floor(Math.random() * s.length)];
+  const chars = [pick(upper), pick(lower), pick(digits)];
+  while (chars.length < 12) chars.push(pick(all));
+  for (let i = chars.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [chars[i], chars[j]] = [chars[j], chars[i]]; }
+  return chars.join("");
+}
+
+async function handleResetPassword(
+  serviceClient: ReturnType<typeof createClient>,
+  caller: { id: string; email: string; name: string },
+  body: Json,
+) {
+  const userId = cleanStr(body.user_id);
+  if (!userId) return jsonResponse({ error: "user_id es obligatorio" }, 400);
+  if (userId === caller.id) return jsonResponse({ error: "Para cambiar tu propia contraseña usa el enlace de recuperación" }, 400);
+
+  const { data: { user }, error } = await serviceClient.auth.admin.getUserById(userId);
+  if (error || !user || !user.email) return jsonResponse({ error: "Usuario no encontrado" }, 404);
+
+  let password = cleanStr(body.password);
+  if (password !== null && password.length < 8) return jsonResponse({ error: "La contraseña debe tener al menos 8 caracteres" }, 400);
+  if (!password) password = generateTempPassword();
+
+  const { error: updErr } = await serviceClient.auth.admin.updateUserById(userId, { password });
+  if (updErr) return jsonResponse({ error: updErr.message }, 500);
+
+  return jsonResponse({ success: true, email: user.email, temp_password: password });
+}
+
 async function handleResetMfa(serviceClient: ReturnType<typeof createClient>, body: Json) {
   const userId = cleanStr(body.user_id);
   if (!userId) return jsonResponse({ error: "user_id es obligatorio" }, 400);
@@ -478,6 +511,8 @@ Deno.serve(async (req: Request) => {
         return await handleSendLink(req, serviceClient, caller, body);
       case "reset_mfa":
         return await handleResetMfa(serviceClient, body);
+      case "reset_password":
+        return await handleResetPassword(serviceClient, caller, body);
       case "delete_user":
         return await handleDelete(serviceClient, caller, body);
       default:
