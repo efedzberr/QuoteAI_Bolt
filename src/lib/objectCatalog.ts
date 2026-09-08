@@ -10,6 +10,8 @@ export interface ObjectFieldDef {
   editable?: boolean;      // se puede capturar en Nuevo/Editar
   required?: boolean;
   picklist?: string[];
+  lookup?: 'grupos';        // el valor se elige de una lista cargada desde la BD
+  lookupAllowNew?: boolean; // permite escribir un valor que no está en la lista
   notes?: string;
   align?: 'left' | 'right';
 }
@@ -20,6 +22,7 @@ export interface AdminObjectDef {
   singular: string;
   table: string;
   pk: string;
+  pkFields?: string[];        // llave compuesta; si falta, es [pk]
   pkIsGenerated: boolean;     // true = la BD genera la llave (no se captura)
   readOnly: boolean;
   permObject: ObjetoSeguridad | null;   // objeto de perfil que controla crear/editar/eliminar
@@ -62,15 +65,15 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     ],
   },
   {
-    id: 'grupos', label: 'Grupos', singular: 'grupo', table: 'grupo', pk: 'group_name', pkIsGenerated: false,
+    id: 'grupos', label: 'Grupos', singular: 'grupo', table: 'grupo', pk: 'group_name', pkFields: ['group_name', 'no_cliente'], pkIsGenerated: false,
     readOnly: false, permObject: 'grupos',
     select: '*',
     searchFields: ['group_name', 'no_cliente'],
     systemViewId: 'b0000000-0000-0000-0000-000000000003',
     note: 'Relación cliente → grupo de precios. La carga externa escribe loaded_at; los cambios manuales pueden ser sobrescritos por una recarga.',
     fields: [
-      { key: 'group_name', label: 'Grupo', dataType: 'text', required: true, editable: true, notes: 'Llave primaria. Referenciado por precio_grupo.group_name' },
-      { key: 'no_cliente', label: 'No. cliente', dataType: 'text', required: true, editable: true },
+      { key: 'group_name', label: 'Grupo', dataType: 'text', required: true, editable: true, lookup: 'grupos', lookupAllowNew: true, notes: 'Elige un grupo existente; solo escribe uno nuevo si realmente no existe. Referenciado por precio_grupo.group_name' },
+      { key: 'no_cliente', label: 'No. cliente', dataType: 'text', required: true, editable: true, notes: 'Junto con Grupo forma la llave del registro' },
       { key: 'loaded_at', label: 'Cargado', dataType: 'datetime', notes: 'Fecha de carga externa' },
     ],
   },
@@ -105,7 +108,7 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     note: 'Precio por grupo y artículo. La carga externa escribe loaded_at; los cambios manuales pueden ser sobrescritos por una recarga.',
     fields: [
       { key: 'id', label: 'ID', dataType: 'number', align: 'right' },
-      { key: 'group_name', label: 'Grupo', dataType: 'text', required: true, editable: true, notes: 'Debe existir en Grupos' },
+      { key: 'group_name', label: 'Grupo', dataType: 'text', required: true, editable: true, lookup: 'grupos', lookupAllowNew: false, notes: 'Debe existir en Grupos' },
       { key: 'codigo_art', label: 'Código', dataType: 'text', required: true, editable: true, notes: 'Código del catálogo (products.CodigoArt)' },
       { key: 'no_corto_art', label: 'No. corto', dataType: 'number', editable: true, align: 'right' },
       { key: 'art_principal', label: 'Art. principal', dataType: 'number', editable: true, align: 'right' },
@@ -122,6 +125,24 @@ export function adminObjectFor(id: string): AdminObjectDef | undefined {
 
 export function fieldMap(def: AdminObjectDef): Map<string, ObjectFieldDef> {
   return new Map(def.fields.map(f => [f.key, f]));
+}
+
+export function pkFieldsOf(def: AdminObjectDef): string[] {
+  return def.pkFields && def.pkFields.length > 0 ? def.pkFields : [def.pk];
+}
+
+export function rowKey(def: AdminObjectDef, row: Record<string, unknown>): string {
+  return pkFieldsOf(def).map(k => String(row[k] ?? '')).join('||');
+}
+
+export function pkMatch(def: AdminObjectDef, row: Record<string, unknown>): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  for (const k of pkFieldsOf(def)) out[k] = row[k] as string | number;
+  return out;
+}
+
+export function isPkField(def: AdminObjectDef, key: string): boolean {
+  return pkFieldsOf(def).includes(key);
 }
 
 export function formatCell(field: ObjectFieldDef, value: unknown, row?: Record<string, unknown>): string {

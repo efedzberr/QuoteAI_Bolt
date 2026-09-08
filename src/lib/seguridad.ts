@@ -149,3 +149,12 @@ export async function fetchUsuariosVisibles(): Promise<UsuarioVisible[]> {
   if (error) fail('No se pudieron cargar los usuarios', error);
   return (data as UsuarioVisible[]) || [];
 }
+
+// ---------------- Grupos existentes (selector) ----------------
+export interface GrupoNombre { group_name: string; clientes: number }
+
+export async function fetchGrupoNombres(): Promise<GrupoNombre[]> {
+  const { data, error } = await supabase.rpc('grupo_nombres');
+  if (error) fail('No se pudieron cargar los grupos', error);
+  return (data as GrupoNombre[]) || [];
+}

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Database } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { adminObjectFor } from '../../lib/objectCatalog';
+import { adminObjectFor, isPkField } from '../../lib/objectCatalog';
 import ObjectListView from './ObjectListView';
 
 interface Props { objectId: string; onToast: (message: string, type: 'success' | 'error') => void }
@@ -54,7 +54,7 @@ export default function ObjectPage({ objectId, onToast }: Props) {
             <tbody>
               {def.fields.map(f => (
                 <tr key={f.key} className="border-b border-rule-soft last:border-0 hover:bg-rule-soft/50">
-                  <td className="px-4 py-2.5 text-ink font-medium">{f.label}{f.key === def.pk && <span className="ml-2 text-[10px] text-ink-faint">PK</span>}</td>
+                  <td className="px-4 py-2.5 text-ink font-medium">{f.label}{isPkField(def, f.key) && <span className="ml-2 text-[10px] text-ink-faint">PK</span>}</td>
                   <td className="px-4 py-2.5 font-mono text-xs text-ink-soft">{f.key}</td>
                   <td className="px-4 py-2.5"><span className="inline-block px-2 py-0.5 text-xs rounded-full bg-rule-soft border border-rule text-ink-soft">{TYPE_LABEL[f.dataType] || f.dataType}</span></td>
                   <td className="px-4 py-2.5 text-xs">{f.required ? <span className="text-bad font-semibold">S\u00ed</span> : <span className="text-ink-faint">No</span>}</td>

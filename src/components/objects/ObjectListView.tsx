@@ -3,7 +3,7 @@ import { Search, Settings, RefreshCw, Filter, ArrowUp, ArrowDown, Plus, Pencil, 
 import { supabase } from '../../lib/supabase';
 import { usePermissions } from '../../hooks/usePermissions';
 import { fetchUsuariosVisibles } from '../../lib/seguridad';
-import { type AdminObjectDef, fieldMap, formatCell } from '../../lib/objectCatalog';
+import { type AdminObjectDef, fieldMap, formatCell, pkFieldsOf, rowKey, pkMatch } from '../../lib/objectCatalog';
 import {
   type ListView, type ListViewColumn, type ListViewSort, type FilterCriterion, type OwnerScope,
   fetchListViews, fetchPrefs, savePrefs, viewToCriteria, criteriaToViewFilters,
@@ -130,7 +130,7 @@ export default function ObjectListView({ def, onToast }: Props) {
     const sort = effSorting[0];
     const sortField = sort && fm.get(sort.field)?.sortable !== false ? sort.field : null;
     if (sortField) q = q.order(sortField, { ascending: sort.direction === 'asc', nullsFirst: false });
-    if (sortField !== def.pk) q = q.order(def.pk, { ascending: true });
+    for (const k of pkFieldsOf(def)) { if (k !== sortField) q = q.order(k, { ascending: true }); }
     return q.range(offset, offset + PAGE_SIZE - 1);
   }, [def, effCriteria, effLogic, effScope, effSorting, debounced, userId, fm]);
 
@@ -164,8 +164,8 @@ export default function ObjectListView({ def, onToast }: Props) {
     try {
       const { data, count, error } = await buildQuery(rows.length);
       if (error) throw new Error(error.message);
-      const existing = new Set(rows.map(r => String(r[def.pk])));
-      const merged = [...rows, ...((data as unknown as Row[]) || []).filter(r => !existing.has(String(r[def.pk])))];
+      const existing = new Set(rows.map(r => rowKey(def, r)));
+      const merged = [...rows, ...((data as unknown as Row[]) || []).filter(r => !existing.has(rowKey(def, r)))];
       setRows(merged);
       setTotalCount(count || 0);
       setHasMore(merged.length < (count || 0));
@@ -240,7 +240,7 @@ export default function ObjectListView({ def, onToast }: Props) {
   const confirmDelete = async () => {
     if (!deleteRow) return;
     setDeleting(true);
-    const { error } = await supabase.from(def.table).delete().eq(def.pk, deleteRow[def.pk] as string);
+    const { error } = await supabase.from(def.table).delete().match(pkMatch(def, deleteRow));
     setDeleting(false);
     setDeleteRow(null);
     if (error) onToast(error.message, 'error');
@@ -323,7 +323,7 @@ export default function ObjectListView({ def, onToast }: Props) {
             ) : rows.length === 0 ? (
               <tr><td colSpan={effColumns.length + 1} className="px-4 py-10 text-center text-ink-faint">Sin registros para esta vista.</td></tr>
             ) : rows.map(r => (
-              <tr key={String(r[def.pk])} className="border-b border-rule-soft last:border-0 hover:bg-rule-soft/50">
+              <tr key={rowKey(def, r)} className="border-b border-rule-soft last:border-0 hover:bg-rule-soft/50">
                 {effColumns.map(col => {
                   const f = fm.get(col.field);
                   return (
@@ -366,7 +366,7 @@ export default function ObjectListView({ def, onToast }: Props) {
           <div className="relative bg-white rounded-hero shadow-lg border border-rule-soft w-full max-w-md mx-4 p-6">
             <h3 className="text-lg font-bold text-ink mb-1">Eliminar {def.singular}</h3>
             <p className="text-sm text-ink-soft mb-1">Esta acci\u00f3n es permanente y no se puede deshacer.</p>
-            <p className="text-xs text-ink-faint font-mono mb-5">{def.pk}: {String(deleteRow[def.pk])}</p>
+            <p className="text-xs text-ink-faint font-mono mb-5">{pkFieldsOf(def).map(k => `${k}: ${String(deleteRow[k] ?? '')}`).join(' \u00b7 ')}</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setDeleteRow(null)} disabled={deleting} className="inline-flex items-center h-10 px-4 bg-white text-ink-soft font-semibold text-sm rounded-lg border border-rule hover:bg-rule-soft">Cancelar</button>
               <button onClick={confirmDelete} disabled={deleting} className="inline-flex items-center gap-2 h-10 px-4 bg-bad text-white font-semibold text-sm rounded-lg hover:opacity-90 disabled:opacity-60">{deleting && <Loader2 className="w-4 h-4 animate-spin" />} Eliminar</button>
