@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, X, UserPlus, Shield, Ban, CheckCircle, KeyRound, MoreHorizontal, Users, Trash2, Pencil, Mail, Copy, Loader2, RefreshCw, Smartphone } from 'lucide-react';
+import { Search, X, UserPlus, Shield, Ban, CheckCircle, KeyRound, MoreHorizontal, Users, Trash2, Pencil, Mail, Copy, Loader2, RefreshCw, Smartphone, Eye } from 'lucide-react';
+import { iniciarVistaComo } from '../../lib/vistaComo';
 import { useAuth } from '../../hooks/useAuth';
 import { callAdminUsers, type AdminUserRow, type LinkResult } from '../../lib/adminUsers';
 import { fetchPerfiles, fetchRoles, type Perfil, type Rol } from '../../lib/seguridad';
@@ -56,6 +57,7 @@ export default function UsersTab({ onToast }: UsersTabProps) {
   const [showCreate, setShowCreate] = useState(false);
   const [editUser, setEditUser] = useState<AdminUserRow | null>(null);
   const [deleteUser, setDeleteUser] = useState<AdminUserRow | null>(null);
+  const [vistaUser, setVistaUser] = useState<AdminUserRow | null>(null);
   const [reassignTo, setReassignTo] = useState('');
   const [resetMfaUser, setResetMfaUser] = useState<AdminUserRow | null>(null);
   const [linkResult, setLinkResult] = useState<LinkResult | null>(null);
@@ -179,6 +181,7 @@ export default function UsersTab({ onToast }: UsersTabProps) {
                         <MenuItem icon={<Pencil className="w-4 h-4" />} text="Editar" onClick={() => { setMenuId(null); setEditUser(u); }} />
                         <MenuItem icon={<Mail className="w-4 h-4" />} text={pending ? 'Reenviar invitación' : 'Enviar enlace de acceso'} onClick={() => { setMenuId(null); sendLink(u); }} />
                         <MenuItem icon={<Smartphone className="w-4 h-4" />} text="Restablecer 2FA" disabled={!u.mfa_enrolled} onClick={() => { setMenuId(null); setResetMfaUser(u); }} />
+                        <MenuItem icon={<Eye className="w-4 h-4" />} text="Iniciar sesión como" disabled={isMe || !u.is_active} onClick={() => { setMenuId(null); setVistaUser(u); }} />
                         <MenuItem icon={u.is_active ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />} text={u.is_active ? 'Desactivar' : 'Activar'} disabled={isMe} onClick={() => { setMenuId(null); toggleActive(u); }} />
                         <div className="my-1 border-t border-rule-soft" />
                         <MenuItem icon={<Trash2 className="w-4 h-4" />} text="Eliminar" danger disabled={isMe} onClick={() => { setMenuId(null); setDeleteUser(u); }} />
@@ -243,6 +246,29 @@ export default function UsersTab({ onToast }: UsersTabProps) {
             <button onClick={() => setResetMfaUser(null)} className={secondaryBtn}>Cancelar</button>
             <button disabled={busy !== null} className={primaryBtn} onClick={() => { const u = resetMfaUser; setResetMfaUser(null); run(`mfa-${u.id}`, async () => { await callAdminUsers('reset_mfa', { user_id: u.id }); onToast('2FA restablecido', 'success'); await loadUsers(); }); }}>
               <KeyRound className="w-4 h-4" /> Restablecer
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {vistaUser && (
+        <Modal title="Iniciar sesión como" subtitle={vistaUser.email} onClose={() => setVistaUser(null)}>
+          <p className="text-sm text-ink-soft mb-2">
+            Vas a ver Cotizador exactamente como lo ve <strong>{vistaUser.full_name || vistaUser.email}</strong>: sus propuestas, sus permisos y su menú. No se pide contraseña ni 2FA del usuario.
+          </p>
+          <ul className="text-xs text-ink-faint list-disc pl-5 mb-5 space-y-1">
+            <li>Verás un banner naranja arriba mientras la vista esté activa; desde ahí sales cuando quieras.</li>
+            <li>Lo que crees o edites en la vista queda a nombre de ese usuario.</li>
+            <li>La vista caduca sola a las 2 horas y queda registrada en la bitácora.</li>
+          </ul>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setVistaUser(null)} className={secondaryBtn} disabled={busy !== null}>Cancelar</button>
+            <button
+              disabled={busy !== null}
+              className={primaryBtn}
+              onClick={() => { const u = vistaUser; setVistaUser(null); run(`vista-${u.id}`, async () => { await iniciarVistaComo(u.id); window.location.reload(); }); }}
+            >
+              <Eye className="w-4 h-4" /> Entrar como {vistaUser.full_name?.split(' ')[0] || 'usuario'}
             </button>
           </div>
         </Modal>
