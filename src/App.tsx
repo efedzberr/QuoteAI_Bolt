@@ -154,6 +154,7 @@ function normalizeResponse(data: any, customerName: string): any {
 
 interface UploadData {
   customerName: string;
+  projectName: string;
   rows: Record<string, any>[];
   rawDoclingResponse?: any;
   mappingNotice?: string;
@@ -182,6 +183,7 @@ function App() {
   const [jobReferencia, setJobReferencia] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [progressJob, setProgressJob] = useState<Job | null>(null);
+  const [projectName, setProjectName] = useState('');
   const [reviewReadOnly, setReviewReadOnly] = useState(false);
   const [needsPasswordSet, setNeedsPasswordSet] = useState(isPasswordSetupRedirect);
   const [confirmLink, setConfirmLink] = useState(confirmLinkParams);
@@ -234,7 +236,7 @@ function App() {
     const upperCustomer = customerName.toLocaleUpperCase('es-MX');
     const ref = `QAI-${Date.now()}`;
     setJobReferencia(ref);
-    createJob(ref, upperCustomer).then((job) => {
+    createJob(ref, upperCustomer, projectName || undefined).then((job) => {
       if (job) {
         setJobId(job.id);
         updateJobStatus(ref, 'extraccion');
@@ -260,12 +262,13 @@ function App() {
         createJobLines(job.id, jobLines);
       }
     });
-  }, [jobId]);
+  }, [jobId, projectName]);
 
   const handleFileReady = useCallback((data: UploadData) => {
     const upperCustomer = data.customerName.toLocaleUpperCase('es-MX');
     const normalizedData = { ...data, customerName: upperCustomer };
     setUploadData(normalizedData);
+    setProjectName(data.projectName || '');
     setWebhookResponse(null);
     setRawResponse('');
     setWebhookError(null);
@@ -276,12 +279,14 @@ function App() {
     }
   }, [jobReferencia]);
 
-  const handleCreateManualQuote = useCallback((customerName: string) => {
+  const handleCreateManualQuote = useCallback((customerName: string, projectNameArg: string) => {
     const upperCustomer = customerName.toLocaleUpperCase('es-MX');
+    setProjectName(projectNameArg);
     const emptyQuoteData = {
       status: 'manual',
       quoteReference: `QAI-MANUAL-${Date.now()}`,
       customerName: upperCustomer,
+      projectName: projectNameArg,
       generatedDate: new Date().toLocaleDateString('es-MX'),
       totalLines: 0,
       flaggedLines: 0,
@@ -311,6 +316,7 @@ function App() {
       body: JSON.stringify({
         referencia: jobReferencia,
         customerName: uploadData.customerName,
+        projectName: projectName || '',
         noCliente: uploadData.salesforceAccount?.noCliente || null,
         rows: sanitizedRows,
       }),
@@ -362,6 +368,7 @@ function App() {
     setJobId(null);
     setResumeExtraction(null);
     setReviewReadOnly(false);
+    setProjectName('');
   }, []);
 
   const handleBackToPreview = useCallback(() => {
@@ -421,6 +428,7 @@ function App() {
             status: 'completada',
             quoteReference: jobReferencia,
             customerName,
+            projectName: projectName || '',
             generatedDate: new Date().toLocaleDateString('es-MX'),
             totalLines: originalLines.length,
             currency: 'MXN',
@@ -431,6 +439,7 @@ function App() {
             status: 'completada',
             quoteReference: jobReferencia,
             customerName,
+            projectName: projectName || '',
             generatedDate: new Date().toLocaleDateString('es-MX'),
             totalLines: editedLines.length,
             currency: 'MXN',
@@ -466,7 +475,7 @@ function App() {
           updateJobPayload(newRef, reexecJob.payload, reexecJob.total_lineas || 0);
           updateJobStatus(newRef, 'revision_datos');
           const rows = reexecJob.payload.rows || reexecJob.payload.lines || [];
-          setUploadData({ customerName: cliente, rows });
+          setUploadData({ customerName: cliente, projectName: reexecJob.nombre_proyecto || '', rows });
           setCurrentScreen('preview');
         }
       }
@@ -506,6 +515,7 @@ function App() {
         const quoteData = {
           quoteReference: ref,
           customerName: reexecJob.cliente || '',
+          projectName: reexecJob.nombre_proyecto || '',
           generatedDate: new Date(reexecJob.created_at).toLocaleDateString('es-MX'),
           totalLines: reconstructedLines.length,
           currency: 'MXN',
@@ -569,6 +579,7 @@ function App() {
           status: job.status,
           quoteReference: job.referencia,
           customerName: job.cliente || '',
+          projectName: job.nombre_proyecto || '',
           generatedDate: new Date(job.created_at).toLocaleDateString('es-MX'),
           totalLines: originalLines.length,
           currency: 'MXN',
@@ -580,6 +591,7 @@ function App() {
           status: job.status,
           quoteReference: job.referencia,
           customerName: job.cliente || '',
+          projectName: job.nombre_proyecto || '',
           generatedDate: new Date(job.created_at).toLocaleDateString('es-MX'),
           totalLines: editedLines.length,
           currency: 'MXN',
@@ -632,6 +644,7 @@ function App() {
           status: 'pdf_generado',
           quoteReference: job.referencia,
           customerName: job.cliente || '',
+          projectName: job.nombre_proyecto || '',
           generatedDate: new Date(job.created_at).toLocaleDateString('es-MX'),
           totalLines: reconstructedLines.length,
           currency: 'MXN',
@@ -686,6 +699,7 @@ function App() {
           status: 'validacion',
           quoteReference: jobReferencia,
           customerName: editedQuoteData?.customerName || webhookResponse?.customerName || '',
+          projectName: projectName || '',
           generatedDate: new Date().toLocaleDateString('es-MX'),
           totalLines: editedLines.length,
           currency: 'MXN',
@@ -718,7 +732,7 @@ function App() {
     } else if (s === 'revision_datos') {
       if (job.payload) {
         const rows = job.payload.rows || (Array.isArray(job.payload) ? job.payload : []);
-        setUploadData({ customerName: job.cliente || '', rows });
+        setUploadData({ customerName: job.cliente || '', projectName: job.nombre_proyecto || '', rows });
         setCurrentScreen('preview');
       }
     } else if (s === 'matching' || s === 'procesando') {

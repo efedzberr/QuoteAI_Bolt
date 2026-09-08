@@ -24,6 +24,7 @@ export interface Job {
   grupo?: string | null;
   precio_seleccionado?: 'grupo' | 'lista';
   owner_id?: string | null;
+  nombre_proyecto?: string | null;
   owner?: { id: string; full_name: string | null; email: string } | null;
 }
 
@@ -39,10 +40,10 @@ export async function reassignJobOwner(jobId: string, ownerId: string): Promise<
   return true;
 }
 
-export async function createJob(referencia: string, cliente: string): Promise<Job | null> {
+export async function createJob(referencia: string, cliente: string, nombreProyecto?: string): Promise<Job | null> {
   const { data, error } = await supabase
     .from('jobs')
-    .insert({ referencia, cliente, status: 'nueva_solicitud' })
+    .insert({ referencia, cliente, status: 'nueva_solicitud', nombre_proyecto: nombreProyecto || null })
     .select()
     .single();
 

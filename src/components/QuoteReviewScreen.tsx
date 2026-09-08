@@ -19,6 +19,7 @@ interface QuoteData {
   status?: string;
   quoteReference: string;
   customerName: string;
+  projectName?: string;
   generatedDate: string;
   totalLines: number;
   currency: string;
@@ -878,6 +879,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         <div className="max-w-[1480px] mx-auto px-7 pt-5 pb-3 flex flex-wrap items-center gap-x-8 gap-y-2">
           <SummaryField label="Referencia" value={activeQuoteData.quoteReference} />
           <SummaryField label="Cliente" value={activeQuoteData.customerName} />
+          <SummaryField label="Proyecto" value={activeQuoteData.projectName || '\u2014'} />
           <SummaryField label="No. cliente" value={jobNoCliente || '\u2014'} />
           <div className="flex flex-col">
             <span

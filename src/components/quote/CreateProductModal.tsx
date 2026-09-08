@@ -55,7 +55,7 @@ export default function CreateProductModal({ open, onClose, onProductCreated, pr
   const [descripcionCorta, setDescripcionCorta] = useState('');
   const [descripcionLarga, setDescripcionLarga] = useState('');
   const [marca, setMarca] = useState('');
-  const [unidadMedida, setUnidadMedida] = useState('PZ');
+  const [unidadMedida, setUnidadMedida] = useState('');
   const [precioUnitario, setPrecioUnitario] = useState('');
   const [cantidad, setCantidad] = useState('1');
 

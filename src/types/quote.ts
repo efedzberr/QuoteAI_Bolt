@@ -15,6 +15,7 @@ export interface QuoteLine {
 export interface QuoteData {
   quoteReference: string;
   customerName: string;
+  projectName?: string;
   generatedDate: string;
   totalLines: number;
   currency: string;

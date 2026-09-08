@@ -58,9 +58,13 @@ function Header({
           <Text style={styles.headerInfoLabel}>REFERENCIA</Text>
           <Text style={styles.headerInfoValue}>SQ {refNumber}</Text>
         </View>
-        <View style={styles.headerInfoRowLast}>
+        <View style={styles.headerInfoRow}>
           <Text style={styles.headerInfoLabel}>COTIZACION</Text>
           <Text style={styles.headerInfoValue}>{refNumber}</Text>
+        </View>
+        <View style={styles.headerInfoRowLast}>
+          <Text style={styles.headerInfoLabel}>PROYECTO</Text>
+          <Text style={styles.headerInfoValue}>{quoteData.projectName || '\u2014'}</Text>
         </View>
       </View>
     </View>

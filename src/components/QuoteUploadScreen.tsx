@@ -20,6 +20,7 @@ interface SalesforceAccount {
 
 interface ParsedData {
   customerName: string;
+  projectName: string;
   salesforceAccount?: SalesforceAccount;
   rows: any[];
   rawDoclingResponse?: any;
@@ -29,7 +30,7 @@ interface ParsedData {
 interface QuoteUploadScreenProps {
   onFileReady: (data: ParsedData) => void;
   onExtractionComplete?: (rows: any[], customerName: string) => void;
-  onCreateManualQuote: (customerName: string) => void;
+  onCreateManualQuote: (customerName: string, projectName: string) => void;
   onOpenAdmin?: () => void;
   onBackToHome?: () => void;
   initialRows?: any[];
@@ -48,6 +49,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
   const fileInputRef = useRef<HTMLInputElement>(null);
   const auth = useAuth();
   const [customerName, setCustomerName] = useState(initialCustomerName || '');
+  const [projectName, setProjectName] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parsedRows, setParsedRows] = useState<any[]>(initialRows || []);
   const [parseStatus, setParseStatus] = useState<ParseStatus>(initialRows && initialRows.length > 0 ? 'success' : 'idle');
@@ -339,7 +341,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
       return;
     }
     setManualError(null);
-    onCreateManualQuote(customerName.trim());
+    onCreateManualQuote(customerName.trim(), projectName.trim());
   };
 
   const handleSubmit = async () => {
@@ -347,6 +349,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
     if (parsedRows.length === 0) return;
     onFileReady({
       customerName: customerName.trim(),
+      projectName: projectName.trim(),
       salesforceAccount: selectedAccount || undefined,
       rows: parsedRows,
     });
@@ -474,6 +477,27 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
               {manualError && (
                 <p className="mt-1.5 text-[#BA0517]" style={{ fontSize: 13 }}>{manualError}</p>
               )}
+            </div>
+
+            {/* Section - Project Name */}
+            <div className="mb-6">
+              <label
+                className="block uppercase mb-2 text-[#747474]"
+                style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em' }}
+              >
+                Nombre del proyecto (opcional)
+              </label>
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value.toLocaleUpperCase('es-MX'))}
+                placeholder="ej. FRACC. CUMBRES, PLANTA MONTERREY"
+                className="w-full px-3.5 py-3 border border-[#E5E5E5] rounded-lg text-[#181818] placeholder:text-[#A3A3A3] focus:outline-none focus:border-[#0176D3] focus:ring-[3px] focus:ring-[#EAF5FE] transition-all"
+                style={{ fontSize: 14 }}
+              />
+              <p className="mt-1.5 text-[#747474]" style={{ fontSize: 12 }}>
+                Obra, fraccionamiento u orden de compra asociada.
+              </p>
             </div>
 
             {/* Section B - File Upload */}

@@ -474,6 +474,7 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
                 <thead>
                   <tr className="text-xs text-ink-faint uppercase tracking-wider border-b border-rule-soft">
                     <th className="text-left py-3 px-5 font-medium">Cliente / Propuesta</th>
+                    <th className="text-left py-3 px-3 font-medium">Proyecto</th>
                     <th className="text-left py-3 px-3 font-medium">Propietario</th>
                     <th className="text-center py-3 px-3 font-medium">Líneas</th>
                     <th className="text-center py-3 px-3 font-medium">Productos</th>
@@ -518,6 +519,9 @@ function HomeDashboard({ onNewQuote, onOpenAdmin, onOpenCatalog, onResumeJob, on
                           <td className="py-3 px-5">
                             <p className="font-medium text-ink text-sm">{job.cliente || 'Sin cliente'}</p>
                             <p className="text-[11px] text-ink-faint font-mono">{job.referencia}</p>
+                          </td>
+                          <td className="py-3 px-3 text-sm text-ink-muted truncate max-w-[160px]">
+                            {job.nombre_proyecto || '\u2014'}
                           </td>
                           <td className="py-3 px-3 text-xs text-ink-soft whitespace-nowrap">
                             {job.owner?.full_name || job.owner?.email || <span className="text-ink-faint">Sin dueño</span>}
