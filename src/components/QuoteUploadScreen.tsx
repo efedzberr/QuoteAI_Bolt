@@ -43,7 +43,7 @@ type ParseStatus = 'idle' | 'processing' | 'success' | 'error';
 const RAILWAY_EXTRACT_URL = 'https://quoteai-production.up.railway.app/extract';
 const RAILWAY_ACCOUNTS_URL = 'https://quoteai-production.up.railway.app/accounts/search';
 
-const SUPPORTED_EXTENSIONS = ['xlsx', 'xls', 'csv', 'pdf', 'docx', 'doc', 'txt', 'png', 'jpg', 'jpeg', 'webp'];
+const SUPPORTED_EXTENSIONS = ['xlsx', 'xls', 'csv', 'pdf', 'docx', 'doc', 'txt', 'md', 'rtf', 'html', 'htm', 'json', 'xml', 'png', 'jpg', 'jpeg', 'webp'];
 
 export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, onCreateManualQuote, onOpenAdmin, onBackToHome, initialRows, initialCustomerName }: QuoteUploadScreenProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -143,6 +143,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
     if (extractionNotifiedRef.current) return;
     if (parseStatus !== 'success' || parsedRows.length === 0) return;
     if (!customerName.trim()) return;
+    if (!projectName.trim()) return;
     extractionNotifiedRef.current = true;
     onExtractionComplete?.(parsedRows, customerName.trim());
   }, [parseStatus, parsedRows, customerName, onExtractionComplete]);
@@ -285,6 +286,12 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
       case 'doc':
         return <FileText className="w-6 h-6 text-blue-600 flex-shrink-0" />;
       case 'txt':
+      case 'md':
+      case 'rtf':
+      case 'html':
+      case 'htm':
+      case 'json':
+      case 'xml':
         return <FileText className="w-6 h-6 text-gray-600 flex-shrink-0" />;
       case 'png':
       case 'jpg':
@@ -336,8 +343,12 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
   }, []);
 
   const handleCreateManual = () => {
+    if (!projectName.trim()) {
+      setManualError('Escribe el nombre del proyecto.');
+      return;
+    }
     if (!customerName.trim()) {
-      setManualError('Please enter a customer name first');
+      setManualError('Escribe el nombre del cliente.');
       return;
     }
     setManualError(null);
@@ -356,6 +367,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
   };
 
   const isButtonEnabled =
+    projectName.trim() !== '' &&
     customerName.trim() !== '' &&
     parseStatus === 'success';
 
@@ -397,13 +409,34 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
           <div className="bg-white border border-[#E5E5E5] rounded-xl p-8"
                style={{ boxShadow: '0 1px 2px rgba(0,0,0,.05)' }}>
 
+            {/* Section - Project Name */}
+            <div className="mb-6">
+              <label
+                className="block uppercase mb-2 text-[#747474]"
+                style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em' }}
+              >
+                Nombre del proyecto *
+              </label>
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value.toLocaleUpperCase('es-MX'))}
+                placeholder="ej. FRACC. CUMBRES, PLANTA MONTERREY"
+                className="w-full px-3.5 py-3 border border-[#E5E5E5] rounded-lg text-[#181818] placeholder:text-[#A3A3A3] focus:outline-none focus:border-[#0176D3] focus:ring-[3px] focus:ring-[#EAF5FE] transition-all"
+                style={{ fontSize: 14 }}
+              />
+              <p className="mt-1.5 text-[#747474]" style={{ fontSize: 12 }}>
+                Obra, fraccionamiento u orden de compra asociada.
+              </p>
+            </div>
+
             {/* Section A - Customer Information */}
             <div className="mb-6">
               <label
                 className="block uppercase mb-2 text-[#747474]"
                 style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em' }}
               >
-                Cliente o referencia
+                Cliente *
               </label>
               <div className="relative" ref={sfDropdownRef}>
                 <div className="relative">
@@ -479,27 +512,6 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
               )}
             </div>
 
-            {/* Section - Project Name */}
-            <div className="mb-6">
-              <label
-                className="block uppercase mb-2 text-[#747474]"
-                style={{ fontSize: 11, fontWeight: 700, letterSpacing: '0.08em' }}
-              >
-                Nombre del proyecto (opcional)
-              </label>
-              <input
-                type="text"
-                value={projectName}
-                onChange={(e) => setProjectName(e.target.value.toLocaleUpperCase('es-MX'))}
-                placeholder="ej. FRACC. CUMBRES, PLANTA MONTERREY"
-                className="w-full px-3.5 py-3 border border-[#E5E5E5] rounded-lg text-[#181818] placeholder:text-[#A3A3A3] focus:outline-none focus:border-[#0176D3] focus:ring-[3px] focus:ring-[#EAF5FE] transition-all"
-                style={{ fontSize: 14 }}
-              />
-              <p className="mt-1.5 text-[#747474]" style={{ fontSize: 12 }}>
-                Obra, fraccionamiento u orden de compra asociada.
-              </p>
-            </div>
-
             {/* Section B - File Upload */}
             <div className="mb-6">
               <label
@@ -527,7 +539,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
                 >
                   <input
                     type="file"
-                    accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.txt,.png,.jpg,.jpeg,.webp"
+                    accept=".xlsx,.xls,.csv,.pdf,.docx,.doc,.txt,.md,.rtf,.html,.htm,.json,.xml,.png,.jpg,.jpeg,.webp"
                     ref={fileInputRef}
                     onChange={handleFileChange}
                     style={{ display: 'none' }}
@@ -543,7 +555,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
                       o haz clic para buscarlo
                     </p>
                     <p className="text-[#747474]" style={{ fontSize: 12 }}>
-                      Formatos soportados: PDF, XLSX, XLS, CSV, DOCX, TXT, PNG, JPG, WEBP · Max. 20 MB
+                      Formatos soportados: PDF, XLSX, XLS, CSV, DOCX, TXT, MD, RTF, HTML, JSON, XML, PNG, JPG, WEBP · Max. 20 MB
                     </p>
                   </div>
                 </div>
