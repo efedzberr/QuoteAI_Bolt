@@ -5,14 +5,16 @@ import GeneralSettingsTab from './admin/GeneralSettingsTab';
 import UsersTab from './admin/UsersTab';
 import PerfilesTab from './admin/PerfilesTab';
 import RolesTab from './admin/RolesTab';
+import ObjectPage from './objects/ObjectPage';
+import { ADMIN_OBJECTS } from '../lib/objectCatalog';
 
 interface AdminScreenProps {
   onBack: () => void;
 }
 
-type AdminItemId = 'users' | 'profiles' | 'roles' | 'general';
+type AdminItemId = 'users' | 'profiles' | 'roles' | 'general' | `obj_${string}`;
 
-interface MenuItem { id: AdminItemId; label: string; adminOnly?: boolean; soon?: boolean }
+interface MenuItem { id: AdminItemId; label: string; adminOnly?: boolean; soon?: boolean; objectId?: string }
 interface MenuSection { id: string; label: string; items: MenuItem[] }
 
 const MENU: MenuSection[] = [
@@ -22,6 +24,9 @@ const MENU: MenuSection[] = [
       { id: 'profiles', label: 'Perfiles', adminOnly: true },
       { id: 'roles', label: 'Roles y jerarquía', adminOnly: true },
     ],
+  },
+  {
+    id: 'objects_fields', label: 'Objetos y campos', items: ADMIN_OBJECTS.map(o => ({ id: `obj_${o.id}` as AdminItemId, label: o.label, objectId: o.id })),
   },
   {
     id: 'configuration', label: 'Configuración', items: [
@@ -48,10 +53,16 @@ function saveMenuState(collapsed: Set<string>, last: string) {
 }
 
 export default function AdminScreen(_props: AdminScreenProps) {
-  const { isAdmin, loading: permLoading } = usePermissions();
+  const { isAdmin, loading: permLoading, can } = usePermissions();
+
+  const objectVisible = (objectId?: string) => {
+    if (!objectId) return true;
+    const def = ADMIN_OBJECTS.find(o => o.id === objectId);
+    return !def?.permObject || permLoading || can(def.permObject, 'leer');
+  };
 
   const visibleSections = MENU
-    .map(sec => ({ ...sec, items: sec.items.filter(i => !i.adminOnly || isAdmin) }))
+    .map(sec => ({ ...sec, items: sec.items.filter(i => (!i.adminOnly || isAdmin) && objectVisible(i.objectId)) }))
     .filter(sec => sec.items.length > 0);
   const visibleItems = visibleSections.flatMap(sec => sec.items);
 
@@ -164,6 +175,7 @@ export default function AdminScreen(_props: AdminScreenProps) {
               {active === 'users' && isAdmin && <UsersTab onToast={handleToast} />}
               {active === 'profiles' && isAdmin && <PerfilesTab onToast={handleToast} />}
               {active === 'roles' && isAdmin && <RolesTab onToast={handleToast} />}
+              {activeItem?.objectId && <ObjectPage key={activeItem.objectId} objectId={activeItem.objectId} onToast={handleToast} />}
             </div>
           </div>
         </div>
