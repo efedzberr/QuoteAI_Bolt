@@ -237,7 +237,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
       const rows = json?.data || [];
 
       if (rows.length === 0) {
-        setParseError('No se encontraron productos en el archivo. Verifica que contenga una lista clara con productos, cantidades y descripciones.');
+        setParseError('No se encontraron productos en el archivo. Se acepta una lista con códigos, con descripciones o con ambos, más cantidad y unidad de medida.');
         setParseStatus('error');
         return;
       }
