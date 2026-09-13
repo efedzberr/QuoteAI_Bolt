@@ -58,6 +58,8 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
   const [rowCount, setRowCount] = useState<number>(initialRows?.length || 0);
   const [manualError, setManualError] = useState<string | null>(null);
   const [fractionalRows, setFractionalRows] = useState<FractionalRow[] | null>(null);
+  const [hojas, setHojas] = useState<{ nombre: string; filas: number; encabezado: boolean; muestra: string[] }[]>([]);
+  const [hojaSeleccionada, setHojaSeleccionada] = useState<string | null>(null);
   const extractionNotifiedRef = useRef(!!initialRows && initialRows.length > 0);
   const { logs, clearLogs } = useDebugLogs();
 
@@ -200,13 +202,14 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
-  const extractViaRailway = useCallback(async (file: File) => {
+  const extractViaRailway = useCallback(async (file: File, sheet?: string) => {
     setParseStatus('processing');
     setParseError(null);
 
     try {
       const form = new FormData();
       form.append('file', file);
+      if (sheet) form.append('sheet', sheet);
 
       let response: Response;
       try {
@@ -235,6 +238,9 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
       }
 
       const rows = json?.data || [];
+
+      setHojas(Array.isArray(json?.hojas) ? json.hojas : []);
+      setHojaSeleccionada(json?.hoja_seleccionada ?? null);
 
       if (rows.length === 0) {
         setParseError('No se encontraron productos en el archivo. Se acepta una lista con códigos, con descripciones o con ambos, más cantidad y unidad de medida.');
@@ -336,11 +342,18 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
     setParseStatus('idle');
     setParseError(null);
     setRowCount(0);
+    setHojas([]);
+    setHojaSeleccionada(null);
     extractionNotifiedRef.current = false;
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   }, []);
+
+  const handleSheetChange = useCallback((nombre: string) => {
+    if (!selectedFile || nombre === hojaSeleccionada) return;
+    extractViaRailway(selectedFile, nombre);
+  }, [selectedFile, hojaSeleccionada, extractViaRailway]);
 
   const handleCreateManual = () => {
     if (!projectName.trim()) {
@@ -612,6 +625,36 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
                 </div>
               )}
 
+              {/* Sheet selector */}
+              {parseStatus === 'success' && hojas.length > 1 && (() => {
+                const hojaActual = hojas.find(h => h.nombre === hojaSeleccionada);
+                return (
+                  <div className="bg-white rounded-xl border border-[#E5E5E5] px-4 py-3 mt-3" style={{ boxShadow: '0 1px 2px rgba(0,0,0,.05)' }}>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: '#181818' }} className="mb-2">
+                      Este archivo tiene {hojas.length} hojas. ¿Cuál contiene la lista de productos?
+                    </p>
+                    <select
+                      value={hojaSeleccionada ?? ''}
+                      onChange={(e) => handleSheetChange(e.target.value)}
+                      disabled={parseStatus === 'processing' as any}
+                      className="w-full border border-[#D1D5DB] rounded-lg px-3 py-2 text-[#181818] focus:outline-none focus:border-[#0176D3] focus:ring-[3px] focus:ring-[#EAF5FE] transition-all"
+                      style={{ fontSize: 13 }}
+                    >
+                      {hojas.map(h => (
+                        <option key={h.nombre} value={h.nombre}>
+                          {h.nombre} — {h.filas} filas{h.encabezado ? ' · con encabezado' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    {hojaActual && hojaActual.muestra && hojaActual.muestra.length > 0 && (
+                      <p style={{ fontSize: 11, color: '#747474' }} className="mt-1.5">
+                        Ejemplo: {hojaActual.muestra.join(' · ')}
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* Resumed extraction state (no file, but rows pre-loaded) */}
               {!selectedFile && parseStatus === 'success' && parsedRows.length > 0 && (
                 <div
@@ -657,7 +700,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
                 {parseStatus === 'success' && (
                   <div className="flex items-center gap-2 text-[#2E844A]" style={{ fontSize: 13, fontWeight: 600 }}>
                     <Check className="w-4 h-4" />
-                    <span>{rowCount} {rowCount === 1 ? 'fila detectada' : 'filas detectadas'}</span>
+                    <span>{rowCount} {rowCount === 1 ? 'fila detectada' : 'filas detectadas'}{hojaSeleccionada && hojas.length > 1 ? ` · hoja "${hojaSeleccionada}"` : ''}</span>
                   </div>
                 )}
                 {parseStatus === 'error' && (
