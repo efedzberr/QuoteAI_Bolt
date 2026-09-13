@@ -14,6 +14,7 @@ export interface ObjectFieldDef {
   lookupAllowNew?: boolean; // permite escribir un valor que no está en la lista
   notes?: string;
   align?: 'left' | 'right';
+  embed?: string;
 }
 
 export interface AdminObjectDef {
@@ -39,11 +40,18 @@ export const JOB_STATUS_VALUES = [
   'validacion', 'generacion', 'completado', 'completada', 'pdf_generado', 'error', 'procesando', 'en_revision', 'enviado_validacion',
 ];
 
+const AUDIT_FIELDS: ObjectFieldDef[] = [
+  { key: 'created_at', label: 'Fecha de creación', dataType: 'datetime' },
+  { key: 'created_by', label: 'Creado por', dataType: 'user', sortable: false, embed: 'creador' },
+  { key: 'updated_at', label: 'Última actualización', dataType: 'datetime' },
+  { key: 'updated_by', label: 'Actualizado por', dataType: 'user', sortable: false, embed: 'actualizador' },
+];
+
 export const ADMIN_OBJECTS: AdminObjectDef[] = [
   {
     id: 'propuestas', label: 'Propuestas', singular: 'propuesta', table: 'jobs', pk: 'id', pkIsGenerated: true,
     readOnly: true, permObject: 'cotizaciones', ownerField: 'owner_id',
-    select: '*, owner:user_profiles!jobs_owner_id_fkey(id, full_name, email)',
+    select: '*, owner:user_profiles!jobs_owner_id_fkey(id, full_name, email), creador:user_profiles!jobs_created_by_fkey(full_name, email), actualizador:user_profiles!jobs_updated_by_fkey(full_name, email)',
     searchFields: ['referencia', 'cliente', 'nombre_proyecto', 'no_cliente', 'grupo'],
     systemViewId: 'b0000000-0000-0000-0000-000000000001',
     note: 'Las propuestas se administran desde el Dashboard; aquí solo se consultan.',
@@ -61,14 +69,13 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
       { key: 'sf_opportunity_id', label: 'Oportunidad SF', dataType: 'text' },
       { key: 'sf_quote_id', label: 'Cotización SF', dataType: 'text' },
       { key: 'sf_sent_at', label: 'Enviada a SF', dataType: 'datetime' },
-      { key: 'created_at', label: 'Fecha de creación', dataType: 'datetime', required: true },
-      { key: 'updated_at', label: 'Última actualización', dataType: 'datetime' },
+      ...AUDIT_FIELDS,
     ],
   },
   {
     id: 'grupos', label: 'Grupos', singular: 'grupo', table: 'grupo', pk: 'group_name', pkFields: ['group_name', 'no_cliente'], pkIsGenerated: false,
     readOnly: false, permObject: 'grupos',
-    select: '*',
+    select: '*, creador:user_profiles!grupo_created_by_fkey(full_name, email), actualizador:user_profiles!grupo_updated_by_fkey(full_name, email)',
     searchFields: ['group_name', 'no_cliente'],
     systemViewId: 'b0000000-0000-0000-0000-000000000003',
     note: 'Relación cliente → grupo de precios. La carga externa escribe loaded_at; los cambios manuales pueden ser sobrescritos por una recarga.',
@@ -76,12 +83,13 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
       { key: 'group_name', label: 'Grupo', dataType: 'text', required: true, editable: true, lookup: 'grupos', lookupAllowNew: true, notes: 'Elige un grupo existente; solo escribe uno nuevo si realmente no existe. Referenciado por precio_grupo.group_name' },
       { key: 'no_cliente', label: 'No. cliente', dataType: 'text', required: true, editable: true, notes: 'Junto con Grupo forma la llave del registro' },
       { key: 'loaded_at', label: 'Cargado', dataType: 'datetime', notes: 'Fecha de carga externa' },
+      ...AUDIT_FIELDS,
     ],
   },
   {
     id: 'productos', label: 'Productos', singular: 'producto', table: 'products', pk: 'CodigoArt', pkIsGenerated: false,
     readOnly: true, permObject: null,
-    select: 'CodigoArt,DescCortaArt,DescLargaArt,Marca,UMP,DeptoArt,CategoriaArt,SubCategoriaArt,CodBarras,GarantiaArt,PesoArt,Precio',
+    select: 'CodigoArt,DescCortaArt,DescLargaArt,Marca,UMP,DeptoArt,CategoriaArt,SubCategoriaArt,CodBarras,GarantiaArt,PesoArt,Precio,created_at,updated_at,created_by,updated_by,creador:user_profiles!products_created_by_fkey(full_name, email),actualizador:user_profiles!products_updated_by_fkey(full_name, email)',
     searchFields: ['CodigoArt', 'DescCortaArt', 'DescLargaArt', 'Marca', 'CodBarras'],
     systemViewId: 'b0000000-0000-0000-0000-000000000004',
     note: 'Catálogo maestro (solo lectura). Se carga por importación; no se edita desde la app.',
@@ -98,12 +106,13 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
       { key: 'GarantiaArt', label: 'Garantía', dataType: 'text' },
       { key: 'PesoArt', label: 'Peso', dataType: 'number', align: 'right' },
       { key: 'Precio', label: 'Precio lista', dataType: 'currency', align: 'right' },
+      ...AUDIT_FIELDS,
     ],
   },
   {
     id: 'precio_grupo', label: 'Precio grupo', singular: 'precio', table: 'precio_grupo', pk: 'id', pkIsGenerated: true,
     readOnly: false, permObject: 'precio_grupo',
-    select: '*',
+    select: '*, creador:user_profiles!precio_grupo_created_by_fkey(full_name, email), actualizador:user_profiles!precio_grupo_updated_by_fkey(full_name, email)',
     searchFields: ['group_name', 'codigo_art'],
     systemViewId: 'b0000000-0000-0000-0000-000000000005',
     note: 'Precio por grupo y artículo. La carga externa escribe loaded_at; los cambios manuales pueden ser sobrescritos por una recarga.',
@@ -116,6 +125,7 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
       { key: 'precio_art', label: 'Precio', dataType: 'currency', editable: true, align: 'right' },
       { key: 'precio_promo_art', label: 'Precio promo', dataType: 'currency', editable: true, align: 'right', notes: 'Si es > 0 tiene prioridad en el matching' },
       { key: 'loaded_at', label: 'Cargado', dataType: 'datetime', notes: 'Fecha de carga externa' },
+      ...AUDIT_FIELDS,
     ],
   },
 ];
@@ -148,8 +158,9 @@ export function isPkField(def: AdminObjectDef, key: string): boolean {
 
 export function formatCell(field: ObjectFieldDef, value: unknown, row?: Record<string, unknown>): string {
   if (field.dataType === 'user') {
-    const owner = row?.owner as { full_name?: string | null; email?: string } | null | undefined;
-    return owner?.full_name || owner?.email || (value ? String(value) : '—');
+    const key = field.embed || 'owner';
+    const u = row?.[key] as { full_name?: string | null; email?: string } | null | undefined;
+    return u?.full_name || u?.email || (value ? String(value) : '—');
   }
   if (value === null || value === undefined || value === '') return '—';
   switch (field.dataType) {
