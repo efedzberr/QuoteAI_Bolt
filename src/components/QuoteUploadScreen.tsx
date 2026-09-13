@@ -29,7 +29,7 @@ interface ParsedData {
 
 interface QuoteUploadScreenProps {
   onFileReady: (data: ParsedData) => void;
-  onExtractionComplete?: (rows: any[], customerName: string) => void;
+  onExtractionComplete?: (rows: any[], customerName: string, projectName: string) => void;
   onCreateManualQuote: (customerName: string, projectName: string) => void;
   onOpenAdmin?: () => void;
   onBackToHome?: () => void;
@@ -147,8 +147,8 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
     if (!customerName.trim()) return;
     if (!projectName.trim()) return;
     extractionNotifiedRef.current = true;
-    onExtractionComplete?.(parsedRows, customerName.trim());
-  }, [parseStatus, parsedRows, customerName, onExtractionComplete]);
+    onExtractionComplete?.(parsedRows, customerName.trim(), projectName.trim());
+  }, [parseStatus, parsedRows, customerName, projectName, onExtractionComplete]);
 
   const detectFractionalRows = useCallback((rows: any[]): FractionalRow[] => {
     const fractional: FractionalRow[] = [];

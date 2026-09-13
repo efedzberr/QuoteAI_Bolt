@@ -229,14 +229,16 @@ function App() {
     return () => { sub.subscription.unsubscribe(); };
   }, []);
 
-  const handleExtractionComplete = useCallback((rows: any[], customerName: string) => {
+  const handleExtractionComplete = useCallback((rows: any[], customerName: string, projectNameArg: string) => {
     // Anti-duplicate: if we already have a jobId for this session, skip
     if (jobId) return;
 
     const upperCustomer = customerName.toLocaleUpperCase('es-MX');
     const ref = `QAI-${Date.now()}`;
+    const proyecto = (projectNameArg || projectName || '').trim();
+    setProjectName(proyecto);
     setJobReferencia(ref);
-    createJob(ref, upperCustomer, projectName || undefined).then((job) => {
+    createJob(ref, upperCustomer, proyecto || undefined).then((job) => {
       if (job) {
         setJobId(job.id);
         updateJobStatus(ref, 'extraccion');
