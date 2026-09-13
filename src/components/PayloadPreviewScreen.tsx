@@ -40,14 +40,14 @@ export default function PayloadPreviewScreen({
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
-  const editableColumns = ['Codigo', 'Descripcion', 'Unid', 'Cant'];
+  const editableColumns = ['Codigo', 'Descripcion', 'Cant', 'Unid'];
 
   const allColumns = useMemo(() => {
     const colSet = new Set<string>();
     editableRows.forEach((row) => Object.keys(row).forEach((k) => colSet.add(k)));
     colSet.delete('_lineIndex');
     const cols = Array.from(colSet);
-    const priority = ['IEST-01', 'Codigo', 'Descripcion', 'Unid', 'Cant'];
+    const priority = ['IEST-01', 'Codigo', 'Descripcion', 'Cant', 'Unid'];
     return [
       ...priority.filter(c => cols.includes(c)),
       ...cols.filter(c => !priority.includes(c)),
