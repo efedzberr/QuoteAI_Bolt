@@ -15,6 +15,7 @@ export interface ObjectFieldDef {
   notes?: string;
   align?: 'left' | 'right';
   embed?: string;
+  auditUserEmbed?: string;
 }
 
 export interface AdminObjectDef {
@@ -43,7 +44,7 @@ export const JOB_STATUS_VALUES = [
 const AUDIT_FIELDS: ObjectFieldDef[] = [
   { key: 'created_at', label: 'Fecha de creación', dataType: 'datetime' },
   { key: 'created_by', label: 'Creado por', dataType: 'user', sortable: false, embed: 'creador' },
-  { key: 'updated_at', label: 'Última actualización', dataType: 'datetime' },
+  { key: 'updated_at', label: 'Última modificación', dataType: 'datetime', auditUserEmbed: 'actualizador' },
   { key: 'updated_by', label: 'Actualizado por', dataType: 'user', sortable: false, embed: 'actualizador' },
 ];
 

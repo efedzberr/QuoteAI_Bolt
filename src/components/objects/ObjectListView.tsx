@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { usePermissions } from '../../hooks/usePermissions';
 import { fetchUsuariosVisibles } from '../../lib/seguridad';
 import { type AdminObjectDef, fieldMap, formatCell, pkFieldsOf, rowKey, pkMatch } from '../../lib/objectCatalog';
+import { formatAuditDate, formatRelative, resolveAuditUser } from '../../lib/auditFormat';
 import {
   type ListView, type ListViewColumn, type ListViewSort, type FilterCriterion, type OwnerScope,
   fetchListViews, fetchPrefs, savePrefs, viewToCriteria, criteriaToViewFilters,
@@ -14,6 +15,7 @@ import ListViewModals, { type ViewModalType } from './ListViewModals';
 import FilterPanel from './FilterPanel';
 import SelectFieldsModal from './SelectFieldsModal';
 import RecordFormModal from './RecordFormModal';
+import RecordDetailDrawer from './RecordDetailDrawer';
 
 type Row = Record<string, unknown>;
 const PAGE_SIZE = 50;
@@ -65,6 +67,7 @@ export default function ObjectListView({ def, onToast }: Props) {
   const [formRow, setFormRow] = useState<Row | null | 'new'>(null);
   const [deleteRow, setDeleteRow] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [detailRow, setDetailRow] = useState<Row | null>(null);
 
   const gearRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -323,9 +326,24 @@ export default function ObjectListView({ def, onToast }: Props) {
             ) : rows.length === 0 ? (
               <tr><td colSpan={effColumns.length + 1} className="px-4 py-10 text-center text-ink-faint">Sin registros para esta vista.</td></tr>
             ) : rows.map(r => (
-              <tr key={rowKey(def, r)} className="border-b border-rule-soft last:border-0 hover:bg-rule-soft/50">
+              <tr key={rowKey(def, r)} className="border-b border-rule-soft last:border-0 hover:bg-rule-soft/50 cursor-pointer" onClick={() => setDetailRow(r)}>
                 {effColumns.map(col => {
                   const f = fm.get(col.field);
+                  if (f?.auditUserEmbed) {
+                    const iso = r[col.field] as string | null;
+                    const uid = r['updated_by'] as string | null;
+                    const prof = r[f.auditUserEmbed] as { full_name?: string | null; email?: string } | null;
+                    if (!iso) return <td key={col.field} className="px-4 py-2.5 text-ink-faint">&mdash;</td>;
+                    const dateStr = formatAuditDate(iso);
+                    const rel = formatRelative(iso);
+                    const user = resolveAuditUser(uid, prof);
+                    return (
+                      <td key={col.field} className="px-4 py-1.5 whitespace-nowrap" title={rel}>
+                        <span className="block text-sm text-ink leading-tight">{dateStr}</span>
+                        <span className="block text-xs text-ink-faint leading-tight mt-0.5">{user}</span>
+                      </td>
+                    );
+                  }
                   return (
                     <td key={col.field} className={`px-4 py-2.5 text-ink whitespace-nowrap max-w-[320px] truncate ${f?.align === 'right' ? 'text-right font-mono text-xs' : ''}`} title={f ? formatCell(f, r[col.field], r) : ''}>
                       {f ? formatCell(f, r[col.field], r) : String(r[col.field] ?? '')}
@@ -333,7 +351,7 @@ export default function ObjectListView({ def, onToast }: Props) {
                   );
                 })}
                 {(canEdit || canDelete) && (
-                  <td className="px-2 py-2 text-right whitespace-nowrap">
+                  <td className="px-2 py-2 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
                     {canEdit && <button onClick={() => setFormRow(r)} className="w-7 h-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:bg-rule-soft hover:text-ink" title="Editar"><Pencil className="w-3.5 h-3.5" /></button>}
                     {canDelete && <button onClick={() => setDeleteRow(r)} className="w-7 h-7 inline-flex items-center justify-center rounded-md text-ink-faint hover:bg-bad-soft hover:text-bad" title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>}
                   </td>
@@ -357,6 +375,7 @@ export default function ObjectListView({ def, onToast }: Props) {
         onViewUpdated={v => { setViews(vs => vs.map(x => x.id === v.id ? v : x)); setActiveView(v); }}
         onViewDeleted={id => { const rest = views.filter(v => v.id !== id); setViews(rest); applyView(rest.find(v => v.id === def.systemViewId) || rest[0] || null); onToast('Vista eliminada', 'success'); }}
       />
+      {detailRow && <RecordDetailDrawer def={def} row={detailRow} onClose={() => setDetailRow(null)} />}
       {formRow !== null && (
         <RecordFormModal def={def} row={formRow === 'new' ? null : formRow} onClose={() => setFormRow(null)} onSaved={() => { setFormRow(null); onToast(formRow === 'new' ? 'Registro creado' : 'Registro actualizado', 'success'); load(true); }} />
       )}
