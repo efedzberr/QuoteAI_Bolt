@@ -57,8 +57,8 @@ export default function ObjectPage({ objectId, onToast }: Props) {
                   <td className="px-4 py-2.5 text-ink font-medium">{f.label}{isPkField(def, f.key) && <span className="ml-2 text-[10px] text-ink-faint">PK</span>}</td>
                   <td className="px-4 py-2.5 font-mono text-xs text-ink-soft">{f.key}</td>
                   <td className="px-4 py-2.5"><span className="inline-block px-2 py-0.5 text-xs rounded-full bg-rule-soft border border-rule text-ink-soft">{TYPE_LABEL[f.dataType] || f.dataType}</span></td>
-                  <td className="px-4 py-2.5 text-xs">{f.required ? <span className="text-bad font-semibold">S\u00ed</span> : <span className="text-ink-faint">No</span>}</td>
-                  <td className="px-4 py-2.5 text-xs">{!def.readOnly && f.editable ? <span className="text-good font-semibold">S\u00ed</span> : <span className="text-ink-faint">No</span>}</td>
+                  <td className="px-4 py-2.5 text-xs">{f.required ? <span className="text-bad font-semibold">Sí</span> : <span className="text-ink-faint">No</span>}</td>
+                  <td className="px-4 py-2.5 text-xs">{!def.readOnly && f.editable ? <span className="text-good font-semibold">Sí</span> : <span className="text-ink-faint">No</span>}</td>
                   <td className="px-4 py-2.5 text-xs text-ink-faint">{f.notes || ''}</td>
                 </tr>
               ))}

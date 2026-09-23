@@ -268,7 +268,7 @@ export default function ObjectListView({ def, onToast }: Props) {
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="relative">
             <Search className="w-4 h-4 text-ink-faint absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar en esta lista\u2026" className="h-9 w-64 pl-8 pr-3 text-sm border border-rule rounded-lg focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar en esta lista…" className="h-9 w-64 pl-8 pr-3 text-sm border border-rule rounded-lg focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
           </div>
           <div className="relative" ref={gearRef}>
             <button onClick={() => setGearOpen(o => !o)} className={iconBtn} title="Controles de la vista"><Settings className="w-4 h-4" /></button>
@@ -296,7 +296,7 @@ export default function ObjectListView({ def, onToast }: Props) {
       </div>
 
       {readOnlyNotice && (
-        <div className="mb-3 px-3 py-2 text-xs text-warn bg-warn-soft border border-warn/20 rounded-lg">Esta vista es de solo lectura: los cambios aplican solo en esta sesi\u00f3n. Usa <strong>Clonar</strong> para guardarlos en una vista tuya.</div>
+        <div className="mb-3 px-3 py-2 text-xs text-warn bg-warn-soft border border-warn/20 rounded-lg">Esta vista es de solo lectura: los cambios aplican solo en esta sesión. Usa <strong>Clonar</strong> para guardarlos en una vista tuya.</div>
       )}
       {errorState && <div className="mb-3 px-3 py-2 text-sm text-bad bg-bad-soft border border-bad/20 rounded-lg">{errorState}</div>}
 
@@ -322,7 +322,7 @@ export default function ObjectListView({ def, onToast }: Props) {
           </thead>
           <tbody>
             {loading && rows.length === 0 ? (
-              <tr><td colSpan={effColumns.length + 1} className="px-4 py-10 text-center text-ink-faint">Cargando\u2026</td></tr>
+              <tr><td colSpan={effColumns.length + 1} className="px-4 py-10 text-center text-ink-faint">Cargando…</td></tr>
             ) : rows.length === 0 ? (
               <tr><td colSpan={effColumns.length + 1} className="px-4 py-10 text-center text-ink-faint">Sin registros para esta vista.</td></tr>
             ) : rows.map(r => (
@@ -361,8 +361,8 @@ export default function ObjectListView({ def, onToast }: Props) {
           </tbody>
         </table>
         <div ref={sentinelRef} className="h-6 flex items-center justify-center text-xs text-ink-faint">
-          {loadingMore && <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> Cargando m\u00e1s\u2026</>}
-          {!hasMore && rows.length > 0 && <span>Fin de la lista \u00b7 {rows.length.toLocaleString('es-MX')} de {totalCount.toLocaleString('es-MX')}</span>}
+          {loadingMore && <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> Cargando más…</>}
+          {!hasMore && rows.length > 0 && <span>Fin de la lista · {rows.length.toLocaleString('es-MX')} de {totalCount.toLocaleString('es-MX')}</span>}
         </div>
       </div>
 
@@ -384,7 +384,7 @@ export default function ObjectListView({ def, onToast }: Props) {
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setDeleteRow(null)} />
           <div className="relative bg-white rounded-hero shadow-lg border border-rule-soft w-full max-w-md mx-4 p-6">
             <h3 className="text-lg font-bold text-ink mb-1">Eliminar {def.singular}</h3>
-            <p className="text-sm text-ink-soft mb-1">Esta acci\u00f3n es permanente y no se puede deshacer.</p>
+            <p className="text-sm text-ink-soft mb-1">Esta acción es permanente y no se puede deshacer.</p>
             <p className="text-xs text-ink-faint font-mono mb-5">{pkFieldsOf(def).map(k => `${k}: ${String(deleteRow[k] ?? '')}`).join(' \u00b7 ')}</p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setDeleteRow(null)} disabled={deleting} className="inline-flex items-center h-10 px-4 bg-white text-ink-soft font-semibold text-sm rounded-lg border border-rule hover:bg-rule-soft">Cancelar</button>

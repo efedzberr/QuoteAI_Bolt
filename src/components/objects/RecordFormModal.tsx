@@ -94,7 +94,7 @@ export default function RecordFormModal({ def, row, onClose, onSaved }: Props) {
         >
           <option value="">{gruposLoading ? 'Cargando grupos\u2026' : '\u2014 Selecciona un grupo existente \u2014'}</option>
           {grupos.map(g => <option key={g.group_name} value={g.group_name}>{g.group_name} ({g.clientes.toLocaleString('es-MX')} cliente{g.clientes === 1 ? '' : 's'})</option>)}
-          {f.lookupAllowNew && <option value={OTHER}>Otro (escribir nuevo grupo)\u2026</option>}
+          {f.lookupAllowNew && <option value={OTHER}>Otro (escribir nuevo grupo)…</option>}
         </select>
         {showText && (
           <input
@@ -130,7 +130,7 @@ export default function RecordFormModal({ def, row, onClose, onSaved }: Props) {
                 </select>
               ) : f.dataType === 'boolean' ? (
                 <select value={form[f.key] || 'false'} onChange={e => setForm({ ...form, [f.key]: e.target.value })} className={field}>
-                  <option value="true">S\u00ed</option><option value="false">No</option>
+                  <option value="true">Sí</option><option value="false">No</option>
                 </select>
               ) : (
                 <input
