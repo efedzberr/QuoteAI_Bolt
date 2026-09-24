@@ -8,11 +8,13 @@ import ProductLookupModal, { type ProductResult } from './ProductLookupModal';
 import { type SearchProduct } from './InlineProductSearch';
 import AddLineModal, { type AddLineResult } from './quote/AddLineModal';
 import QuoteDocument from './pdf/QuoteDocument';
+import SolicitudOriginalTable from './quote/SolicitudOriginalTable';
+import ReconocimientoIATable from './quote/ReconocimientoIATable';
 import { normalizeLines } from '../lib/normalizeLines';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { usePermissions } from '../hooks/usePermissions';
 import { supabase } from '../lib/supabase';
-import { upsertJobLine, getMaxLineIndex } from '../lib/jobLines';
+import { upsertJobLine, getMaxLineIndex, fetchJobLineVersionMeta, type JobLineVersionMeta } from '../lib/jobLines';
 import { updateJobProgreso, updateJobStatus, getJobByReferencia, markJobSentToSalesforce } from '../lib/jobs';
 
 interface QuoteData {
@@ -109,6 +111,34 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [jobNoCliente, setJobNoCliente] = useState<string | null>(null);
   const [jobGrupo, setJobGrupo] = useState<string | null>(null);
+
+  type VersionTab = 'solicitud' | 'ia' | 'final';
+  const [versionTab, setVersionTab] = useState<VersionTab>('final');
+  const [versionMeta, setVersionMeta] = useState<JobLineVersionMeta[]>([]);
+  const [extraccionOriginal, setExtraccionOriginal] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    if (!jobId) return;
+    fetchJobLineVersionMeta(jobId).then(setVersionMeta);
+    supabase
+      .from('jobs')
+      .select('extraccion_original')
+      .eq('id', jobId)
+      .single()
+      .then(({ data }) => {
+        setExtraccionOriginal((data as any)?.extraccion_original ?? null);
+      });
+  }, [jobId]);
+
+  const iaByLineIndex = useMemo(() => {
+    const m = new Map<number, { codigo: string | null; metodo: string | null }>();
+    for (const vm of versionMeta) {
+      if (vm.ia_capturado_at !== null) {
+        m.set(vm.line_index, { codigo: vm.ia_producto_codigo, metodo: vm.ia_metodo });
+      }
+    }
+    return m;
+  }, [versionMeta]);
 
   const progresoDebounceRef = useRef<ReturnType<typeof setTimeout>>();
 
@@ -846,31 +876,26 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     <div className="min-h-screen bg-[#F3F3F3] flex flex-col" style={{ fontFamily: "'Manrope', sans-serif" }}>
       <Header hideHeader />
 
-      {editedQuoteData && (
+      {jobId && (
         <div className="w-full bg-white border-b border-[#E5E5E5] px-7 pt-3">
           <div className="max-w-[1480px] mx-auto flex gap-1">
-            <button
-              onClick={() => setViewMode('original')}
-              className={`px-4 py-2.5 transition-colors border-b-2 ${
-                viewMode === 'original'
-                  ? 'border-[#0176D3] text-[#0176D3]'
-                  : 'border-transparent text-[#747474] hover:text-[#181818]'
-              }`}
-              style={{ fontSize: 13, fontWeight: 600 }}
-            >
-              Version original
-            </button>
-            <button
-              onClick={() => setViewMode('edited')}
-              className={`px-4 py-2.5 transition-colors border-b-2 ${
-                viewMode === 'edited'
-                  ? 'border-[#0176D3] text-[#0176D3]'
-                  : 'border-transparent text-[#747474] hover:text-[#181818]'
-              }`}
-              style={{ fontSize: 13, fontWeight: 600 }}
-            >
-              Version revisada
-            </button>
+            {(['solicitud', 'ia', 'final'] as const).map((tab) => {
+              const labels: Record<VersionTab, string> = { solicitud: 'Solicitud original', ia: 'Reconocimiento IA', final: 'Versi\u00f3n final' };
+              return (
+                <button
+                  key={tab}
+                  onClick={() => setVersionTab(tab)}
+                  className={`px-4 py-2.5 transition-colors border-b-2 ${
+                    versionTab === tab
+                      ? 'border-[#0176D3] text-[#0176D3]'
+                      : 'border-transparent text-[#747474] hover:text-[#181818]'
+                  }`}
+                  style={{ fontSize: 13, fontWeight: 600 }}
+                >
+                  {labels[tab]}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -916,6 +941,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             </div>
           )}
         </div>
+        {versionTab === 'final' && (
         <div className="max-w-[1480px] mx-auto px-7 pb-4 flex flex-wrap items-start gap-x-9 gap-y-2">
           <SummaryField label="Fecha" value={activeQuoteData.generatedDate} />
           <SummaryField label="Total de lineas" value={String(totalLinesCount)} />
@@ -968,8 +994,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           </div>
           <SummaryField label="Subtotal" value={formatCurrency(subtotal, activeQuoteData.currency)} />
         </div>
+        )}
       </div>
 
+      {versionTab === 'final' ? (<>
       {flaggedCount > 0 && !readOnly && (
         <div className="w-full bg-[#FEF1DC] border-b border-[#FECACA]">
           <div className="max-w-[1480px] mx-auto px-7 py-3 flex items-center gap-3">
@@ -1003,6 +1031,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               editValues={editValues}
               isManualMode={isManualMode}
               readOnly={readOnly}
+              iaByLineIndex={iaByLineIndex}
               onEditStart={handleEditStart}
               onEditCancel={handleEditCancel}
               onEditSave={handleEditSave}
@@ -1355,6 +1384,35 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           </p>
         </div>
       </div>
+      </>) : (
+        <>
+          {versionTab === 'solicitud' && (
+            <div className="flex-1 pt-5 bg-[#F3F3F3] pb-8">
+              <div className="max-w-[1480px] mx-auto">
+                <SolicitudOriginalTable rows={extraccionOriginal} fallbackLines={versionMeta} />
+              </div>
+            </div>
+          )}
+          {versionTab === 'ia' && (
+            <div className="flex-1 pt-5 bg-[#F3F3F3] pb-8">
+              <div className="max-w-[1480px] mx-auto">
+                <ReconocimientoIATable lines={versionMeta} currency={activeQuoteData.currency} />
+              </div>
+            </div>
+          )}
+          <div className="bg-[#F3F3F3]">
+            <div className="max-w-[1480px] mx-auto px-7 pt-4 pb-3">
+              <button
+                onClick={handleBack}
+                className="px-5 py-3 border border-[#E5E5E5] text-[#444444] rounded-lg hover:bg-white transition-colors"
+                style={{ fontSize: 14, fontWeight: 600 }}
+              >
+                \u2190 Inicio
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {!isManualMode && rawResponse && (
         <div className="bg-[#F3F3F3]">

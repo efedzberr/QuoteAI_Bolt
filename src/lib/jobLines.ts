@@ -105,6 +105,37 @@ export async function fetchJobLines(jobId: string): Promise<JobLine[]> {
   return (data as JobLine[]) || [];
 }
 
+export interface JobLineVersionMeta {
+  line_index: number;
+  codigo_original: string | null;
+  descripcion_original: string | null;
+  unidad_original: string | null;
+  cantidad: number | null;
+  ia_producto_codigo: string | null;
+  ia_producto_descripcion: string | null;
+  ia_unidad_medida: string | null;
+  ia_precio_unitario: number | null;
+  ia_confianza: number | null;
+  ia_metodo: string | null;
+  ia_capturado_at: string | null;
+  motivo_eliminacion_id: number | null;
+  comentario_eliminacion: string | null;
+  eliminada_at: string | null;
+}
+
+export async function fetchJobLineVersionMeta(jobId: string): Promise<JobLineVersionMeta[]> {
+  const { data, error } = await supabase
+    .from('job_lines')
+    .select('line_index, codigo_original, descripcion_original, unidad_original, cantidad, ia_producto_codigo, ia_producto_descripcion, ia_unidad_medida, ia_precio_unitario, ia_confianza, ia_metodo, ia_capturado_at, motivo_eliminacion_id, comentario_eliminacion, eliminada_at')
+    .eq('job_id', jobId)
+    .order('line_index', { ascending: true });
+  if (error) {
+    console.error('[jobLines] fetchJobLineVersionMeta error:', error);
+    return [];
+  }
+  return (data as JobLineVersionMeta[]) || [];
+}
+
 export async function getMaxLineIndex(jobId: string): Promise<number> {
   const { data, error } = await supabase
     .from('job_lines')

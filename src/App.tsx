@@ -15,7 +15,7 @@ import { useAuth } from './hooks/useAuth';
 import { supabase, isPasswordSetupRedirect, confirmLinkParams } from './lib/supabase';
 import MfaEnroll from './components/MfaEnroll';
 import MfaVerify from './components/MfaVerify';
-import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus, reopenJobForEdit } from './lib/jobs';
+import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus, reopenJobForEdit, saveExtraccionOriginal } from './lib/jobs';
 import { createJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 import type { Job } from './lib/jobs';
 
@@ -262,6 +262,7 @@ function App() {
           notas: null,
         }));
         createJobLines(job.id, jobLines);
+        saveExtraccionOriginal(job.id, rows);
       }
     });
   }, [jobId, projectName]);
@@ -473,6 +474,9 @@ function App() {
     createJob(newRef, cliente).then((job) => {
       if (job) {
         setJobId(job.id);
+        if (reexecJob.extraccion_original) {
+          saveExtraccionOriginal(job.id, reexecJob.extraccion_original);
+        }
         if (reexecJob.payload) {
           updateJobPayload(newRef, reexecJob.payload, reexecJob.total_lineas || 0);
           updateJobStatus(newRef, 'revision_datos');

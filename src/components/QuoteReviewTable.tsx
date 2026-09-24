@@ -24,6 +24,7 @@ export interface QuoteLine {
   descuento_pct?: number | null;
   inventario_total?: number | null;
   inventario_almacenes?: { almacen_id: string; almacen_nombre: string; cantidad: number }[] | null;
+  _lineIndex?: number;
 }
 
 export interface EditValues {
@@ -58,6 +59,7 @@ interface QuoteReviewTableProps {
   onInlineAddProduct?: (product: SearchProduct) => void;
   onCancelInlineAdd?: () => void;
   onCommentSave?: (index: number, comentario: string | null) => void;
+  iaByLineIndex?: Map<number, { codigo: string | null; metodo: string | null }>;
 }
 
 function formatCurrency(value: number | null, currency: string): string {
@@ -175,6 +177,7 @@ export default function QuoteReviewTable({
   onCancelInlineAdd,
   onCommentSave,
   verInventario = false,
+  iaByLineIndex,
 }: QuoteReviewTableProps) {
   const [commentingIndex, setCommentingIndex] = useState<number | null>(null);
   const [commentAnchorEl, setCommentAnchorEl] = useState<HTMLElement | null>(null);
@@ -408,6 +411,33 @@ export default function QuoteReviewTable({
                               {line.matched_product_code}
                             </div>
                           )}
+                          {(() => {
+                            if (!iaByLineIndex || line._lineIndex === undefined) return null;
+                            const ia = iaByLineIndex.get(line._lineIndex);
+                            if (!ia) return null;
+                            if (ia.codigo !== line.matched_product_code) {
+                              return (
+                                <span
+                                  className="inline-block mt-1 rounded-full px-2 py-0.5"
+                                  style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#FEF1DC', color: '#B86C00' }}
+                                  title={`IA sugiri\u00f3: ${ia.codigo ?? 'Sin coincidencia'}`}
+                                >
+                                  Cambi\u00f3 vs IA
+                                </span>
+                              );
+                            }
+                            if (ia.metodo === 'aprendido' || ia.metodo === 'aprendido_sugerido') {
+                              return (
+                                <span
+                                  className="inline-block mt-1 rounded-full px-2 py-0.5"
+                                  style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#EAF5FE', color: '#0176D3' }}
+                                >
+                                  Aprendido
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
                           {line.comentario && (
                             <div className="mt-1 text-xs text-gray-500 italic">
                               <MessageSquare className="w-3 h-3 inline-block mr-1 -mt-0.5" />

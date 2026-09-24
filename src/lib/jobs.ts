@@ -26,6 +26,7 @@ export interface Job {
   owner_id?: string | null;
   nombre_proyecto?: string | null;
   owner?: { id: string; full_name: string | null; email: string } | null;
+  extraccion_original?: any[] | null;
 }
 
 export async function reassignJobOwner(jobId: string, ownerId: string): Promise<boolean> {
@@ -193,6 +194,21 @@ export async function reopenJobForEdit(referencia: string): Promise<void> {
     })
     .eq('referencia', referencia);
   if (error) console.error('[jobs] reopenJobForEdit error:', error);
+}
+
+export async function saveExtraccionOriginal(jobId: string, rows: Record<string, any>[]): Promise<void> {
+  const clean = rows.map((r) => {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(r || {})) {
+      if (!k.startsWith('_')) out[k] = v;
+    }
+    return out;
+  });
+  const { error } = await supabase
+    .from('jobs')
+    .update({ extraccion_original: clean })
+    .eq('id', jobId);
+  if (error) console.error('[jobs] saveExtraccionOriginal error:', error);
 }
 
 export async function deleteJobCascade(jobId: string): Promise<boolean> {
