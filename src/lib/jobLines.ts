@@ -136,6 +136,18 @@ export async function fetchJobLineVersionMeta(jobId: string): Promise<JobLineVer
   return (data as JobLineVersionMeta[]) || [];
 }
 
+export interface MotivoEliminacion { id: number; codigo: string; nombre: string; descripcion: string | null; }
+
+export async function fetchMotivosEliminacion(): Promise<MotivoEliminacion[]> {
+  const { data, error } = await supabase
+    .from('motivos_eliminacion')
+    .select('id, codigo, nombre, descripcion')
+    .eq('activo', true)
+    .order('orden', { ascending: true });
+  if (error) { console.error('[jobLines] fetchMotivosEliminacion error:', error); return []; }
+  return (data as MotivoEliminacion[]) || [];
+}
+
 export async function getMaxLineIndex(jobId: string): Promise<number> {
   const { data, error } = await supabase
     .from('job_lines')

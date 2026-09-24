@@ -14,7 +14,8 @@ import { normalizeLines } from '../lib/normalizeLines';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { usePermissions } from '../hooks/usePermissions';
 import { supabase } from '../lib/supabase';
-import { upsertJobLine, getMaxLineIndex, fetchJobLineVersionMeta, type JobLineVersionMeta } from '../lib/jobLines';
+import { upsertJobLine, getMaxLineIndex, fetchJobLineVersionMeta, fetchMotivosEliminacion, type JobLineVersionMeta, type MotivoEliminacion } from '../lib/jobLines';
+import EliminarLineaModal from './quote/EliminarLineaModal';
 import { updateJobProgreso, updateJobStatus, getJobByReferencia, markJobSentToSalesforce } from '../lib/jobs';
 
 interface QuoteData {
@@ -111,11 +112,18 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [jobNoCliente, setJobNoCliente] = useState<string | null>(null);
   const [jobGrupo, setJobGrupo] = useState<string | null>(null);
+  const [motivos, setMotivos] = useState<MotivoEliminacion[]>([]);
+  const [eliminarIndex, setEliminarIndex] = useState<number | null>(null);
+  const [eliminarModo, setEliminarModo] = useState<'eliminar' | 'motivo'>('eliminar');
 
   type VersionTab = 'solicitud' | 'ia' | 'final';
   const [versionTab, setVersionTab] = useState<VersionTab>('final');
   const [versionMeta, setVersionMeta] = useState<JobLineVersionMeta[]>([]);
   const [extraccionOriginal, setExtraccionOriginal] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    fetchMotivosEliminacion().then(setMotivos);
+  }, []);
 
   useEffect(() => {
     if (!jobId) return;
@@ -200,6 +208,15 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       const line = currentLines[idx] as any;
       const lineIdx = line?._lineIndex ?? idx;
       const ev = editValuesRef.current;
+
+      const same =
+        String(ev.matched_product_code ?? '') === String(line?.matched_product_code ?? '') &&
+        String(ev.matched_product_name ?? '') === String(line?.matched_product_name ?? '') &&
+        String(ev.matched_unit_price ?? '') === String(line?.matched_unit_price ?? '') &&
+        String(ev.quantity ?? '') === String(line?.quantity ?? '') &&
+        String(ev.matched_unit_of_measure ?? '') === String(line?.matched_unit_of_measure ?? '');
+      if (same) return;
+
       const parsedPrice = ev.matched_unit_price !== '' ? parseFloat(ev.matched_unit_price) : null;
       const parsedQty = ev.quantity !== '' ? Math.max(1, Math.round(parseFloat(ev.quantity) || 1)) : 1;
       const lineTotal = parsedQty * ((parsedPrice !== null && !isNaN(parsedPrice)) ? parsedPrice : 0);
@@ -570,7 +587,12 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       updatedLines[index] = { ...updatedLines[index], ignored: false };
       setLines(updatedLines);
       recalculate(updatedLines);
-      persistLineAction(getLineIndex(index), { estado: 'pendiente' });
+      persistLineAction(getLineIndex(index), { estado: lines[index]?.approved ? 'aprobada' : 'pendiente' });
+      setVersionMeta(prev => prev.map(vm =>
+        vm.line_index === getLineIndex(index)
+          ? { ...vm, motivo_eliminacion_id: null, comentario_eliminacion: null, eliminada_at: null }
+          : vm
+      ));
       updateProgreso(updatedLines);
     },
     [lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso]
@@ -588,6 +610,57 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     },
     [lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso]
   );
+
+  const handleEliminarConfirm = useCallback(
+    (motivoId: number | null, comentario: string | null) => {
+      if (eliminarIndex === null) return;
+      if (eliminarModo === 'eliminar') {
+        ensureEditedMode();
+        const updatedLines = [...lines];
+        updatedLines[eliminarIndex] = { ...updatedLines[eliminarIndex], ignored: true };
+        setLines(updatedLines);
+        recalculate(updatedLines);
+        persistLineAction(getLineIndex(eliminarIndex), {
+          estado: 'ignorada',
+          motivo_eliminacion_id: motivoId,
+          comentario_eliminacion: comentario,
+        });
+        updateProgreso(updatedLines);
+      } else {
+        persistLineAction(getLineIndex(eliminarIndex), {
+          motivo_eliminacion_id: motivoId,
+          comentario_eliminacion: comentario,
+        });
+      }
+      const liIdx = getLineIndex(eliminarIndex);
+      setVersionMeta(prev => prev.map(vm =>
+        vm.line_index === liIdx
+          ? { ...vm, motivo_eliminacion_id: motivoId, comentario_eliminacion: comentario }
+          : vm
+      ));
+      setEliminarIndex(null);
+    },
+    [eliminarIndex, eliminarModo, lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso, motivos]
+  );
+
+  const motivoNombreById = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const mo of motivos) m.set(mo.id, mo.nombre);
+    return m;
+  }, [motivos]);
+
+  const eliminacionByLineIndex = useMemo(() => {
+    const m = new Map<number, { motivo: string | null; comentario: string | null }>();
+    for (const vm of versionMeta) {
+      if (vm.eliminada_at !== null || vm.motivo_eliminacion_id !== null) {
+        m.set(vm.line_index, {
+          motivo: vm.motivo_eliminacion_id ? (motivoNombreById.get(vm.motivo_eliminacion_id) ?? null) : null,
+          comentario: vm.comentario_eliminacion,
+        });
+      }
+    }
+    return m;
+  }, [versionMeta, motivoNombreById]);
 
   const handleCommentSave = useCallback(
     (index: number, comentario: string | null) => {
@@ -969,7 +1042,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               className="uppercase text-[#747474]"
               style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}
             >
-              Ignoradas
+              Eliminadas
             </span>
             <span
               className="mt-1 text-[#A3A3A3]"
@@ -1004,7 +1077,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             <AlertTriangle className="w-4 h-4 text-[#B86C00] flex-shrink-0" />
             <p className="text-[#92400E]" style={{ fontSize: 13, fontWeight: 500 }}>
               {flaggedCount} {flaggedCount === 1 ? 'linea necesita' : 'lineas necesitan'} revision antes de generar el PDF.
-              Revisa las filas resaltadas, editalas o ignoralas.
+              Revisa las filas resaltadas, edítalas o elimínalas.
             </p>
           </div>
         </div>
@@ -1036,7 +1109,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               onEditCancel={handleEditCancel}
               onEditSave={handleEditSave}
               onEditChange={handleEditChange}
-              onIgnore={handleIgnore}
+              onIgnore={(index: number) => { setEliminarIndex(index); setEliminarModo('eliminar'); }}
+              eliminacionByLineIndex={eliminacionByLineIndex}
+              onEditMotivo={(index: number) => { setEliminarIndex(index); setEliminarModo('motivo'); }}
               onRestore={handleRestore}
               onDeleteLine={handleDeleteLine}
               onQuantityChange={handleQuantityChange}
@@ -1483,6 +1558,18 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         } : null}
       />
 
+      <EliminarLineaModal
+        open={eliminarIndex !== null}
+        modo={eliminarModo}
+        lineaTexto={eliminarIndex !== null ? (lines[eliminarIndex]?.original_text || '') : ''}
+        productoSugerido={eliminarIndex !== null ? (lines[eliminarIndex]?.matched_product_name || null) : null}
+        motivos={motivos}
+        motivoInicial={eliminarIndex !== null ? ((() => { const vm = versionMeta.find(v => v.line_index === getLineIndex(eliminarIndex)); return vm?.motivo_eliminacion_id ?? null; })()) : null}
+        comentarioInicial={eliminarIndex !== null ? ((() => { const vm = versionMeta.find(v => v.line_index === getLineIndex(eliminarIndex)); return vm?.comentario_eliminacion ?? null; })()) : null}
+        onConfirm={handleEliminarConfirm}
+        onCancel={() => setEliminarIndex(null)}
+      />
+
       {deleteConfirmIndex !== null && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
           <div
@@ -1535,7 +1622,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             </h3>
             <p className="text-[#444444] mb-6 text-center" style={{ fontSize: 13, lineHeight: 1.6 }}>
               La cotizacion regresara al estado de validacion para que puedas hacer cambios manuales.
-              Se trabajara sobre la version ya revisada (productos confirmados, ignorados y comentarios).
+              Se trabajara sobre la version ya revisada (productos confirmados, eliminados y comentarios).
               Al terminar deberas generar el PDF nuevamente.
               {sfSentData && (
                 <span className="block mt-2 text-[#B86C00]">

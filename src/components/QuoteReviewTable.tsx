@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { createPortal } from 'react-dom';
-import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
+import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle, MessageSquare, ChevronDown, ChevronUp, Tag } from 'lucide-react';
 import ConfidenceBadge from './ConfidenceBadge';
 import InlineProductSearch, { type SearchProduct } from './InlineProductSearch';
 import InlineProductLineRow from './InlineProductLineRow';
@@ -60,6 +60,8 @@ interface QuoteReviewTableProps {
   onCancelInlineAdd?: () => void;
   onCommentSave?: (index: number, comentario: string | null) => void;
   iaByLineIndex?: Map<number, { codigo: string | null; metodo: string | null }>;
+  eliminacionByLineIndex?: Map<number, { motivo: string | null; comentario: string | null }>;
+  onEditMotivo?: (index: number) => void;
 }
 
 function formatCurrency(value: number | null, currency: string): string {
@@ -178,6 +180,8 @@ export default function QuoteReviewTable({
   onCommentSave,
   verInventario = false,
   iaByLineIndex,
+  eliminacionByLineIndex,
+  onEditMotivo,
 }: QuoteReviewTableProps) {
   const [commentingIndex, setCommentingIndex] = useState<number | null>(null);
   const [commentAnchorEl, setCommentAnchorEl] = useState<HTMLElement | null>(null);
@@ -389,12 +393,47 @@ export default function QuoteReviewTable({
                     </td>
                     <td className="py-3.5 px-4">
                       {isIgnored ? (
-                        <span
-                          className="uppercase text-[#A3A3A3]"
-                          style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}
-                        >
-                          Ignorada
-                        </span>
+                        <div>
+                          <span
+                            className="uppercase text-[#A3A3A3]"
+                            style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}
+                          >
+                            Eliminada
+                          </span>
+                          {(() => {
+                            if (!eliminacionByLineIndex || line._lineIndex === undefined) return null;
+                            const info = eliminacionByLineIndex.get(line._lineIndex);
+                            if (!info) {
+                              return (
+                                <span
+                                  className="block mt-1 inline-block rounded-full px-2 py-0.5"
+                                  style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#FEF1DC', color: '#B86C00' }}
+                                >
+                                  Sin motivo
+                                </span>
+                              );
+                            }
+                            return (
+                              <div className="mt-1">
+                                {info.motivo ? (
+                                  <span className="text-[#747474]" style={{ fontSize: 11 }}>{info.motivo}</span>
+                                ) : (
+                                  <span
+                                    className="inline-block rounded-full px-2 py-0.5"
+                                    style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#FEF1DC', color: '#B86C00' }}
+                                  >
+                                    Sin motivo
+                                  </span>
+                                )}
+                                {info.comentario && (
+                                  <span className="block text-[#A3A3A3] italic mt-0.5" style={{ fontSize: 10 }}>
+                                    {info.comentario}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
                       ) : line.matched_product_name ? (
                         <div>
                           <div
@@ -580,6 +619,15 @@ export default function QuoteReviewTable({
                               <RotateCcw className="w-3.5 h-3.5" />
                               Restaurar
                             </button>
+                            {onEditMotivo && (
+                              <button
+                                onClick={() => onEditMotivo(index)}
+                                className="inline-flex items-center px-2 py-1.5 border border-[#E5E5E5] text-[#747474] rounded-md hover:bg-[#EAF5FE] hover:text-[#0176D3] hover:border-[#0176D3] transition-colors"
+                                title="Motivo de eliminaci\u00f3n"
+                              >
+                                <Tag className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             {onCommentSave && (
                               <button
                                 onClick={(e) => openComment(index, e.currentTarget)}
@@ -633,6 +681,15 @@ export default function QuoteReviewTable({
                                 <MessageSquare className="w-3.5 h-3.5" fill={line.comentario ? '#0176D3' : 'none'} />
                               </button>
                             )}
+                            <button
+                              onClick={() => onIgnore(index)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-[#E5E5E5] text-[#747474] rounded-md hover:bg-[#FEDED7] hover:text-[#BA0517] hover:border-[#BA0517] transition-colors"
+                              style={{ fontSize: 11, fontWeight: 600 }}
+                              title="Eliminar l\u00ednea"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Eliminar
+                            </button>
                           </>
                         ) : (
                           <>
@@ -667,7 +724,7 @@ export default function QuoteReviewTable({
                                 <MessageSquare className="w-3.5 h-3.5" fill={line.comentario ? '#0176D3' : 'none'} />
                               </button>
                             )}
-                            {isManualMode && line.original_text === 'Agregado manualmente' && onDeleteLine && (
+                            {isManualMode && line.original_text === 'Agregado manualmente' && onDeleteLine ? (
                               <button
                                 onClick={() => onDeleteLine(index)}
                                 className="inline-flex items-center px-2 py-1.5 border border-[#E5E5E5] text-[#BA0517] rounded-md hover:bg-[#FEDED7] hover:border-[#BA0517] transition-colors"
@@ -675,26 +732,27 @@ export default function QuoteReviewTable({
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
-                            )}
-                            {!isManualMode && isFlagged && (
+                            ) : (
                               <>
-                                <button
-                                  onClick={() => onApprove?.(index)}
-                                  className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-[#2E844A]/30 text-[#2E844A] rounded-md hover:bg-[#DEF5E5] hover:border-[#2E844A] transition-colors"
-                                  style={{ fontSize: 11, fontWeight: 600 }}
-                                  title="Aprobar"
-                                >
-                                  <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
-                                  OK
-                                </button>
+                                {!isManualMode && isFlagged && (
+                                  <button
+                                    onClick={() => onApprove?.(index)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-[#2E844A]/30 text-[#2E844A] rounded-md hover:bg-[#DEF5E5] hover:border-[#2E844A] transition-colors"
+                                    style={{ fontSize: 11, fontWeight: 600 }}
+                                    title="Aprobar"
+                                  >
+                                    <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
+                                    OK
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => onIgnore(index)}
                                   className="inline-flex items-center gap-1 px-2.5 py-1.5 border border-[#E5E5E5] text-[#747474] rounded-md hover:bg-[#FEDED7] hover:text-[#BA0517] hover:border-[#BA0517] transition-colors"
                                   style={{ fontSize: 11, fontWeight: 600 }}
-                                  title="Ignorar"
+                                  title="Eliminar l\u00ednea"
                                 >
-                                  <XCircle className="w-3.5 h-3.5" />
-                                  Ignorar
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  Eliminar
                                 </button>
                               </>
                             )}
