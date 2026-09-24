@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export type ObjetoSeguridad = 'cotizaciones' | 'productos_nuevos' | 'grupos' | 'precio_grupo';
+export type ObjetoSeguridad = 'cotizaciones' | 'productos_nuevos' | 'grupos' | 'precio_grupo' | 'aprendizaje';
 export type AccionObjeto = 'leer' | 'crear' | 'editar' | 'eliminar';
 export type PermisoSistema = 'ver_todos_datos' | 'modificar_todos_datos' | 'administrar_usuarios' | 'administrar_configuracion' | 'ver_inventario';
 
@@ -9,6 +9,7 @@ export const OBJETOS: { id: ObjetoSeguridad; label: string; hint: string }[] = [
   { id: 'productos_nuevos', label: 'Productos nuevos', hint: 'Altas de productos que no están en el catálogo' },
   { id: 'grupos', label: 'Grupos', hint: 'Relación cliente → grupo de precios (tabla grupo)' },
   { id: 'precio_grupo', label: 'Precio grupo', hint: 'Lista de precios por grupo y artículo (tabla precio_grupo)' },
+  { id: 'aprendizaje', label: 'Aprendizaje', hint: 'Correcciones del ejecutivo que el matching usa para aprender' },
 ];
 
 export const ACCIONES: { id: AccionObjeto; label: string; col: keyof Pick<PermisoObjeto, 'can_read' | 'can_create' | 'can_edit' | 'can_delete'> }[] = [

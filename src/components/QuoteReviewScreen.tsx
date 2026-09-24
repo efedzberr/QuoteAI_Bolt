@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
@@ -107,6 +107,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [sfSendingPhase, setSfSendingPhase] = useState<'products' | 'opportunity' | 'pdf' | null>(null);
   const [sfResult, setSfResult] = useState<{ success: boolean; message: string; quoteId?: string; opportunityId?: string; pdfWarning?: string } | null>(null);
   const [sfSentData, setSfSentData] = useState<{ opportunityId: string; quoteId?: string; sentAt: string } | null>(null);
+  const [sfSyncPendiente, setSfSyncPendiente] = useState(false);
   const [jobStatus, setJobStatus] = useState<string>(quoteData.status || '');
   const [validating, setValidating] = useState(false);
   const [showEditConfirm, setShowEditConfirm] = useState(false);
@@ -160,9 +161,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           sentAt: job.sf_sent_at || '',
         });
       }
+      setSfSyncPendiente(!!job?.sf_sync_pendiente);
       setJobNoCliente(job?.no_cliente ?? null);
       setJobGrupo(job?.grupo ?? null);
-
     });
   }, [jobReferencia]);
 
@@ -694,6 +695,11 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     setValidating(true);
     await updateJobStatus(jobReferencia, 'completada' as any);
     setJobStatus('completada');
+    const freshJob = await getJobByReferencia(jobReferencia);
+    if (freshJob?.sf_sync_pendiente) setSfSyncPendiente(true);
+    if (freshJob?.sf_opportunity_id && !sfSentData) {
+      setSfSentData({ opportunityId: freshJob.sf_opportunity_id, quoteId: freshJob.sf_quote_id || undefined, sentAt: freshJob.sf_sent_at || '' });
+    }
     setValidating(false);
   }, [canValidate, jobReferencia]);
 
@@ -806,6 +812,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       accountName: salesforceAccount?.name || activeQuoteData.customerName || null,
       lineas: validLines,
       pdfBase64: null,
+      opportunityId: sfSentData?.opportunityId || null,
+      quoteId: sfSentData?.quoteId || null,
     };
 
     try {
@@ -838,6 +846,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
 
       if (succeeded) {
         const data = lastData;
+        const operacion: string = data.salesforce.operacion || 'creada';
         const oppId = data.salesforce.opportunityId || '';
         const qId = data.salesforce.quoteId || '';
 
@@ -893,8 +902,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           const successMsg = pdfWarning
             ? pdfWarning
             : hadNewProducts
-              ? 'Productos creados, oportunidad creada y PDF adjuntado correctamente.'
-              : 'Oportunidad creada y PDF adjuntado correctamente.';
+              ? `Productos creados, oportunidad ${operacion} y PDF adjuntado correctamente.`
+              : `Oportunidad ${operacion} y PDF adjuntado correctamente.`;
 
           setSfResult({
             success: true,
@@ -907,8 +916,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           setSfResult({
             success: true,
             message: hadNewProducts
-              ? 'Productos creados y oportunidad creada en Salesforce.'
-              : (data.salesforce.message || 'Oportunidad creada en Salesforce'),
+              ? `Productos creados y oportunidad ${operacion} en Salesforce.`
+              : (data.salesforce.message || `Oportunidad ${operacion} en Salesforce`),
             quoteId: qId,
             opportunityId: oppId,
           });
@@ -923,7 +932,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       setSfSending(false);
       setSfSendingPhase(null);
     }
-  }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, salesforceAccount, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx]);
+    setSfSyncPendiente(false);
+  }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, salesforceAccount, sfSentData, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx]);
 
   const totalLinesCount = lines.length;
 
@@ -1231,7 +1241,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               )}
               {/* SF button visible in readOnly (after PDF) if validated */}
               {isAlreadyValidated && (
-                sfSentData ? (
+                sfSentData && !sfSyncPendiente ? (
                   <div className="relative group">
                     <button
                       disabled
@@ -1256,12 +1266,14 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                     className={`px-5 py-3 rounded-lg flex items-center gap-2 transition-all ${
                       sfSending
                         ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
-                        : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
+                        : sfSyncPendiente
+                          ? 'bg-[#B86C00] text-white hover:bg-[#925600]'
+                          : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
                     }`}
                     style={{ fontSize: 14, fontWeight: 600 }}
                   >
-                    <Send className="w-4 h-4" />
-                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : 'Enviar a Salesforce'}
+                    {sfSyncPendiente ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : sfSyncPendiente ? 'Actualizar en Salesforce' : 'Enviar a Salesforce'}
                   </button>
                 )
               )}
@@ -1270,7 +1282,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             <>
               {/* Enviar a Salesforce */}
               {isAlreadyValidated ? (
-                sfSentData ? (
+                sfSentData && !sfSyncPendiente ? (
                   <div className="relative group">
                     <button
                       disabled
@@ -1295,12 +1307,14 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                     className={`px-5 py-3 rounded-lg flex items-center gap-2 transition-all ${
                       sfSending
                         ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
-                        : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
+                        : sfSyncPendiente
+                          ? 'bg-[#B86C00] text-white hover:bg-[#925600]'
+                          : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
                     }`}
                     style={{ fontSize: 14, fontWeight: 600 }}
                   >
-                    <Send className="w-4 h-4" />
-                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : 'Enviar a Salesforce'}
+                    {sfSyncPendiente ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : sfSyncPendiente ? 'Actualizar en Salesforce' : 'Enviar a Salesforce'}
                   </button>
                 )
               ) : (
@@ -1407,7 +1421,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                   )}
                 </div>
                 <h3 className="text-lg font-bold text-center text-[#181818] mb-2">
-                  {sfResult.pdfWarning ? 'Oportunidad creada (PDF no adjuntado)' : sfResult.message}
+                  {sfResult.pdfWarning ? 'Oportunidad procesada (PDF no adjuntado)' : sfResult.message}
                 </h3>
                 {sfResult.pdfWarning && (
                   <p className="text-sm text-[#92400E] text-center mb-4 bg-[#FEF9E7] rounded-lg p-3">{sfResult.pdfWarning}</p>
@@ -1626,7 +1640,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               Al terminar deberas generar el PDF nuevamente.
               {sfSentData && (
                 <span className="block mt-2 text-[#B86C00]">
-                  Esta cotizacion ya fue enviada a Salesforce. Si la reenvias, se creara una nueva oportunidad.
+                  Esta cotizacion ya fue enviada a Salesforce. Si la reenvias, se actualizara la oportunidad existente.
                 </span>
               )}
             </p>

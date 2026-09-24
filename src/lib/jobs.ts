@@ -27,6 +27,7 @@ export interface Job {
   nombre_proyecto?: string | null;
   owner?: { id: string; full_name: string | null; email: string } | null;
   extraccion_original?: any[] | null;
+  sf_sync_pendiente?: boolean;
 }
 
 export async function reassignJobOwner(jobId: string, ownerId: string): Promise<boolean> {

@@ -73,7 +73,7 @@ export default function ObjectListView({ def, onToast }: Props) {
   const sentinelRef = useRef<HTMLDivElement>(null);
   const seqRef = useRef(0);
 
-  const canCreate = !def.readOnly && !!def.permObject && perms.can(def.permObject, 'crear');
+  const canCreate = !def.readOnly && def.allowCreate !== false && !!def.permObject && perms.can(def.permObject, 'crear');
   const canEdit = !def.readOnly && !!def.permObject && perms.can(def.permObject, 'editar');
   const canDelete = !def.readOnly && !!def.permObject && perms.can(def.permObject, 'eliminar');
 
