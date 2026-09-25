@@ -16,6 +16,7 @@ export interface ObjectFieldDef {
   align?: 'left' | 'right';
   embed?: string;
   auditUserEmbed?: string;
+  suggestions?: 'unidades_catalogo';
 }
 
 export interface AdminObjectDef {
@@ -100,7 +101,7 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
       { key: 'DescCortaArt', label: 'Descripción corta', dataType: 'text' },
       { key: 'DescLargaArt', label: 'Descripción larga', dataType: 'text' },
       { key: 'Marca', label: 'Marca', dataType: 'text' },
-      { key: 'UMP', label: 'UMP', dataType: 'text' },
+      { key: 'UMP', label: 'UMP', dataType: 'text', suggestions: 'unidades_catalogo' },
       { key: 'DeptoArt', label: 'Departamento', dataType: 'text' },
       { key: 'CategoriaArt', label: 'Categoría', dataType: 'text' },
       { key: 'SubCategoriaArt', label: 'Subcategoría', dataType: 'text' },
@@ -189,6 +190,38 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
       { key: 'revisado_por', label: 'Revisado por', dataType: 'user', sortable: false, embed: 'revisor' },
       { key: 'revisado_at', label: 'Revisado', dataType: 'datetime' },
       ...AUDIT_FIELDS,
+    ],
+  },
+  {
+    id: 'unidades_equivalentes', label: 'Unidades equivalentes', singular: 'equivalencia', table: 'unidades_equivalentes',
+    pk: 'id', pkIsGenerated: true, readOnly: false, permObject: 'unidades',
+    select: '*, creador:user_profiles!unidades_equivalentes_created_by_fkey(full_name, email), actualizador:user_profiles!unidades_equivalentes_updated_by_fkey(full_name, email)',
+    searchFields: ['unidad_cliente', 'unidad_catalogo', 'notas'],
+    systemViewId: 'b0000000-0000-0000-0000-000000000012',
+    note: 'C\u00f3mo escriben los clientes una unidad y a qu\u00e9 unidad del cat\u00e1logo equivale. Solo traduce el nombre; nunca convierte cantidades. Los cambios los toma el matching en m\u00e1ximo 10 minutos.',
+    fields: [
+      { key: 'unidad_cliente', label: 'Unidad del cliente', dataType: 'text', required: true, editable: true, notes: 'Tal como la escribe el cliente (se guarda en may\u00fasculas)' },
+      { key: 'unidad_catalogo', label: 'Unidad del cat\u00e1logo', dataType: 'text', required: true, editable: true, suggestions: 'unidades_catalogo', notes: 'Debe existir en el cat\u00e1logo de productos' },
+      { key: 'activo', label: 'Activo', dataType: 'boolean', editable: true },
+      { key: 'notas', label: 'Notas', dataType: 'text', editable: true },
+      ...AUDIT_FIELDS,
+    ],
+  },
+  {
+    id: 'unidades_sin_traduccion', label: 'Unidades sin traducci\u00f3n', singular: 'unidad', table: 'v_unidades_sin_traduccion',
+    pk: 'unidad_cliente', pkIsGenerated: false, readOnly: true, permObject: 'cotizaciones',
+    select: '*',
+    searchFields: ['unidad_cliente', 'unidades_catalogo', 'ejemplo'],
+    systemViewId: 'b0000000-0000-0000-0000-000000000013',
+    note: 'Unidades que escribieron los clientes y no se pudieron traducir a la del producto. Si una es equivalente, agr\u00e9gala en Unidades equivalentes.',
+    fields: [
+      { key: 'unidad_cliente', label: 'Unidad del cliente', dataType: 'text' },
+      { key: 'unidades_catalogo', label: 'Unidad del cat\u00e1logo', dataType: 'text' },
+      { key: 'lineas', label: 'L\u00edneas', dataType: 'number', align: 'right' },
+      { key: 'cotizaciones', label: 'Cotizaciones', dataType: 'number', align: 'right' },
+      { key: 'ejemplo', label: 'Ejemplo', dataType: 'text' },
+      { key: 'ya_tiene_traduccion', label: 'Ya tiene traducci\u00f3n', dataType: 'boolean' },
+      { key: 'ultima_vez', label: '\u00daltima vez', dataType: 'datetime' },
     ],
   },
 ];

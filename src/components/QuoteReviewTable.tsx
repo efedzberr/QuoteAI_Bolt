@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { createPortal } from 'react-dom';
-import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle, MessageSquare, ChevronDown, ChevronUp, Tag } from 'lucide-react';
+import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle, MessageSquare, ChevronDown, ChevronUp, Tag, Ruler } from 'lucide-react';
 import ConfidenceBadge from './ConfidenceBadge';
 import InlineProductSearch, { type SearchProduct } from './InlineProductSearch';
 import InlineProductLineRow from './InlineProductLineRow';
@@ -62,6 +62,7 @@ interface QuoteReviewTableProps {
   iaByLineIndex?: Map<number, { codigo: string | null; metodo: string | null }>;
   eliminacionByLineIndex?: Map<number, { motivo: string | null; comentario: string | null }>;
   onEditMotivo?: (index: number) => void;
+  unidadAlertaByLineIndex?: Map<number, { cliente: string | null; catalogo: string | null }>;
 }
 
 function formatCurrency(value: number | null, currency: string): string {
@@ -182,6 +183,7 @@ export default function QuoteReviewTable({
   iaByLineIndex,
   eliminacionByLineIndex,
   onEditMotivo,
+  unidadAlertaByLineIndex,
 }: QuoteReviewTableProps) {
   const [commentingIndex, setCommentingIndex] = useState<number | null>(null);
   const [commentAnchorEl, setCommentAnchorEl] = useState<HTMLElement | null>(null);
@@ -483,6 +485,31 @@ export default function QuoteReviewTable({
                               {line.comentario}
                             </div>
                           )}
+                          {(() => {
+                            if (!unidadAlertaByLineIndex || line._lineIndex === undefined) return null;
+                            const ua = unidadAlertaByLineIndex.get(line._lineIndex);
+                            if (!ua) return null;
+                            if (line.badgeType === 'manual' || line.badgeType === 'producto_nuevo') return null;
+                            if (line.approved) {
+                              return (
+                                <span
+                                  className="inline-flex items-center gap-1 mt-1 rounded-full px-2 py-0.5"
+                                  style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#F3F3F3', color: '#747474' }}
+                                >
+                                  Unidad revisada &middot; cliente: {ua.cliente ?? '?'} &rarr; {ua.catalogo ?? '?'}
+                                </span>
+                              );
+                            }
+                            return (
+                              <span
+                                className="inline-flex items-center gap-1 mt-1 rounded-full px-2 py-0.5"
+                                style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#FEDED7', color: '#BA0517' }}
+                              >
+                                <Ruler className="w-3 h-3" />
+                                Unidad no encontrada &middot; cliente: {ua.cliente ?? '?'} &middot; cat&aacute;logo: {ua.catalogo ?? '?'}
+                              </span>
+                            );
+                          })()}
                         </div>
                       ) : (
                         <div>

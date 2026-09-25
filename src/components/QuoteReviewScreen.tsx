@@ -149,6 +149,12 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     return m;
   }, [versionMeta]);
 
+  const versionMetaByLineIndex = useMemo(() => {
+    const m = new Map<number, JobLineVersionMeta>();
+    for (const vm of versionMeta) m.set(vm.line_index, vm);
+    return m;
+  }, [versionMeta]);
+
   const progresoDebounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
@@ -251,9 +257,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       ...l,
       needs_review: l.badgeType === 'manual' || l.badgeType === 'producto_nuevo'
         ? false
-        : (l.confidence ?? 0) < confidenceThreshold,
+        : (l.confidence ?? 0) < confidenceThreshold || versionMetaByLineIndex.get(l._lineIndex)?.unidad_no_encontrada === true,
     }));
-  }, [lines, confidenceThreshold]);
+  }, [lines, confidenceThreshold, versionMetaByLineIndex]);
 
   const flaggedCount = linesWithReview.filter(
     (l: any) => l.needs_review && !l.ignored && !l.approved
@@ -662,6 +668,16 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     }
     return m;
   }, [versionMeta, motivoNombreById]);
+
+  const unidadAlertaByLineIndex = useMemo(() => {
+    const m = new Map<number, { cliente: string | null; catalogo: string | null }>();
+    for (const vm of versionMeta) {
+      if (vm.unidad_no_encontrada === true) {
+        m.set(vm.line_index, { cliente: vm.unidad_original, catalogo: vm.unidad_medida });
+      }
+    }
+    return m;
+  }, [versionMeta]);
 
   const handleCommentSave = useCallback(
     (index: number, comentario: string | null) => {
@@ -1121,6 +1137,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               onEditChange={handleEditChange}
               onIgnore={(index: number) => { setEliminarIndex(index); setEliminarModo('eliminar'); }}
               eliminacionByLineIndex={eliminacionByLineIndex}
+              unidadAlertaByLineIndex={unidadAlertaByLineIndex}
               onEditMotivo={(index: number) => { setEliminarIndex(index); setEliminarModo('motivo'); }}
               onRestore={handleRestore}
               onDeleteLine={handleDeleteLine}

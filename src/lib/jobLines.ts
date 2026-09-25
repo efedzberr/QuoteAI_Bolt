@@ -24,6 +24,7 @@ export interface JobLine {
   descuento_pct?: number | null;
   inventario_total?: number | null;
   inventario_almacenes?: { almacen_id: string; almacen_nombre: string; cantidad: number }[] | null;
+  unidad_no_encontrada?: boolean | null;
   created_at: string;
   updated_at: string;
 }
@@ -118,6 +119,8 @@ export interface JobLineVersionMeta {
   ia_confianza: number | null;
   ia_metodo: string | null;
   ia_capturado_at: string | null;
+  unidad_medida: string | null;
+  unidad_no_encontrada: boolean | null;
   motivo_eliminacion_id: number | null;
   comentario_eliminacion: string | null;
   eliminada_at: string | null;
@@ -126,7 +129,7 @@ export interface JobLineVersionMeta {
 export async function fetchJobLineVersionMeta(jobId: string): Promise<JobLineVersionMeta[]> {
   const { data, error } = await supabase
     .from('job_lines')
-    .select('line_index, codigo_original, descripcion_original, unidad_original, cantidad, ia_producto_codigo, ia_producto_descripcion, ia_unidad_medida, ia_precio_unitario, ia_confianza, ia_metodo, ia_capturado_at, motivo_eliminacion_id, comentario_eliminacion, eliminada_at')
+    .select('line_index, codigo_original, descripcion_original, unidad_original, cantidad, ia_producto_codigo, ia_producto_descripcion, ia_unidad_medida, ia_precio_unitario, ia_confianza, ia_metodo, ia_capturado_at, unidad_medida, unidad_no_encontrada, motivo_eliminacion_id, comentario_eliminacion, eliminada_at')
     .eq('job_id', jobId)
     .order('line_index', { ascending: true });
   if (error) {

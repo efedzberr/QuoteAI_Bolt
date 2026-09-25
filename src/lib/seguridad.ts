@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export type ObjetoSeguridad = 'cotizaciones' | 'productos_nuevos' | 'grupos' | 'precio_grupo' | 'aprendizaje';
+export type ObjetoSeguridad = 'cotizaciones' | 'productos_nuevos' | 'grupos' | 'precio_grupo' | 'aprendizaje' | 'unidades';
 export type AccionObjeto = 'leer' | 'crear' | 'editar' | 'eliminar';
 export type PermisoSistema = 'ver_todos_datos' | 'modificar_todos_datos' | 'administrar_usuarios' | 'administrar_configuracion' | 'ver_inventario';
 
@@ -10,6 +10,7 @@ export const OBJETOS: { id: ObjetoSeguridad; label: string; hint: string }[] = [
   { id: 'grupos', label: 'Grupos', hint: 'Relación cliente → grupo de precios (tabla grupo)' },
   { id: 'precio_grupo', label: 'Precio grupo', hint: 'Lista de precios por grupo y artículo (tabla precio_grupo)' },
   { id: 'aprendizaje', label: 'Aprendizaje', hint: 'Correcciones del ejecutivo que el matching usa para aprender' },
+  { id: 'unidades', label: 'Unidades', hint: 'Traducción de unidades del cliente a las del catálogo' },
 ];
 
 export const ACCIONES: { id: AccionObjeto; label: string; col: keyof Pick<PermisoObjeto, 'can_read' | 'can_create' | 'can_edit' | 'can_delete'> }[] = [
@@ -158,4 +159,16 @@ export async function fetchGrupoNombres(): Promise<GrupoNombre[]> {
   const { data, error } = await supabase.rpc('grupo_nombres');
   if (error) fail('No se pudieron cargar los grupos', error);
   return (data as GrupoNombre[]) || [];
+}
+
+// ---------------- Unidades del catálogo ----------------
+export interface UnidadCatalogo { unidad: string; productos: number; }
+
+let unidadesCache: UnidadCatalogo[] | null = null;
+export async function fetchUnidadesCatalogo(): Promise<UnidadCatalogo[]> {
+  if (unidadesCache) return unidadesCache;
+  const { data, error } = await supabase.rpc('unidades_catalogo');
+  if (error) { console.error('[seguridad] unidades_catalogo error:', error); return []; }
+  unidadesCache = (data as UnidadCatalogo[]) || [];
+  return unidadesCache;
 }

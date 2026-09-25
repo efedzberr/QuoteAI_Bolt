@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Trash2, Plus, AlertCircle, X } from 'lucide-react';
 import type { AdminObjectDef, ObjectFieldDef } from '../../lib/objectCatalog';
+import { fetchUnidadesCatalogo, type UnidadCatalogo } from '../../lib/seguridad';
 import {
   type FilterCriterion, type OwnerScope, getOperatorsForType, validateFilterLogic, rewriteFilterLogicOnRemove,
   RELATIVE_TOKENS, parseRelativeValue, serializeRelativeValue, CURRENT_USER_TOKEN,
@@ -197,5 +198,22 @@ function ValueInput({ f, c, users, onChange }: { f: ObjectFieldDef; c: FilterCri
       </div>
     );
   }
+  if (f.suggestions === 'unidades_catalogo') {
+    return <SuggestedTextInput value={c.value} onChange={onChange} fieldKey={f.key} className={`w-full ${inp}`} />;
+  }
   return <input value={c.value} onChange={e => onChange(e.target.value)} className={`w-full ${inp}`} placeholder="Valor" />;
+}
+
+function SuggestedTextInput({ value, onChange, fieldKey, className }: { value: string; onChange: (v: string) => void; fieldKey: string; className: string }) {
+  const [units, setUnits] = useState<UnidadCatalogo[]>([]);
+  useEffect(() => { fetchUnidadesCatalogo().then(setUnits); }, []);
+  const listId = `sug-${fieldKey}`;
+  return (
+    <>
+      <input value={value} onChange={e => onChange(e.target.value)} list={listId} className={className} placeholder="Valor" />
+      <datalist id={listId}>
+        {units.map(u => <option key={u.unidad} value={u.unidad}>{u.unidad} \u00b7 {u.productos} productos</option>)}
+      </datalist>
+    </>
+  );
 }

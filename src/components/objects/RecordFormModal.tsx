@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Loader2, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { type AdminObjectDef, type ObjectFieldDef, isPkField, pkMatch } from '../../lib/objectCatalog';
-import { fetchGrupoNombres, type GrupoNombre } from '../../lib/seguridad';
+import { fetchGrupoNombres, type GrupoNombre, fetchUnidadesCatalogo, type UnidadCatalogo } from '../../lib/seguridad';
 
 type Row = Record<string, unknown>;
 
@@ -25,6 +25,13 @@ export default function RecordFormModal({ def, row, onClose, onSaved }: Props) {
   const [grupos, setGrupos] = useState<GrupoNombre[]>([]);
   const [gruposLoading, setGruposLoading] = useState(false);
   const [writingNew, setWritingNew] = useState<Record<string, boolean>>({});
+  const [unidades, setUnidades] = useState<UnidadCatalogo[]>([]);
+
+  const needsUnidades = editableFields.some(f => f.suggestions === 'unidades_catalogo');
+  useEffect(() => {
+    if (!needsUnidades) return;
+    fetchUnidadesCatalogo().then(setUnidades);
+  }, [needsUnidades]);
 
   const needsGrupos = editableFields.some(f => f.lookup === 'grupos');
   useEffect(() => {
@@ -133,14 +140,22 @@ export default function RecordFormModal({ def, row, onClose, onSaved }: Props) {
                   <option value="true">Sí</option><option value="false">No</option>
                 </select>
               ) : (
-                <input
-                  type={f.dataType === 'number' || f.dataType === 'currency' ? 'number' : 'text'}
-                  step="any"
-                  value={form[f.key]}
-                  onChange={e => setForm({ ...form, [f.key]: e.target.value })}
-                  disabled={isLocked(f)}
-                  className={`${field} ${isPkField(def, f.key) || f.dataType !== 'text' ? 'font-mono' : ''}`}
-                />
+                <>
+                  <input
+                    type={f.dataType === 'number' || f.dataType === 'currency' ? 'number' : 'text'}
+                    step="any"
+                    value={form[f.key]}
+                    onChange={e => setForm({ ...form, [f.key]: e.target.value })}
+                    disabled={isLocked(f)}
+                    className={`${field} ${isPkField(def, f.key) || f.dataType !== 'text' ? 'font-mono' : ''}`}
+                    list={f.suggestions === 'unidades_catalogo' ? `sug-form-${f.key}` : undefined}
+                  />
+                  {f.suggestions === 'unidades_catalogo' && (
+                    <datalist id={`sug-form-${f.key}`}>
+                      {unidades.map(u => <option key={u.unidad} value={u.unidad}>{u.unidad} \u00b7 {u.productos} productos</option>)}
+                    </datalist>
+                  )}
+                </>
               )}
               {f.notes && <p className="mt-1 text-[11px] text-ink-faint">{f.notes}</p>}
             </div>

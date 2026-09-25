@@ -124,6 +124,14 @@ export default function ReconocimientoIATable({ lines, currency }: Props) {
                   </td>
                   <td className="px-3 py-2.5 text-[#747474]" style={{ fontSize: 12 }}>
                     {l.ia_unidad_medida ?? '\u2014'}
+                    {l.unidad_no_encontrada === true && l.unidad_original && (
+                      <span
+                        className="block mt-1 inline-flex items-center gap-0.5 rounded-full px-2 py-0.5"
+                        style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#FEDED7', color: '#BA0517' }}
+                      >
+                        Cliente: {l.unidad_original}
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2.5 text-right text-[#181818]" style={{ fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
                     {formatCurrency(l.ia_precio_unitario, currency)}
