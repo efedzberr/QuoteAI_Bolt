@@ -5,9 +5,10 @@ import { supabase } from '../lib/supabase';
 interface Props {
   onComplete: () => void;
   onSignOut: () => void;
+  onSkip?: () => void;
 }
 
-export default function MfaVerify({ onComplete, onSignOut }: Props) {
+export default function MfaVerify({ onComplete, onSignOut, onSkip }: Props) {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -135,10 +136,15 @@ export default function MfaVerify({ onComplete, onSignOut }: Props) {
             Verificar
           </button>
 
-          <div className="mt-5 text-center">
+          <div className="mt-5 flex items-center justify-center gap-4">
             <button onClick={onSignOut} className="text-xs text-ink-faint hover:text-ink transition-colors">
               Cerrar sesion
             </button>
+            {onSkip && (
+              <button onClick={onSkip} className="text-xs text-ink-faint hover:text-ink transition-colors">
+                Hacerlo despues
+              </button>
+            )}
           </div>
 
           <p className="mt-4 text-[11px] text-ink-faint text-center leading-relaxed">

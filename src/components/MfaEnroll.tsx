@@ -5,9 +5,10 @@ import { supabase } from '../lib/supabase';
 interface Props {
   onComplete: () => void;
   onSignOut: () => void;
+  onSkip?: () => void;
 }
 
-export default function MfaEnroll({ onComplete, onSignOut }: Props) {
+export default function MfaEnroll({ onComplete, onSignOut, onSkip }: Props) {
   const [factorId, setFactorId] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
@@ -138,10 +139,15 @@ export default function MfaEnroll({ onComplete, onSignOut }: Props) {
               <RefreshCw className="w-4 h-4" />
               Reintentar
             </button>
-            <div className="mt-4">
+            <div className="mt-4 flex items-center justify-center gap-4">
               <button onClick={onSignOut} className="text-xs text-ink-faint hover:text-ink transition-colors">
                 Cerrar sesion
               </button>
+              {onSkip && (
+                <button onClick={onSkip} className="text-xs text-ink-faint hover:text-ink transition-colors">
+                  Hacerlo despues
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -231,10 +237,15 @@ export default function MfaEnroll({ onComplete, onSignOut }: Props) {
             Activar y continuar
           </button>
 
-          <div className="mt-5 text-center">
+          <div className="mt-5 flex items-center justify-center gap-4">
             <button onClick={onSignOut} className="text-xs text-ink-faint hover:text-ink transition-colors">
               Cerrar sesion
             </button>
+            {onSkip && (
+              <button onClick={onSkip} className="text-xs text-ink-faint hover:text-ink transition-colors">
+                Hacerlo despues
+              </button>
+            )}
           </div>
         </div>
       </div>

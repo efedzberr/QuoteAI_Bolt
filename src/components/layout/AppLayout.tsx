@@ -2,6 +2,7 @@ import { ReactNode } from 'react';
 import AppSidebar from './AppSidebar';
 import AppTopbar from './AppTopbar';
 import VistaComoBanner from './VistaComoBanner';
+import MfaExencionBanner from './MfaExencionBanner';
 import { useAuth } from '../../hooks/useAuth';
 
 type Section = 'home' | 'cotizar' | 'catalogo' | 'clientes' | 'reportes' | 'ajustes';
@@ -30,6 +31,7 @@ function AppLayout({
       <AppSidebar active={active} onNavigate={onNavigate} />
       <div className="flex-1 min-w-0 flex flex-col">
         <VistaComoBanner />
+        <MfaExencionBanner />
         <AppTopbar
           breadcrumbs={breadcrumbs}
           displayName={displayName}

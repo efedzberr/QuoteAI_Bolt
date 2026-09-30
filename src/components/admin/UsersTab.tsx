@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, X, UserPlus, Shield, Ban, CheckCircle, KeyRound, MoreHorizontal, Users, Trash2, Pencil, Mail, Copy, Loader2, RefreshCw, Smartphone, Eye } from 'lucide-react';
+import { Search, X, UserPlus, Shield, Ban, CheckCircle, KeyRound, MoreHorizontal, Users, Trash2, Pencil, Mail, Copy, Loader2, RefreshCw, Smartphone, Eye, ShieldOff, ShieldCheck } from 'lucide-react';
 import { iniciarVistaComo } from '../../lib/vistaComo';
 import { useAuth } from '../../hooks/useAuth';
 import { callAdminUsers, type AdminUserRow, type LinkResult } from '../../lib/adminUsers';
@@ -65,6 +65,8 @@ export default function UsersTab({ onToast }: UsersTabProps) {
   const [copiedPwd, setCopiedPwd] = useState(false);
   const [reassignTo, setReassignTo] = useState('');
   const [resetMfaUser, setResetMfaUser] = useState<AdminUserRow | null>(null);
+  const [exemptUser, setExemptUser] = useState<AdminUserRow | null>(null);
+  const [revokeUser, setRevokeUser] = useState<AdminUserRow | null>(null);
   const [linkResult, setLinkResult] = useState<LinkResult | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
@@ -174,7 +176,16 @@ export default function UsersTab({ onToast }: UsersTabProps) {
                         : <span className="text-xs font-semibold text-good bg-good-soft px-2 py-0.5 rounded-full">Activo</span>}
                   </td>
                   <td className="px-4 py-3">
-                    {u.mfa_enrolled ? <span className="inline-flex items-center gap-1 text-xs text-good"><CheckCircle className="w-3.5 h-3.5" /> Sí</span> : <span className="text-xs text-ink-faint">No</span>}
+                    {u.mfa_exento_hasta ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-warn bg-warn-soft px-2 py-0.5 rounded-full">
+                        <ShieldOff className="w-3 h-3" />
+                        Exento hasta {new Date(u.mfa_exento_hasta).toLocaleString('es-MX', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    ) : u.mfa_enrolled ? (
+                      <span className="inline-flex items-center gap-1 text-xs text-good"><CheckCircle className="w-3.5 h-3.5" /> Sí</span>
+                    ) : (
+                      <span className="text-xs text-ink-faint">No</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-xs text-ink-soft whitespace-nowrap">{formatDate(u.last_sign_in_at)}</td>
                   <td className="px-2 py-3 relative">
@@ -187,6 +198,11 @@ export default function UsersTab({ onToast }: UsersTabProps) {
                         {pending && <MenuItem icon={<Mail className="w-4 h-4" />} text="Reenviar invitación" onClick={() => { setMenuId(null); sendLink(u); }} />}
                         <MenuItem icon={<KeyRound className="w-4 h-4" />} text="Restablecer contraseña" disabled={isMe} onClick={() => { setMenuId(null); setResetPwdMode('email'); setResetPwdCustom(''); setResetPwdResult(null); setCopiedPwd(false); setResetPwdUser(u); }} />
                         <MenuItem icon={<Smartphone className="w-4 h-4" />} text="Restablecer 2FA" disabled={!u.mfa_enrolled} onClick={() => { setMenuId(null); setResetMfaUser(u); }} />
+                        {u.mfa_exento_hasta ? (
+                          <MenuItem icon={<ShieldCheck className="w-4 h-4" />} text="Quitar acceso sin 2FA" disabled={isMe} onClick={() => { setMenuId(null); setRevokeUser(u); }} />
+                        ) : (
+                          <MenuItem icon={<ShieldOff className="w-4 h-4" />} text="Permitir acceso sin 2FA" disabled={isMe || !u.is_active} onClick={() => { setMenuId(null); setExemptUser(u); }} />
+                        )}
                         <MenuItem icon={<Eye className="w-4 h-4" />} text="Iniciar sesión como" disabled={isMe || !u.is_active} onClick={() => { setMenuId(null); setVistaUser(u); }} />
                         <MenuItem icon={u.is_active ? <Ban className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />} text={u.is_active ? 'Desactivar' : 'Activar'} disabled={isMe} onClick={() => { setMenuId(null); toggleActive(u); }} />
                         <div className="my-1 border-t border-rule-soft" />
@@ -273,6 +289,7 @@ export default function UsersTab({ onToast }: UsersTabProps) {
                 </button>
               </div>
               <p className="text-xs text-ink-faint mb-5">Compártela por un canal seguro y pídele al usuario que la cambie desde su perfil. Su 2FA no cambia; si también la perdió, usa "Restablecer 2FA".</p>
+              <p className="text-[11px] text-ink-faint/70 mb-5">Si además el usuario no tiene su autenticador, usa "Permitir acceso sin 2FA" en el menú.</p>
               <div className="flex justify-end">
                 <button onClick={() => { setResetPwdUser(null); setResetPwdResult(null); }} className={primaryBtn}>Listo</button>
               </div>
@@ -366,6 +383,39 @@ export default function UsersTab({ onToast }: UsersTabProps) {
             </button>
           </div>
         </Modal>
+      )}
+
+      {revokeUser && (
+        <Modal title="Quitar acceso sin 2FA" subtitle={revokeUser.email} onClose={() => setRevokeUser(null)}>
+          <p className="text-sm text-ink-soft mb-5">Se volverá a exigir la verificación en dos pasos. Si el usuario tiene una sesión abierta, al recargar o al vencer la exención se le pedirá el 2FA.</p>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setRevokeUser(null)} className={secondaryBtn}>Cancelar</button>
+            <button disabled={busy !== null} className={primaryBtn} onClick={() => { const u = revokeUser; setRevokeUser(null); run(`revoke-${u.id}`, async () => { await callAdminUsers('revoke_mfa_exemption', { user_id: u.id }); onToast('Se volvió a exigir el 2FA', 'success'); await loadUsers(); }); }}>
+              <ShieldCheck className="w-4 h-4" /> Quitar exención
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {exemptUser && (
+        <MfaExemptionModal
+          user={exemptUser}
+          busy={busy}
+          onClose={() => setExemptUser(null)}
+          onGrant={(u, hours, resetFactors, motivo) => {
+            setExemptUser(null);
+            run(`exempt-${u.id}`, async () => {
+              const res = await callAdminUsers<{ mfa_exento_hasta?: string }>('grant_mfa_exemption', {
+                user_id: u.id, hours, reset_factors: resetFactors, motivo,
+              });
+              const hastaStr = res.mfa_exento_hasta
+                ? new Date(res.mfa_exento_hasta).toLocaleString('es-MX', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+                : '';
+              onToast(`Acceso sin 2FA hasta ${hastaStr}`, 'success');
+              await loadUsers();
+            });
+          }}
+        />
       )}
     </div>
   );
@@ -508,6 +558,85 @@ function UserFormModal({ user, isMe, onClose, onSaved, onToast }: { user?: Admin
         <button onClick={submit} className={primaryBtn} disabled={saving}>
           {saving && <Loader2 className="w-4 h-4 animate-spin" />}
           {editing ? 'Guardar cambios' : (setPasswordNow ? 'Crear usuario' : 'Crear e invitar')}
+        </button>
+      </div>
+    </Modal>
+  );
+}
+
+const EXEMPT_HOURS = [1, 12, 24, 36, 72] as const;
+
+function MfaExemptionModal({ user, busy, onClose, onGrant }: {
+  user: AdminUserRow;
+  busy: string | null;
+  onClose: () => void;
+  onGrant: (u: AdminUserRow, hours: number, resetFactors: boolean, motivo: string) => void;
+}) {
+  const [hours, setHours] = useState(24);
+  const [resetFactors, setResetFactors] = useState(true);
+  const [motivo, setMotivo] = useState('');
+
+  const motivoOk = motivo.trim().length >= 5 && motivo.trim().length <= 300;
+
+  return (
+    <Modal title="Permitir acceso sin 2FA" subtitle={user.email} onClose={onClose}>
+      <div className="space-y-5">
+        <div>
+          <label className="block text-xs font-semibold text-ink-soft uppercase tracking-wide mb-2">Duración</label>
+          <div className="flex gap-2">
+            {EXEMPT_HOURS.map(h => (
+              <button
+                key={h}
+                onClick={() => setHours(h)}
+                className={`h-9 px-3.5 rounded-full text-sm font-semibold border transition-colors ${hours === h ? 'bg-brand-soft border-brand text-brand' : 'bg-white border-rule text-ink-soft hover:bg-rule-soft'}`}
+              >
+                {h} h
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <Toggle
+          checked={resetFactors}
+          onChange={setResetFactors}
+          text="Borrar sus factores de 2FA actuales (celular perdido o cambiado)"
+          hint="Al configurar de nuevo, registrará su autenticador desde cero."
+        />
+
+        <div>
+          <label className="block text-xs font-semibold text-ink-soft uppercase tracking-wide mb-1.5">
+            Motivo *
+          </label>
+          <textarea
+            value={motivo}
+            onChange={e => { if (e.target.value.length <= 300) setMotivo(e.target.value); }}
+            placeholder="Ej. Cambió de celular y no tiene acceso a su autenticador"
+            rows={3}
+            className="w-full px-3 py-2 border border-rule rounded-lg text-sm text-ink placeholder:text-ink-faint focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft transition resize-none"
+          />
+          <div className="flex justify-between mt-1">
+            <span className={`text-[11px] ${motivo.trim().length < 5 ? 'text-warn' : 'text-ink-faint'}`}>
+              Mínimo 5 caracteres
+            </span>
+            <span className="text-[11px] text-ink-faint">{motivo.length}/300</span>
+          </div>
+        </div>
+
+        <div className="p-3 bg-warn-soft border border-warn/20 rounded-lg text-xs text-warn leading-relaxed">
+          Durante este tiempo la cuenta queda protegida solo con la contraseña.
+          El 2FA se volverá a exigir automáticamente al vencer, o antes si el usuario lo configura.
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 mt-6">
+        <button onClick={onClose} className="inline-flex items-center justify-center gap-2 h-10 px-4 bg-white text-ink-soft font-semibold text-sm rounded-lg border border-rule hover:bg-rule-soft disabled:opacity-60 transition-colors" disabled={busy !== null}>Cancelar</button>
+        <button
+          disabled={busy !== null || !motivoOk}
+          className="inline-flex items-center justify-center gap-2 h-10 px-4 bg-brand text-white font-semibold text-sm rounded-lg hover:bg-brand-deep disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          onClick={() => onGrant(user, hours, resetFactors, motivo.trim())}
+        >
+          {busy && <Loader2 className="w-4 h-4 animate-spin" />}
+          <ShieldOff className="w-4 h-4" /> Permitir acceso
         </button>
       </div>
     </Modal>

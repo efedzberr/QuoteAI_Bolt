@@ -14,6 +14,7 @@ export interface AdminUserRow {
   is_active: boolean;
   ver_inventario: boolean;
   mfa_enrolled: boolean;
+  mfa_exento_hasta: string | null;
   last_sign_in_at: string | null;
   created_at: string;
 }

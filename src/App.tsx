@@ -189,13 +189,26 @@ function App() {
   const [confirmLink, setConfirmLink] = useState(confirmLinkParams);
   // Evita que el evento PASSWORD_RECOVERY vuelva a pedir la contrasena despues de definirla
   const passwordDoneRef = useRef(false);
-  const [mfaStatus, setMfaStatus] = useState<'loading' | 'aal2' | 'needs_enroll' | 'needs_verify'>('loading');
+  const [mfaStatus, setMfaStatus] = useState<'loading' | 'aal2' | 'needs_enroll' | 'needs_verify' | 'exento'>('loading');
+  const [mfaExentoHasta, setMfaExentoHasta] = useState<string | null>(null);
+  const [mfaNextLevel, setMfaNextLevel] = useState<'aal1' | 'aal2' | null>(null);
 
   const checkMfaLevel = useCallback(async () => {
     setMfaStatus('loading');
     const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     if (error || !data) { setMfaStatus('needs_enroll'); return; }
-    if (data.currentLevel === 'aal2') { setMfaStatus('aal2'); return; }
+    setMfaNextLevel((data.nextLevel as 'aal1' | 'aal2') ?? null);
+    if (data.currentLevel === 'aal2') {
+      setMfaExentoHasta(null);
+      setMfaStatus('aal2');
+      supabase.rpc('terminar_mi_exencion_mfa').then(({ error: e }) => {
+        if (e) console.warn('[mfa] terminar_mi_exencion_mfa', e);
+      });
+      return;
+    }
+    const { data: hasta } = await supabase.rpc('mi_exencion_mfa');
+    if (hasta) { setMfaExentoHasta(hasta as string); setMfaStatus('exento'); return; }
+    setMfaExentoHasta(null);
     if (data.nextLevel === 'aal2') { setMfaStatus('needs_verify'); return; }
     setMfaStatus('needs_enroll');
   }, []);
@@ -207,6 +220,21 @@ function App() {
       setMfaStatus('loading');
     }
   }, [auth.session, auth.loading, needsPasswordSet, checkMfaLevel]);
+
+  useEffect(() => {
+    if (mfaStatus !== 'exento' || !mfaExentoHasta) return;
+    const ms = Math.max(0, new Date(mfaExentoHasta).getTime() - Date.now()) + 1000;
+    const timer = setTimeout(checkMfaLevel, ms);
+    return () => clearTimeout(timer);
+  }, [mfaStatus, mfaExentoHasta, checkMfaLevel]);
+
+  useEffect(() => {
+    const handler = () => {
+      setMfaStatus(mfaNextLevel === 'aal2' ? 'needs_verify' : 'needs_enroll');
+    };
+    window.addEventListener('mfa:configurar', handler);
+    return () => window.removeEventListener('mfa:configurar', handler);
+  }, [mfaNextLevel]);
 
   // Detect invite/recovery flow from URL hash or query params
   useEffect(() => {
@@ -827,6 +855,7 @@ function App() {
       <MfaEnroll
         onComplete={checkMfaLevel}
         onSignOut={async () => { await supabase.auth.signOut(); }}
+        onSkip={mfaExentoHasta ? () => setMfaStatus('exento') : undefined}
       />
     );
   }
@@ -836,6 +865,7 @@ function App() {
       <MfaVerify
         onComplete={checkMfaLevel}
         onSignOut={async () => { await supabase.auth.signOut(); }}
+        onSkip={mfaExentoHasta ? () => setMfaStatus('exento') : undefined}
       />
     );
   }
