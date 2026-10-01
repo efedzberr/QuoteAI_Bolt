@@ -3,6 +3,7 @@ import { Database } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { adminObjectFor, isPkField } from '../../lib/objectCatalog';
 import ObjectListView from './ObjectListView';
+import { cargarConsulta, guardarConsulta, leerConsulta, type ObjectTab } from '../../lib/objectState';
 
 interface Props { objectId: string; onToast: (message: string, type: 'success' | 'error') => void }
 
@@ -10,11 +11,19 @@ const TYPE_LABEL: Record<string, string> = { text: 'Texto', number: 'Número', c
 
 export default function ObjectPage({ objectId, onToast }: Props) {
   const def = adminObjectFor(objectId);
-  const [tab, setTab] = useState<'records' | 'fields'>('records');
+  const [tab, setTab] = useState<ObjectTab | null>(() => leerConsulta(objectId)?.tab ?? null);
   const [count, setCount] = useState<number | null>(null);
 
+  // Pestana que el usuario dejo abierta en este objeto (se guarda en su consulta)
   useEffect(() => {
-    setTab('records');
+    let cancelado = false;
+    cargarConsulta(objectId).then(c => { if (!cancelado) setTab(t => t ?? c.tab ?? 'records'); });
+    return () => { cancelado = true; };
+  }, [objectId]);
+
+  const cambiarTab = (t: ObjectTab) => { setTab(t); guardarConsulta(objectId, { tab: t }); };
+
+  useEffect(() => {
     setCount(null);
     if (!def) return;
     let cancelled = false;
@@ -38,10 +47,12 @@ export default function ObjectPage({ objectId, onToast }: Props) {
         </p>
       </div>
       <div className="flex gap-6 border-b border-rule mb-5">
-        <button onClick={() => setTab('records')} className={tabCls(tab === 'records')}>Registros</button>
-        <button onClick={() => setTab('fields')} className={tabCls(tab === 'fields')}>Campos <span className="ml-1 text-xs text-ink-faint">({def.fields.length})</span></button>
+        <button onClick={() => cambiarTab('records')} className={tabCls(tab === 'records')}>Registros</button>
+        <button onClick={() => cambiarTab('fields')} className={tabCls(tab === 'fields')}>Campos <span className="ml-1 text-xs text-ink-faint">({def.fields.length})</span></button>
       </div>
-      {tab === 'records' ? (
+      {tab === null ? (
+        <p className="py-10 text-center text-sm text-ink-faint">Cargando...</p>
+      ) : tab !== 'fields' ? (
         <ObjectListView key={def.id} def={def} onToast={onToast} />
       ) : (
         <div className="border border-rule rounded-card overflow-hidden">

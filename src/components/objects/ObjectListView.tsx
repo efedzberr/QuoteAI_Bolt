@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Search, Settings, RefreshCw, Filter, ArrowUp, ArrowDown, Plus, Pencil, Trash2, Loader2, FilePlus, Copy, Share2, Columns3, RotateCcw } from 'lucide-react';
+import { Search, Settings, RefreshCw, Filter, ArrowUp, ArrowDown, Plus, Pencil, Trash2, Loader2, FilePlus, Copy, Share2, Columns3, RotateCcw, X } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { usePermissions } from '../../hooks/usePermissions';
 import { fetchUsuariosVisibles } from '../../lib/seguridad';
@@ -16,6 +16,7 @@ import FilterPanel from './FilterPanel';
 import SelectFieldsModal from './SelectFieldsModal';
 import RecordFormModal from './RecordFormModal';
 import RecordDetailDrawer from './RecordDetailDrawer';
+import { cargarConsulta, guardarConsulta, type SessionOverrides } from '../../lib/objectState';
 
 type Row = Record<string, unknown>;
 const PAGE_SIZE = 50;
@@ -55,7 +56,7 @@ export default function ObjectListView({ def, onToast }: Props) {
   const [criteria, setCriteria] = useState<FilterCriterion[]>([]);
   const [logic, setLogic] = useState('');
   const [ownerScope, setOwnerScope] = useState<OwnerScope>('all');
-  const [session, setSession] = useState<{ criteria: FilterCriterion[]; logic: string; ownerScope: OwnerScope; columns: ListViewColumn[] | null; sorting: ListViewSort[] | null } | null>(null);
+  const [session, setSession] = useState<SessionOverrides | null>(null);
   const [readOnlyNotice, setReadOnlyNotice] = useState(false);
 
   const [search, setSearch] = useState('');
@@ -72,6 +73,7 @@ export default function ObjectListView({ def, onToast }: Props) {
   const gearRef = useRef<HTMLDivElement>(null);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const seqRef = useRef(0);
+  const restauradoRef = useRef(false);
 
   const canCreate = !def.readOnly && def.allowCreate !== false && !!def.permObject && perms.can(def.permObject, 'crear');
   const canEdit = !def.readOnly && !!def.permObject && perms.can(def.permObject, 'editar');
@@ -94,13 +96,21 @@ export default function ObjectListView({ def, onToast }: Props) {
         const uid = user?.id || null;
         if (cancelled) return;
         setUserId(uid);
-        const [vs, prefs] = await Promise.all([fetchListViews(def.id), uid ? fetchPrefs(uid, def.id) : Promise.resolve({ pinned_list_view_id: null, recent_list_view_ids: [] })]);
+        const [vs, prefs, consulta] = await Promise.all([fetchListViews(def.id), uid ? fetchPrefs(uid, def.id) : Promise.resolve({ pinned_list_view_id: null, recent_list_view_ids: [] }), cargarConsulta(def.id)]);
         if (cancelled) return;
         setViews(vs);
         setPinnedId(prefs.pinned_list_view_id);
         setRecentIds(prefs.recent_list_view_ids);
-        const initial = vs.find(v => v.id === prefs.pinned_list_view_id) || vs.find(v => v.id === def.systemViewId) || vs[0] || null;
+        // Restaurar la consulta que el usuario dejo: vista, filtros temporales y busqueda
+        const guardada = consulta.viewId ? vs.find(v => v.id === consulta.viewId) : undefined;
+        const initial = guardada || vs.find(v => v.id === prefs.pinned_list_view_id) || vs.find(v => v.id === def.systemViewId) || vs[0] || null;
         applyView(initial);
+        if (consulta.session && initial && (!consulta.viewId || guardada)) {
+          setSession(consulta.session);
+          setReadOnlyNotice(!consulta.session.drill && (initial.is_system || initial.owner_user_id !== uid));
+        }
+        if (consulta.search) { setSearch(consulta.search); setDebounced(consulta.search); }
+        restauradoRef.current = true;
         if (def.ownerField) {
           try { setUsers((await fetchUsuariosVisibles()).map(u => ({ id: u.id, label: u.full_name || u.email }))); } catch { /* sin permiso: sin lista */ }
         }
@@ -187,6 +197,17 @@ export default function ObjectListView({ def, onToast }: Props) {
   }, [hasMore, loadingMore, loading]);
 
   useEffect(() => { const t = setTimeout(() => setDebounced(search), 300); return () => clearTimeout(t); }, [search]);
+
+  // Guardar la consulta (vista, busqueda y filtros temporales) para restaurarla al volver, en cualquier equipo
+  useEffect(() => {
+    if (!restauradoRef.current) return;
+    guardarConsulta(def.id, {
+      viewId: activeView?.id ?? null,
+      search: debounced,
+      session,
+      efectivos: { criteria: effCriteria, logic: effLogic, ownerScope: effScope, viewName: activeView?.name ?? null },
+    });
+  }, [def.id, activeView, debounced, session, effCriteria, effLogic, effScope]);
   useEffect(() => { const t = setInterval(() => setTick(x => x + 1), 30000); return () => clearInterval(t); }, []);
   useEffect(() => {
     if (!gearOpen) return;
@@ -229,14 +250,14 @@ export default function ObjectListView({ def, onToast }: Props) {
   };
   const handleColumnsSave = (cols: ListViewColumn[]) => {
     if (canEditView(activeView)) { setSession(prev => prev ? { ...prev, columns: null } : null); persistView({ columns: cols }); }
-    else { setSession(prev => ({ criteria: prev?.criteria ?? criteria, logic: prev?.logic ?? logic, ownerScope: prev?.ownerScope ?? ownerScope, columns: cols, sorting: prev?.sorting ?? null })); setReadOnlyNotice(true); }
+    else { setSession(prev => ({ criteria: prev?.criteria ?? criteria, logic: prev?.logic ?? logic, ownerScope: prev?.ownerScope ?? ownerScope, columns: cols, sorting: prev?.sorting ?? null, drill: prev?.drill ?? null })); setReadOnlyNotice(true); }
   };
   const handleSort = (fieldKey: string) => {
     if (fm.get(fieldKey)?.sortable === false) return;
     const cur = effSorting[0];
     const next: ListViewSort[] = [{ field: fieldKey, direction: cur?.field === fieldKey && cur.direction === 'asc' ? 'desc' : 'asc' }];
     if (canEditView(activeView)) { setSession(prev => prev ? { ...prev, sorting: null } : null); persistView({ sorting: next }); }
-    else { setSession(prev => ({ criteria: prev?.criteria ?? criteria, logic: prev?.logic ?? logic, ownerScope: prev?.ownerScope ?? ownerScope, columns: prev?.columns ?? null, sorting: next })); setReadOnlyNotice(true); }
+    else { setSession(prev => ({ criteria: prev?.criteria ?? criteria, logic: prev?.logic ?? logic, ownerScope: prev?.ownerScope ?? ownerScope, columns: prev?.columns ?? null, sorting: next, drill: prev?.drill ?? null })); setReadOnlyNotice(true); }
   };
   const resetSorting = () => { setGearOpen(false); setSession(prev => prev ? { ...prev, sorting: null } : null); };
 
@@ -268,7 +289,12 @@ export default function ObjectListView({ def, onToast }: Props) {
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="relative">
             <Search className="w-4 h-4 text-ink-faint absolute left-2.5 top-1/2 -translate-y-1/2" />
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar en esta lista…" className="h-9 w-64 pl-8 pr-3 text-sm border border-rule rounded-lg focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar en esta lista…" className="h-9 w-64 pl-8 pr-8 text-sm border border-rule rounded-lg focus:outline-none focus:border-brand focus:ring-2 focus:ring-brand-soft" />
+            {search && (
+              <button onClick={() => { setSearch(''); setDebounced(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-ink-faint hover:text-ink" title="Limpiar búsqueda">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
           <div className="relative" ref={gearRef}>
             <button onClick={() => setGearOpen(o => !o)} className={iconBtn} title="Controles de la vista"><Settings className="w-4 h-4" /></button>
@@ -297,6 +323,12 @@ export default function ObjectListView({ def, onToast }: Props) {
 
       {readOnlyNotice && (
         <div className="mb-3 px-3 py-2 text-xs text-warn bg-warn-soft border border-warn/20 rounded-lg">Esta vista es de solo lectura: los cambios aplican solo en esta sesión. Usa <strong>Clonar</strong> para guardarlos en una vista tuya.</div>
+      )}
+      {session?.drill && (
+        <div className="mb-3 px-3 py-2 text-xs text-brand bg-brand-soft border border-brand/20 rounded-lg flex items-center justify-between gap-3">
+          <span>Filtrado desde Análisis: <strong>{session.drill.etiqueta}</strong></span>
+          <button onClick={() => { setSession(session.drill?.previo ?? null); setReadOnlyNotice(!!session.drill?.previo); }} className="font-semibold hover:underline whitespace-nowrap">Quitar filtro</button>
+        </div>
       )}
       {errorState && <div className="mb-3 px-3 py-2 text-sm text-bad bg-bad-soft border border-bad/20 rounded-lg">{errorState}</div>}
 

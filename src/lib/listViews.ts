@@ -96,6 +96,25 @@ export function resolveRelativeRange(token: string, n = 1): { start: Date; end: 
   }
 }
 
+/** 'YYYY-MM-DD' se interpreta como fecha LOCAL. new Date('YYYY-MM-DD') la toma como UTC y en Mexico la recorre un dia. */
+export function parseFechaLocal(v: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v.trim());
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+/** Rango [inicio, fin) de un valor de filtro de fecha: fecha exacta (YYYY-MM-DD) o token relativo (HOY, ULTIMOS_N_DIAS:7...). */
+export function rangoCriterioFecha(value: string): { start: Date; end: Date } | null {
+  const v = (value ?? '').trim();
+  if (!v) return null;
+  const rel = parseRelativeValue(v);
+  if (rel) return resolveRelativeRange(rel.token, rel.n ?? 1);
+  const d = parseFechaLocal(v);
+  if (!d) return null;
+  const start = startOfDay(d);
+  return { start, end: addDays(start, 1) };
+}
+
 // ---------------- Lógica de filtro: "1 AND (2 OR 3)" ----------------
 function tokenize(expr: string): string[] {
   const out: string[] = [];
@@ -149,9 +168,9 @@ export function rewriteFilterLogicOnRemove(expression: string, removedIndex: num
   return validateFilterLogic(rewritten, totalBefore - 1) ? null : rewritten;
 }
 
-type LogicNode = { type: 'leaf'; n: number } | { type: 'and' | 'or'; children: LogicNode[] };
+export type LogicNode = { type: 'leaf'; n: number } | { type: 'and' | 'or'; children: LogicNode[] };
 
-function parseLogic(expression: string): LogicNode | null {
+export function parseLogic(expression: string): LogicNode | null {
   const tokens = tokenize(expression);
   if (tokens.length === 0) return null;
   const ctx = { pos: 0 };
@@ -206,16 +225,9 @@ export function criterionToPostgrest(c: FilterCriterion, f: ObjectFieldDef, user
     return `${col}.${c.operator}.${n}`;
   }
   if (f.dataType === 'date' || f.dataType === 'datetime') {
-    if (!v.trim()) return null;
-    const rel = parseRelativeValue(v);
-    let start: Date, end: Date;
-    if (rel) ({ start, end } = resolveRelativeRange(rel.token, rel.n ?? 1));
-    else {
-      const d = new Date(v);
-      if (isNaN(d.getTime())) return null;
-      start = startOfDay(d); end = addDays(start, 1);
-    }
-    const s = start.toISOString(), e = end.toISOString();
+    const rango = rangoCriterioFecha(v);
+    if (!rango) return null;
+    const s = rango.start.toISOString(), e = rango.end.toISOString();
     switch (c.operator) {
       case 'equals': return `and(${col}.gte.${pgQuote(s)},${col}.lt.${pgQuote(e)})`;
       case 'before': return `${col}.lt.${pgQuote(s)}`;
