@@ -19,6 +19,16 @@ export interface ObjectFieldDef {
   suggestions?: 'unidades_catalogo';
 }
 
+/** Reporte sugerido de la pestaña Análisis. */
+export interface AnalisisPresetDef {
+  nombre: string;
+  modo: 'fecha' | 'campo';
+  campoFecha?: string;
+  granularidad?: 'day' | 'week' | 'month' | 'year';
+  campoGrupo?: string;
+  medida?: { tipo: 'conteo' | 'suma' | 'promedio'; campo?: string };
+}
+
 export interface AdminObjectDef {
   id: string;                 // id de la vista de lista (list_views.object)
   label: string;
@@ -36,6 +46,8 @@ export interface AdminObjectDef {
   systemViewId: string;       // vista por default
   note?: string;
   fields: ObjectFieldDef[];
+  /** Pestaña Análisis: fecha por defecto y reportes sugeridos. */
+  analisis?: { fecha: string; presets: AnalisisPresetDef[] };
 }
 
 export const JOB_STATUS_VALUES = [
@@ -57,6 +69,17 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     select: '*, owner:user_profiles!jobs_owner_id_fkey(id, full_name, email), creador:user_profiles!jobs_created_by_fkey(full_name, email), actualizador:user_profiles!jobs_updated_by_fkey(full_name, email)',
     searchFields: ['referencia', 'cliente', 'nombre_proyecto', 'no_cliente', 'grupo'],
     systemViewId: 'b0000000-0000-0000-0000-000000000001',
+    analisis: {
+      fecha: 'created_at',
+      presets: [
+        { nombre: 'Propuestas por mes', modo: 'fecha', campoFecha: 'created_at', granularidad: 'month' },
+        { nombre: 'Propuestas por semana', modo: 'fecha', campoFecha: 'created_at', granularidad: 'week' },
+        { nombre: 'Por estatus', modo: 'campo', campoGrupo: 'status' },
+        { nombre: 'Por ejecutivo', modo: 'campo', campoGrupo: 'owner_id' },
+        { nombre: 'Por grupo de precios', modo: 'campo', campoGrupo: 'grupo' },
+        { nombre: 'Líneas cotizadas por mes', modo: 'fecha', campoFecha: 'created_at', granularidad: 'month', medida: { tipo: 'suma', campo: 'total_lineas' } },
+      ],
+    },
     note: 'Las propuestas se administran desde el Dashboard; aquí solo se consultan.',
     fields: [
       { key: 'referencia', label: 'Referencia', dataType: 'text', required: true },
@@ -81,6 +104,14 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     select: '*, creador:user_profiles!grupo_created_by_fkey(full_name, email), actualizador:user_profiles!grupo_updated_by_fkey(full_name, email)',
     searchFields: ['group_name', 'no_cliente'],
     systemViewId: 'b0000000-0000-0000-0000-000000000003',
+    analisis: {
+      fecha: 'updated_at',
+      presets: [
+        { nombre: 'Clientes por grupo', modo: 'campo', campoGrupo: 'group_name' },
+        { nombre: 'Modificaciones por día', modo: 'fecha', campoFecha: 'updated_at', granularidad: 'day' },
+        { nombre: 'Cargas por día', modo: 'fecha', campoFecha: 'loaded_at', granularidad: 'day' },
+      ],
+    },
     note: 'Relación cliente → grupo de precios. La carga externa escribe loaded_at; los cambios manuales pueden ser sobrescritos por una recarga.',
     fields: [
       { key: 'group_name', label: 'Grupo', dataType: 'text', required: true, editable: true, lookup: 'grupos', lookupAllowNew: true, notes: 'Elige un grupo existente; solo escribe uno nuevo si realmente no existe. Referenciado por precio_grupo.group_name' },
@@ -95,6 +126,17 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     select: 'CodigoArt,DescCortaArt,DescLargaArt,Marca,UMP,DeptoArt,CategoriaArt,SubCategoriaArt,CodBarras,GarantiaArt,PesoArt,Precio,created_at,updated_at,created_by,updated_by,creador:user_profiles!products_created_by_fkey(full_name, email),actualizador:user_profiles!products_updated_by_fkey(full_name, email)',
     searchFields: ['CodigoArt', 'DescCortaArt', 'DescLargaArt', 'Marca', 'CodBarras'],
     systemViewId: 'b0000000-0000-0000-0000-000000000004',
+    analisis: {
+      fecha: 'updated_at',
+      presets: [
+        { nombre: 'Por departamento', modo: 'campo', campoGrupo: 'DeptoArt' },
+        { nombre: 'Por categoría', modo: 'campo', campoGrupo: 'CategoriaArt' },
+        { nombre: 'Por marca', modo: 'campo', campoGrupo: 'Marca' },
+        { nombre: 'Por unidad (UMP)', modo: 'campo', campoGrupo: 'UMP' },
+        { nombre: 'Modificaciones por día', modo: 'fecha', campoFecha: 'updated_at', granularidad: 'day' },
+        { nombre: 'Precio promedio por departamento', modo: 'campo', campoGrupo: 'DeptoArt', medida: { tipo: 'promedio', campo: 'Precio' } },
+      ],
+    },
     note: 'Catálogo maestro (solo lectura). Se carga por importación; no se edita desde la app.',
     fields: [
       { key: 'CodigoArt', label: 'Código', dataType: 'text', required: true },
@@ -118,6 +160,16 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     select: '*, creador:user_profiles!precio_grupo_created_by_fkey(full_name, email), actualizador:user_profiles!precio_grupo_updated_by_fkey(full_name, email)',
     searchFields: ['group_name', 'codigo_art'],
     systemViewId: 'b0000000-0000-0000-0000-000000000005',
+    analisis: {
+      fecha: 'updated_at',
+      presets: [
+        { nombre: 'Modificaciones por día', modo: 'fecha', campoFecha: 'updated_at', granularidad: 'day' },
+        { nombre: 'Modificaciones por mes', modo: 'fecha', campoFecha: 'updated_at', granularidad: 'month' },
+        { nombre: 'Cargas por día', modo: 'fecha', campoFecha: 'loaded_at', granularidad: 'day' },
+        { nombre: 'Precios por grupo', modo: 'campo', campoGrupo: 'group_name' },
+        { nombre: 'Precio promedio por grupo', modo: 'campo', campoGrupo: 'group_name', medida: { tipo: 'promedio', campo: 'precio_art' } },
+      ],
+    },
     note: 'Precio por grupo y artículo. La carga externa escribe loaded_at; los cambios manuales pueden ser sobrescritos por una recarga.',
     fields: [
       { key: 'id', label: 'ID', dataType: 'number', align: 'right' },
@@ -137,6 +189,16 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     select: '*',
     searchFields: ['referencia', 'cliente', 'descripcion_original', 'codigo_original', 'candidato_codigo', 'motivo'],
     systemViewId: 'b0000000-0000-0000-0000-000000000007',
+    analisis: {
+      fecha: 'fecha_cotizacion',
+      presets: [
+        { nombre: 'Importe no cotizado por mes', modo: 'fecha', campoFecha: 'fecha_cotizacion', granularidad: 'month', medida: { tipo: 'suma', campo: 'importe_estimado' } },
+        { nombre: 'Por motivo', modo: 'campo', campoGrupo: 'motivo' },
+        { nombre: 'Por tipo', modo: 'campo', campoGrupo: 'tipo' },
+        { nombre: 'Importe por cliente', modo: 'campo', campoGrupo: 'cliente', medida: { tipo: 'suma', campo: 'importe_estimado' } },
+        { nombre: 'Por ejecutivo', modo: 'campo', campoGrupo: 'ejecutivo' },
+      ],
+    },
     note: 'L\u00edneas eliminadas por el ejecutivo y l\u00edneas sin coincidencia. Incluye el producto que sugiri\u00f3 la IA y el importe estimado.',
     fields: [
       { key: 'referencia', label: 'Referencia', dataType: 'text' },
@@ -170,6 +232,15 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     select: '*, usuario:user_profiles!match_correcciones_usuario_id_fkey(full_name, email), revisor:user_profiles!match_correcciones_revisado_por_fkey(full_name, email), creador:user_profiles!match_correcciones_created_by_fkey(full_name, email), actualizador:user_profiles!match_correcciones_updated_by_fkey(full_name, email)',
     searchFields: ['texto_original', 'codigo_cliente', 'ia_producto_codigo', 'producto_elegido_codigo', 'cliente', 'referencia'],
     systemViewId: 'b0000000-0000-0000-0000-000000000009',
+    analisis: {
+      fecha: 'created_at',
+      presets: [
+        { nombre: 'Correcciones por semana', modo: 'fecha', campoFecha: 'created_at', granularidad: 'week' },
+        { nombre: 'Por resultado', modo: 'campo', campoGrupo: 'resultado' },
+        { nombre: 'Por ejecutivo', modo: 'campo', campoGrupo: 'usuario_id' },
+        { nombre: 'Activas vs. revocadas', modo: 'campo', campoGrupo: 'activo' },
+      ],
+    },
     note: 'Lo que el ejecutivo confirm\u00f3, sustituy\u00f3 o rechaz\u00f3 frente a la IA. Se captura solo; aqu\u00ed \u00fanicamente se revoca (Activo = No) o se anota. Despu\u00e9s de revocar, el matching lo toma en m\u00e1ximo 10 minutos.',
     fields: [
       { key: 'texto_original', label: 'Texto del cliente', dataType: 'text' },
@@ -198,6 +269,13 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     select: '*, creador:user_profiles!unidades_equivalentes_created_by_fkey(full_name, email), actualizador:user_profiles!unidades_equivalentes_updated_by_fkey(full_name, email)',
     searchFields: ['unidad_cliente', 'unidad_catalogo', 'notas'],
     systemViewId: 'b0000000-0000-0000-0000-000000000012',
+    analisis: {
+      fecha: 'created_at',
+      presets: [
+        { nombre: 'Por unidad del catálogo', modo: 'campo', campoGrupo: 'unidad_catalogo' },
+        { nombre: 'Altas por mes', modo: 'fecha', campoFecha: 'created_at', granularidad: 'month' },
+      ],
+    },
     note: 'C\u00f3mo escriben los clientes una unidad y a qu\u00e9 unidad del cat\u00e1logo equivale. Solo traduce el nombre; nunca convierte cantidades. Los cambios los toma el matching en m\u00e1ximo 10 minutos.',
     fields: [
       { key: 'unidad_cliente', label: 'Unidad del cliente', dataType: 'text', required: true, editable: true, notes: 'Tal como la escribe el cliente (se guarda en may\u00fasculas)' },
@@ -213,6 +291,13 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     select: '*',
     searchFields: ['unidad_cliente', 'unidades_catalogo', 'ejemplo'],
     systemViewId: 'b0000000-0000-0000-0000-000000000013',
+    analisis: {
+      fecha: 'ultima_vez',
+      presets: [
+        { nombre: 'Líneas por unidad del catálogo', modo: 'campo', campoGrupo: 'unidades_catalogo', medida: { tipo: 'suma', campo: 'lineas' } },
+        { nombre: 'Por semana (última vez)', modo: 'fecha', campoFecha: 'ultima_vez', granularidad: 'week' },
+      ],
+    },
     note: 'Unidades que escribieron los clientes y no se pudieron traducir a la del producto. Si una es equivalente, agr\u00e9gala en Unidades equivalentes.',
     fields: [
       { key: 'unidad_cliente', label: 'Unidad del cliente', dataType: 'text' },
