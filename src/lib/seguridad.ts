@@ -25,7 +25,7 @@ export const PERMISOS_SISTEMA: { id: PermisoSistema; label: string; hint: string
   { id: 'modificar_todos_datos', label: 'Modificar todos los datos', hint: 'Edita, reasigna y elimina cualquier cotización. Incluye "Ver todos los datos".' },
   { id: 'administrar_usuarios', label: 'Administrar usuarios, perfiles y roles', hint: 'Acceso completo a Ajustes › Usuarios y permisos.' },
   { id: 'administrar_configuracion', label: 'Administrar configuración general', hint: 'Puede cambiar los ajustes generales del sistema.' },
-  { id: 'ver_inventario', label: 'Ver inventario', hint: 'Se aplicará cuando la visualización de inventario esté habilitada.' },
+  { id: 'ver_inventario', label: 'Ver inventario', hint: 'Muestra la casilla «Mostrar inventario» en Validar productos (disponibilidad y almacenes).' },
 ];
 
 export interface Perfil {

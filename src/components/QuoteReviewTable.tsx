@@ -75,6 +75,12 @@ function formatCurrency(value: number | null, currency: string): string {
   }).format(value);
 }
 
+function formatCantidad(value: number | string): string {
+  const n = Number(value);
+  if (!isFinite(n)) return String(value);
+  return new Intl.NumberFormat('es-MX', { maximumFractionDigits: 2 }).format(n);
+}
+
 function CommentPopover({ value, onSave, onCancel, anchorEl }: { value: string; onSave: (v: string | null) => void; onCancel: () => void; anchorEl: HTMLElement | null }) {
   const [text, setText] = useState(value);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -217,8 +223,8 @@ export default function QuoteReviewTable({
                 style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}
               >
                 <th className="py-3 px-4 w-12">#</th>
-                <th className="py-3 px-4 min-w-[200px]">Solicitud original</th>
-                <th className="py-3 px-4 min-w-[220px]">Producto encontrado</th>
+                <th className={`py-3 px-4 ${verInventario ? 'min-w-[160px]' : 'min-w-[200px]'}`}>Solicitud original</th>
+                <th className={`py-3 px-4 ${verInventario ? 'min-w-[190px]' : 'min-w-[220px]'}`}>Producto encontrado</th>
                 <th className="py-3 px-4 w-28 text-center">Confianza</th>
                 <th className="py-3 px-4 w-16 text-center">Cant.</th>
                 <th className="py-3 px-4 w-20 text-center">U.M.</th>
@@ -273,7 +279,7 @@ export default function QuoteReviewTable({
                           </div>
                         )}
                       </td>
-                      <td className="py-4 px-4" colSpan={6}>
+                      <td className="py-4 px-4" colSpan={verInventario ? 8 : 6}>
                         <div className="flex flex-wrap items-end gap-3">
                           <div className="flex-1 min-w-[240px]">
                             <label
@@ -600,7 +606,7 @@ export default function QuoteReviewTable({
                         {!isIgnored && (
                           line.inventario_total != null
                             ? line.inventario_total > 0
-                              ? <span className="text-[#2E844A] font-semibold">{line.inventario_total}</span>
+                              ? <span className="text-[#2E844A] font-semibold">{formatCantidad(line.inventario_total)}</span>
                               : <span className="text-[#BA0517] font-medium" style={{ fontSize: 11 }}>Sin disponibilidad</span>
                             : <span className="text-[#A3A3A3]">&mdash;</span>
                         )}
@@ -614,7 +620,7 @@ export default function QuoteReviewTable({
                             return <span className="text-[#A3A3A3]">&mdash;</span>;
                           }
                           if (almacenes.length === 1) {
-                            return <span className="text-[#444444]">{almacenes[0].almacen_nombre}</span>;
+                            return <span className="text-[#444444]">{almacenes[0].almacen_nombre || almacenes[0].almacen_id}</span>;
                           }
                           return (
                             <button
@@ -623,10 +629,11 @@ export default function QuoteReviewTable({
                                 next.has(index) ? next.delete(index) : next.add(index);
                                 return next;
                               })}
-                              className="inline-flex items-center gap-1 text-[#0176D3] hover:underline font-medium"
+                              className="inline-flex items-center gap-1 whitespace-nowrap text-[#0176D3] hover:underline font-medium"
                               style={{ fontSize: 12 }}
+                              title="Ver existencia por almacén"
                             >
-                              Varios almacenes
+                              {almacenes.length} almacenes
                               {expandedRows.has(index) ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                             </button>
                           );
@@ -799,8 +806,8 @@ export default function QuoteReviewTable({
                           <div className="flex flex-wrap gap-x-6 gap-y-1">
                             {almacenes.map((a, ai) => (
                               <span key={ai} className="text-[#444444]" style={{ fontSize: 12 }}>
-                                <span className="font-medium">{a.almacen_nombre}</span>
-                                <span className="text-[#747474] ml-1">&mdash; {a.cantidad} pzas</span>
+                                <span className="font-medium">{a.almacen_nombre || a.almacen_id}</span>
+                                <span className="text-[#747474] ml-1">&mdash; {formatCantidad(a.cantidad)} {line.matched_unit_of_measure || ''}</span>
                               </span>
                             ))}
                           </div>

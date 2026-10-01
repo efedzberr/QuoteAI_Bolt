@@ -541,7 +541,7 @@ function UserFormModal({ user, isMe, onClose, onSaved, onToast }: { user?: Admin
           </div>
         </div>
         <div className="space-y-3 pt-1">
-          <Toggle checked={verInventario} onChange={setVerInventario} text="Puede ver inventario" hint="Se aplicará cuando la visualización de inventario esté habilitada." />
+          <Toggle checked={verInventario} onChange={setVerInventario} text="Puede ver inventario" hint="Muestra la casilla «Mostrar inventario» en Validar productos, aunque su perfil no incluya este permiso." />
           {!editing && (
             <Toggle checked={setPasswordNow} onChange={v => { setSetPasswordNow(v); if (!v) setPassword(''); }} text="Definir contraseña inicial ahora" hint="Si no la defines, el usuario la creará desde el enlace del correo." />
           )}

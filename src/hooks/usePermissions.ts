@@ -16,7 +16,7 @@ export interface Permissions {
   reload: () => Promise<void>;
 }
 
-const INVENTARIO_HABILITADO = false;
+const INVENTARIO_HABILITADO = true;
 
 interface MisPermisos {
   is_active: boolean;

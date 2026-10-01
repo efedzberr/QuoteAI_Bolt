@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw, Warehouse } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
@@ -17,6 +17,7 @@ import { supabase } from '../lib/supabase';
 import { upsertJobLine, getMaxLineIndex, fetchJobLineVersionMeta, fetchMotivosEliminacion, type JobLineVersionMeta, type MotivoEliminacion } from '../lib/jobLines';
 import EliminarLineaModal from './quote/EliminarLineaModal';
 import { updateJobProgreso, updateJobStatus, getJobByReferencia, markJobSentToSalesforce } from '../lib/jobs';
+import { fetchInventarioArticulos, type InventarioArticulo } from '../lib/inventario';
 
 interface QuoteData {
   status?: string;
@@ -261,6 +262,61 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     }));
   }, [lines, confidenceThreshold, versionMetaByLineIndex]);
 
+  // ── Inventario en vivo: solo con permiso y con la casilla marcada (siempre inicia desmarcada) ──
+  const [mostrarInventario, setMostrarInventario] = useState(false);
+  const [inventarioVivo, setInventarioVivo] = useState<Record<string, InventarioArticulo>>({});
+  const [cargandoInventario, setCargandoInventario] = useState(false);
+  const inventarioSolicitadoRef = useRef<Set<string>>(new Set());
+  const inventarioEnCursoRef = useRef(0);
+  const inventarioVisible = verInventario && mostrarInventario;
+
+  const codigosInventarioKey = useMemo(
+    () =>
+      Array.from(new Set(lines.map((l) => (l.matched_product_code || '').trim()).filter(Boolean)))
+        .sort()
+        .join('\n'),
+    [lines]
+  );
+
+  useEffect(() => {
+    if (!inventarioVisible || !codigosInventarioKey) return;
+    const faltantes = codigosInventarioKey.split('\n').filter((c) => !inventarioSolicitadoRef.current.has(c));
+    if (faltantes.length === 0) return;
+    faltantes.forEach((c) => inventarioSolicitadoRef.current.add(c));
+    inventarioEnCursoRef.current += 1;
+    setCargandoInventario(true);
+    fetchInventarioArticulos(faltantes)
+      .then((mapa) => {
+        if (mapa) {
+          setInventarioVivo((prev) => ({ ...prev, ...mapa }));
+        } else {
+          faltantes.forEach((c) => inventarioSolicitadoRef.current.delete(c));
+        }
+      })
+      .finally(() => {
+        inventarioEnCursoRef.current -= 1;
+        if (inventarioEnCursoRef.current === 0) setCargandoInventario(false);
+      });
+  }, [inventarioVisible, codigosInventarioKey]);
+
+  const handleToggleInventario = useCallback((checked: boolean) => {
+    setMostrarInventario(checked);
+    if (!checked) {
+      inventarioSolicitadoRef.current = new Set();
+      setInventarioVivo({});
+    }
+  }, []);
+
+  const lineasTabla = useMemo<QuoteLine[]>(() => {
+    if (!inventarioVisible) return linesWithReview;
+    return linesWithReview.map((l) => {
+      const vivo = inventarioVivo[(l.matched_product_code || '').trim()];
+      return vivo
+        ? { ...l, inventario_total: vivo.inventario_total, inventario_almacenes: vivo.inventario_almacenes }
+        : l;
+    });
+  }, [inventarioVisible, linesWithReview, inventarioVivo]);
+
   const flaggedCount = linesWithReview.filter(
     (l: any) => l.needs_review && !l.ignored && !l.approved
   ).length;
@@ -345,6 +401,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         needs_review: false,
         approved: false,
         badgeType: 'manual',
+        inventario_total: null,
+        inventario_almacenes: null,
       };
       setTimeout(() => recalculate(updatedLines), 0);
       return updatedLines;
@@ -360,6 +418,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       estado: 'aprobada',
       requiere_revision: false,
       total_linea: (lines[idx]?.quantity || 1) * Number(product.Precio),
+      inventario_total: null,
+      inventario_almacenes: null,
     });
 
     editingIndexRef.current = null;
@@ -460,6 +520,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       needs_review: false,
       approved: false,
       badgeType: result.source === 'producto_nuevo' ? 'producto_nuevo' : 'manual',
+      inventario_total: null,
+      inventario_almacenes: null,
     };
     setLines(updatedLines);
     recalculate(updatedLines);
@@ -476,6 +538,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       estado: 'aprobada',
       requiere_revision: false,
       total_linea: result.quantity * result.matched_unit_price,
+      inventario_total: null,
+      inventario_almacenes: null,
     });
     updateProgreso(updatedLines);
 
@@ -1039,6 +1103,30 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               )}
             </div>
           )}
+
+          {verInventario && versionTab === 'final' && (
+            <label
+              className={`ml-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border cursor-pointer select-none transition-colors ${
+                mostrarInventario
+                  ? 'border-[#0176D3] bg-[#EAF5FE] text-[#0176D3]'
+                  : 'border-[#E5E5E5] bg-white text-[#444444] hover:border-[#0176D3] hover:text-[#0176D3]'
+              }`}
+              style={{ fontSize: 12, fontWeight: 600 }}
+              title="Muestra la disponibilidad actual y los almacenes de cada producto"
+            >
+              <input
+                type="checkbox"
+                checked={mostrarInventario}
+                onChange={(e) => handleToggleInventario(e.target.checked)}
+                className="w-4 h-4 cursor-pointer accent-[#0176D3]"
+              />
+              <Warehouse className="w-3.5 h-3.5" />
+              Mostrar inventario
+              {inventarioVisible && cargandoInventario && (
+                <RefreshCw className="w-3 h-3 animate-spin text-[#747474]" aria-label="Consultando inventario" />
+              )}
+            </label>
+          )}
         </div>
         {versionTab === 'final' && (
         <div className="max-w-[1480px] mx-auto px-7 pb-4 flex flex-wrap items-start gap-x-9 gap-y-2">
@@ -1124,7 +1212,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         <div className="max-w-[1480px] mx-auto">
           {lines.length > 0 || showInlineAddRow ? (
             <QuoteReviewTable
-              lines={linesWithReview}
+              lines={lineasTabla}
               currency={activeQuoteData.currency}
               editingIndex={readOnly ? null : editingIndex}
               editValues={editValues}
@@ -1150,7 +1238,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               onInlineAddProduct={handleInlineProductSelect}
               onCancelInlineAdd={() => setShowInlineAddRow(false)}
               onCommentSave={readOnly ? undefined : handleCommentSave}
-              verInventario={verInventario}
+              verInventario={inventarioVisible}
             />
           ) : (
             <div className="px-7 py-16 text-center">
