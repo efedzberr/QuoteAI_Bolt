@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
-import { Database } from 'lucide-react';
+import { useState, useEffect, lazy, Suspense } from 'react';
+import { Database, BarChart3 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { adminObjectFor, isPkField } from '../../lib/objectCatalog';
 import ObjectListView from './ObjectListView';
 import { cargarConsulta, guardarConsulta, leerConsulta, type ObjectTab } from '../../lib/objectState';
+
+// La pestaña Análisis (gráficas) se carga solo cuando se abre
+const ObjectAnalytics = lazy(() => import('./ObjectAnalytics'));
 
 interface Props { objectId: string; onToast: (message: string, type: 'success' | 'error') => void }
 
@@ -49,9 +52,14 @@ export default function ObjectPage({ objectId, onToast }: Props) {
       <div className="flex gap-6 border-b border-rule mb-5">
         <button onClick={() => cambiarTab('records')} className={tabCls(tab === 'records')}>Registros</button>
         <button onClick={() => cambiarTab('fields')} className={tabCls(tab === 'fields')}>Campos <span className="ml-1 text-xs text-ink-faint">({def.fields.length})</span></button>
+        <button onClick={() => cambiarTab('analysis')} className={tabCls(tab === 'analysis')}><span className="inline-flex items-center gap-1.5"><BarChart3 className="w-4 h-4" /> Análisis</span></button>
       </div>
       {tab === null ? (
         <p className="py-10 text-center text-sm text-ink-faint">Cargando...</p>
+      ) : tab === 'analysis' ? (
+        <Suspense fallback={<p className="py-10 text-center text-sm text-ink-faint">Cargando análisis…</p>}>
+          <ObjectAnalytics key={def.id} def={def} onToast={onToast} onIrARegistros={() => cambiarTab('records')} />
+        </Suspense>
       ) : tab !== 'fields' ? (
         <ObjectListView key={def.id} def={def} onToast={onToast} />
       ) : (
