@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import { resolverPdfConfig, type PdfConfig } from '../lib/pdf/pdfConfig';
 
 export interface AppSettings {
   appLogoUrl: string | null;
@@ -9,6 +10,7 @@ export interface AppSettings {
   pdfLogoWidthPx: number;
   pdfLogoHeightPx: number;
   confidenceThreshold: number;
+  pdfConfig: PdfConfig;
   loading: boolean;
   refresh: () => Promise<void>;
 }
@@ -21,6 +23,7 @@ const DEFAULTS = {
   pdfLogoWidthPx: 200,
   pdfLogoHeightPx: 80,
   confidenceThreshold: 0.9,
+  pdfConfig: resolverPdfConfig(null),
 };
 
 export function useAppSettings(): AppSettings {
@@ -46,6 +49,7 @@ export function useAppSettings(): AppSettings {
       pdfLogoWidthPx: data.pdf_logo_width_px ?? DEFAULTS.pdfLogoWidthPx,
       pdfLogoHeightPx: data.pdf_logo_height_px ?? DEFAULTS.pdfLogoHeightPx,
       confidenceThreshold: Number(data.confidence_threshold ?? DEFAULTS.confidenceThreshold),
+      pdfConfig: resolverPdfConfig(data.pdf_config),
       loading: false,
     });
   }, []);
