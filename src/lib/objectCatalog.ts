@@ -313,6 +313,40 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
       { key: 'ultima_vez', label: '\u00daltima vez', dataType: 'datetime' },
     ],
   },
+  {
+    id: 'clientes', label: 'Clientes', singular: 'cliente', table: 'clientes', pk: 'sf_id', pkIsGenerated: false,
+    readOnly: true, permObject: null,
+    select: 'sf_id, nombre, no_cliente, rfc, telefono, calle, ciudad, estado, codigo_postal, pais, contacto_nombre, contacto_correo, sf_owner_id, created_at, updated_at, consultado_at',
+    searchFields: ['nombre', 'no_cliente', 'rfc', 'ciudad', 'contacto_nombre'],
+    systemViewId: 'b0000000-0000-0000-0000-0000000c1101',
+    analisis: {
+      fecha: 'created_at',
+      presets: [
+        { nombre: 'Clientes por estado', modo: 'campo', campoGrupo: 'estado' },
+        { nombre: 'Clientes por ciudad', modo: 'campo', campoGrupo: 'ciudad' },
+        { nombre: 'Clientes nuevos por mes', modo: 'fecha', campoFecha: 'created_at', granularidad: 'month' },
+      ],
+    },
+    note: 'Cuentas de Salesforce que han llegado por la búsqueda de clientes. Cada usuario ve las que Salesforce le ha regresado a él. Se actualizan solas en cada búsqueda.',
+    fields: [
+      { key: 'nombre', label: 'Cliente', dataType: 'text' },
+      { key: 'no_cliente', label: 'No. cliente', dataType: 'text' },
+      { key: 'rfc', label: 'RFC', dataType: 'text' },
+      { key: 'telefono', label: 'Teléfono', dataType: 'text' },
+      { key: 'calle', label: 'Calle', dataType: 'text' },
+      { key: 'ciudad', label: 'Ciudad', dataType: 'text' },
+      { key: 'estado', label: 'Estado', dataType: 'text' },
+      { key: 'codigo_postal', label: 'Código postal', dataType: 'text' },
+      { key: 'pais', label: 'País', dataType: 'text' },
+      { key: 'contacto_nombre', label: 'Contacto', dataType: 'text' },
+      { key: 'contacto_correo', label: 'Correo del contacto', dataType: 'text' },
+      { key: 'sf_id', label: 'Id de Salesforce', dataType: 'text' },
+      { key: 'sf_owner_id', label: 'Propietario en Salesforce (Id)', dataType: 'text' },
+      { key: 'created_at', label: 'Fecha de alta', dataType: 'datetime', notes: 'Primera vez que llegó de Salesforce' },
+      { key: 'updated_at', label: 'Última modificación', dataType: 'datetime', notes: 'Última vez que cambió algún dato' },
+      { key: 'consultado_at', label: 'Última consulta', dataType: 'datetime', notes: 'Última vez que Salesforce la regresó' },
+    ],
+  },
 ];
 
 export function adminObjectFor(id: string): AdminObjectDef | undefined {

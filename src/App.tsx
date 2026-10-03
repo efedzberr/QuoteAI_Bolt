@@ -6,6 +6,7 @@ import QuoteReviewScreen from './components/QuoteReviewScreen';
 import PDFPreviewScreen from './components/PDFPreviewScreen';
 import { guardarCuentaCotizacion } from './lib/pdf/pdfCotizacion';
 import AdminScreen from './components/AdminScreen';
+import ClientesScreen from './components/ClientesScreen';
 import CatalogScreen from './components/CatalogScreen';
 import AuthScreen from './components/AuthScreen';
 import SetPasswordScreen from './components/SetPasswordScreen';
@@ -26,7 +27,7 @@ const PROCESSING_RULES = [
   'A valid product row must have at least a description and ideally a quantity.',
 ];
 
-type Screen = 'home' | 'upload' | 'preview' | 'review' | 'generate' | 'admin' | 'job_progress' | 'catalogo' | 'mfa_enroll' | 'mfa_verify';
+type Screen = 'home' | 'upload' | 'preview' | 'review' | 'generate' | 'admin' | 'job_progress' | 'catalogo' | 'clientes' | 'mfa_enroll' | 'mfa_verify';
 
 function parseLineItem(line: any): any {
   if (typeof line === 'string') {
@@ -881,6 +882,7 @@ function App() {
       setCurrentScreen('upload');
     }
     else if (section === 'catalogo') setCurrentScreen('catalogo');
+    else if (section === 'clientes') setCurrentScreen('clientes');
     else if (section === 'ajustes') setCurrentScreen('admin');
   };
 
@@ -1084,6 +1086,21 @@ function App() {
         onNavigate={handleLayoutNavigate}
       >
         <CatalogScreen />
+      </AppLayout>
+    );
+  }
+
+  if (currentScreen === 'clientes') {
+    return (
+      <AppLayout
+        active="clientes"
+        breadcrumbs={[
+          { label: 'Inicio', onClick: () => setCurrentScreen('home') },
+          { label: 'Clientes' },
+        ]}
+        onNavigate={handleLayoutNavigate}
+      >
+        <ClientesScreen />
       </AppLayout>
     );
   }
