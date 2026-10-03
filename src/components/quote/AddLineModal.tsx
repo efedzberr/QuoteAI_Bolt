@@ -3,6 +3,8 @@ import { X, Search, Loader2, PackagePlus } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { escapeIlikeTerm } from '../../lib/productDatabase';
 import CreateProductModal, { type NewProductData, type PrefillData } from './CreateProductModal';
+import { fetchDisponibilidadArticulos, type MapaDisponibilidad } from '../../lib/disponibilidad';
+import EspecialBadge from '../EspecialBadge';
 
 export interface AddLineResult {
   matched_product_code: string;
@@ -44,6 +46,7 @@ export default function AddLineModal({ open, onClose, onLineAdded, title = 'Agre
   const [quantity, setQuantity] = useState('1');
   const [selectedProduct, setSelectedProduct] = useState<SearchResult | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [disponibilidad, setDisponibilidad] = useState<MapaDisponibilidad>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
   const reqIdRef = useRef(0);
@@ -130,6 +133,13 @@ export default function AddLineModal({ open, onClose, onLineAdded, title = 'Agre
       }
 
       setResults(allResults);
+      // ¿Cuáles resultados del catálogo son especiales (ESP)? Si la consulta falla, la búsqueda sigue igual
+      setDisponibilidad({});
+      fetchDisponibilidadArticulos(
+        allResults.filter((r) => r.source === 'catalogo').map((r) => r.codigo)
+      ).then((mapa) => {
+        if (mapa && myId === reqIdRef.current) setDisponibilidad(mapa);
+      });
     } catch (err) {
       console.error('[AddLineModal] Search error:', err);
       setResults([]);
@@ -267,6 +277,9 @@ export default function AddLineModal({ open, onClose, onLineAdded, title = 'Agre
                         >
                           {product.source === 'catalogo' ? 'Catalogo' : 'Producto nuevo'}
                         </span>
+                        {product.source === 'catalogo' && disponibilidad[(product.codigo || '').trim()]?.disponible === false && (
+                          <EspecialBadge info={disponibilidad[(product.codigo || '').trim()]} />
+                        )}
                       </div>
                       <div className="flex items-center gap-2 mt-0.5 text-[#747474]" style={{ fontSize: 11 }}>
                         <span>{product.codigo}</span>
@@ -295,6 +308,11 @@ export default function AddLineModal({ open, onClose, onLineAdded, title = 'Agre
                   <p className="text-[#747474] mt-0.5" style={{ fontSize: 11 }}>
                     {selectedProduct.codigo} - {selectedProduct.marca} - ${selectedProduct.precio.toFixed(2)} {selectedProduct.unidad}
                   </p>
+                  {selectedProduct.source === 'catalogo' && disponibilidad[(selectedProduct.codigo || '').trim()]?.disponible === false && (
+                    <div className="mt-2">
+                      <EspecialBadge info={disponibilidad[(selectedProduct.codigo || '').trim()]} />
+                    </div>
+                  )}
                   <div className="mt-3 flex items-end gap-3">
                     <div>
                       <label className="block text-[#444444] mb-1" style={{ fontSize: 11, fontWeight: 600 }}>Cantidad</label>

@@ -2,6 +2,8 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Loader2, X, ChevronDown, Filter, RotateCcw } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { escapeIlikeTerm } from '../lib/productDatabase';
+import { fetchDisponibilidadArticulos, type MapaDisponibilidad } from '../lib/disponibilidad';
+import EspecialBadge from './EspecialBadge';
 
 export interface SearchProduct {
   CodigoArt: string;
@@ -146,6 +148,7 @@ export default function InlineProductSearch({
   const [loading, setLoading] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [resultCount, setResultCount] = useState<number | null>(null);
+  const [disponibilidad, setDisponibilidad] = useState<MapaDisponibilidad>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -288,6 +291,11 @@ export default function InlineProductSearch({
       setResults(items);
       setResultCount(items.length);
       setShowDropdown(true);
+      // ¿Cuáles resultados son especiales (ESP)? Si la consulta falla, la búsqueda sigue igual
+      setDisponibilidad({});
+      fetchDisponibilidadArticulos(items.map((p) => p.CodigoArt)).then((mapa) => {
+        if (mapa && myId === reqIdRef.current) setDisponibilidad(mapa);
+      });
     } catch (err) {
       if (myId !== reqIdRef.current) return;
       console.error('Search error:', err);
@@ -498,8 +506,11 @@ export default function InlineProductSearch({
                   }}
                   className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
                 >
-                  <div className="font-semibold text-gray-900 text-sm">
-                    {product.DescCortaArt}
+                  <div className="flex items-center gap-2 font-semibold text-gray-900 text-sm">
+                    <span>{product.DescCortaArt}</span>
+                    {disponibilidad[(product.CodigoArt || '').trim()]?.disponible === false && (
+                      <EspecialBadge info={disponibilidad[(product.CodigoArt || '').trim()]} />
+                    )}
                   </div>
                   <div className="text-xs text-gray-500 mt-0.5 space-x-2">
                     <span>{product.CodigoArt}</span>

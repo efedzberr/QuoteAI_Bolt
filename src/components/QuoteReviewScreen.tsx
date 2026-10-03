@@ -17,6 +17,7 @@ import { supabase } from '../lib/supabase';
 import { upsertJobLine, getMaxLineIndex, fetchJobLineVersionMeta, fetchMotivosEliminacion, type JobLineVersionMeta, type MotivoEliminacion } from '../lib/jobLines';
 import EliminarLineaModal from './quote/EliminarLineaModal';
 import { updateJobProgreso, updateJobStatus, getJobByReferencia, markJobSentToSalesforce } from '../lib/jobs';
+import { fetchDisponibilidadArticulos, fijarGrupoCotizacion, type MapaDisponibilidad } from '../lib/disponibilidad';
 import { fetchInventarioArticulos, type InventarioArticulo } from '../lib/inventario';
 
 interface QuoteData {
@@ -114,6 +115,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [jobNoCliente, setJobNoCliente] = useState<string | null>(null);
   const [jobGrupo, setJobGrupo] = useState<string | null>(null);
+  // Productos especiales (ESP): se consultan cuando ya se conoce el grupo de la cotización
+  const [grupoListo, setGrupoListo] = useState(!jobReferencia);
+  const [disponibilidad, setDisponibilidad] = useState<MapaDisponibilidad>({});
+  const disponibilidadSolicitadaRef = useRef<Set<string>>(new Set());
   const [motivos, setMotivos] = useState<MotivoEliminacion[]>([]);
   const [eliminarIndex, setEliminarIndex] = useState<number | null>(null);
   const [eliminarModo, setEliminarModo] = useState<'eliminar' | 'motivo'>('eliminar');
@@ -171,8 +176,13 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       setSfSyncPendiente(!!job?.sf_sync_pendiente);
       setJobNoCliente(job?.no_cliente ?? null);
       setJobGrupo(job?.grupo ?? null);
+      fijarGrupoCotizacion(job?.grupo ?? null);
+      setGrupoListo(true);
     });
   }, [jobReferencia]);
+
+  // Al salir de la cotización, los buscadores dejan de usar su grupo
+  useEffect(() => () => fijarGrupoCotizacion(null), []);
 
   const persistLineAction = useCallback((lineIndex: number, fields: Record<string, any>) => {
     if (!jobId) return;
@@ -253,14 +263,59 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
 
   const isManualMode = activeQuoteData.status === 'manual';
 
+  // ── Especiales (ESP): productos cuyo precio está inactivo en el grupo de la cotización ──
+  // Solo mientras la cotización se puede editar: una cotización cerrada no se vuelve a evaluar.
+  const codigosDisponibilidadKey = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          lines
+            .filter((l) => !l.ignored && l.badgeType !== 'producto_nuevo')
+            .map((l) => (l.matched_product_code || '').trim())
+            .filter(Boolean)
+        )
+      )
+        .sort()
+        .join('\n'),
+    [lines]
+  );
+
+  useEffect(() => {
+    if (readOnly || !grupoListo || !codigosDisponibilidadKey) return;
+    const faltantes = codigosDisponibilidadKey.split('\n').filter((c) => !disponibilidadSolicitadaRef.current.has(c));
+    if (faltantes.length === 0) return;
+    faltantes.forEach((c) => disponibilidadSolicitadaRef.current.add(c));
+    fetchDisponibilidadArticulos(faltantes, jobGrupo).then((mapa) => {
+      if (mapa) {
+        setDisponibilidad((prev) => ({ ...prev, ...mapa }));
+      } else {
+        faltantes.forEach((c) => disponibilidadSolicitadaRef.current.delete(c)); // permite reintentar
+      }
+    });
+  }, [readOnly, grupoListo, jobGrupo, codigosDisponibilidadKey]);
+
+  const esEspecial = useCallback(
+    (l: QuoteLine) =>
+      !l.ignored &&
+      l.badgeType !== 'producto_nuevo' &&
+      disponibilidad[(l.matched_product_code || '').trim()]?.disponible === false,
+    [disponibilidad]
+  );
+
+  const disponibilidadByCodigo = useMemo(() => new Map(Object.entries(disponibilidad)), [disponibilidad]);
+
   const linesWithReview = useMemo<QuoteLine[]>(() => {
     return lines.map((l: any) => ({
       ...l,
       needs_review: l.badgeType === 'manual' || l.badgeType === 'producto_nuevo'
         ? false
-        : (l.confidence ?? 0) < confidenceThreshold || versionMetaByLineIndex.get(l._lineIndex)?.unidad_no_encontrada === true,
+        : (l.confidence ?? 0) < confidenceThreshold
+          || versionMetaByLineIndex.get(l._lineIndex)?.unidad_no_encontrada === true
+          || esEspecial(l),
     }));
-  }, [lines, confidenceThreshold, versionMetaByLineIndex]);
+  }, [lines, confidenceThreshold, versionMetaByLineIndex, esEspecial]);
+
+  const especialesCount = useMemo(() => lines.filter(esEspecial).length, [lines, esEspecial]);
 
   // ── Inventario en vivo: solo con permiso y con la casilla marcada (siempre inicia desmarcada) ──
   const [mostrarInventario, setMostrarInventario] = useState(false);
@@ -1179,6 +1234,30 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               {okCount}
             </span>
           </div>
+          {!readOnly && (
+            <div
+              className="flex flex-col"
+              title="Productos especiales (ESP): su precio está inactivo en Precio grupo"
+            >
+              <span
+                className="uppercase text-[#747474]"
+                style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}
+              >
+                Especiales
+              </span>
+              <span
+                className="mt-1"
+                style={{
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: especialesCount > 0 ? '#BA0517' : '#A3A3A3',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {especialesCount}
+              </span>
+            </div>
+          )}
           <SummaryField label="Subtotal" value={formatCurrency(subtotal, activeQuoteData.currency)} />
         </div>
         )}
@@ -1226,6 +1305,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               onIgnore={(index: number) => { setEliminarIndex(index); setEliminarModo('eliminar'); }}
               eliminacionByLineIndex={eliminacionByLineIndex}
               unidadAlertaByLineIndex={unidadAlertaByLineIndex}
+              disponibilidadByCodigo={readOnly ? undefined : disponibilidadByCodigo}
               onEditMotivo={(index: number) => { setEliminarIndex(index); setEliminarModo('motivo'); }}
               onRestore={handleRestore}
               onDeleteLine={handleDeleteLine}

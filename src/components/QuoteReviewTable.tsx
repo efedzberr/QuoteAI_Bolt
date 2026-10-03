@@ -4,6 +4,8 @@ import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle, 
 import ConfidenceBadge from './ConfidenceBadge';
 import InlineProductSearch, { type SearchProduct } from './InlineProductSearch';
 import InlineProductLineRow from './InlineProductLineRow';
+import EspecialBadge from './EspecialBadge';
+import type { DisponibilidadArticulo } from '../lib/disponibilidad';
 
 export interface QuoteLine {
   original_text: string;
@@ -63,6 +65,7 @@ interface QuoteReviewTableProps {
   eliminacionByLineIndex?: Map<number, { motivo: string | null; comentario: string | null }>;
   onEditMotivo?: (index: number) => void;
   unidadAlertaByLineIndex?: Map<number, { cliente: string | null; catalogo: string | null }>;
+  disponibilidadByCodigo?: Map<string, DisponibilidadArticulo>;
 }
 
 function formatCurrency(value: number | null, currency: string): string {
@@ -190,6 +193,7 @@ export default function QuoteReviewTable({
   eliminacionByLineIndex,
   onEditMotivo,
   unidadAlertaByLineIndex,
+  disponibilidadByCodigo,
 }: QuoteReviewTableProps) {
   const [commentingIndex, setCommentingIndex] = useState<number | null>(null);
   const [commentAnchorEl, setCommentAnchorEl] = useState<HTMLElement | null>(null);
@@ -458,6 +462,16 @@ export default function QuoteReviewTable({
                               {line.matched_product_code}
                             </div>
                           )}
+                          {(() => {
+                            if (!disponibilidadByCodigo || line.badgeType === 'producto_nuevo') return null;
+                            const disp = disponibilidadByCodigo.get((line.matched_product_code || '').trim());
+                            if (!disp || disp.disponible) return null;
+                            return (
+                              <div className="mt-1">
+                                <EspecialBadge info={disp} revisado={line.approved === true || line.badgeType === 'manual'} />
+                              </div>
+                            );
+                          })()}
                           {(() => {
                             if (!iaByLineIndex || line._lineIndex === undefined) return null;
                             const ia = iaByLineIndex.get(line._lineIndex);
