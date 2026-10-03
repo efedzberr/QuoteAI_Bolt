@@ -8,6 +8,7 @@ import ProductLookupModal, { type ProductResult } from './ProductLookupModal';
 import { type SearchProduct } from './InlineProductSearch';
 import AddLineModal, { type AddLineResult } from './quote/AddLineModal';
 import QuoteDocument from './pdf/QuoteDocument';
+import { useDatosPdf } from '../lib/pdf/pdfCotizacion';
 import SolicitudOriginalTable from './quote/SolicitudOriginalTable';
 import ReconocimientoIATable from './quote/ReconocimientoIATable';
 import { normalizeLines } from '../lib/normalizeLines';
@@ -75,7 +76,8 @@ function formatCurrency(value: number, currency: string): string {
 }
 
 export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, onEditQuote, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
-  const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx } = useAppSettings();
+  const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig } = useAppSettings();
+  const datosPdf = useDatosPdf(jobReferencia);
   const { verInventario } = usePermissions();
 
   const [viewMode, setViewMode] = useState<ViewMode>(editedQuoteData ? 'edited' : 'original');
@@ -999,7 +1001,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             const activeLines = lines.filter((l) => !l.ignored);
             const pdfQuoteData = { ...activeQuoteData, lines: activeLines, totalLines: activeLines.length } as any;
             const blob = await pdf(
-              <QuoteDocument quoteData={pdfQuoteData} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} />
+              <QuoteDocument quoteData={pdfQuoteData} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={datosPdf} />
             ).toBlob();
 
             const MAX_PDF_BYTES = 4 * 1024 * 1024;
@@ -1068,7 +1070,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       setSfSendingPhase(null);
     }
     setSfSyncPendiente(false);
-  }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, salesforceAccount, sfSentData, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx]);
+  }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, salesforceAccount, sfSentData, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, datosPdf]);
 
   const totalLinesCount = lines.length;
 

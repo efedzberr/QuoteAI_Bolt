@@ -6,6 +6,7 @@ import QuoteDocument from './pdf/QuoteDocument';
 import { normalizeLines } from '../lib/normalizeLines';
 import type { QuoteData } from '../types/quote';
 import { useAppSettings } from '../hooks/useAppSettings';
+import { useDatosPdf } from '../lib/pdf/pdfCotizacion';
 
 interface PDFPreviewScreenProps {
   quoteData: QuoteData;
@@ -24,7 +25,8 @@ function buildFileName(quoteData: QuoteData): string {
 export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreenProps) {
   const [viewerReady, setViewerReady] = useState(false);
   const fileName = buildFileName(quoteData);
-  const { pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx } = useAppSettings();
+  const { pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig } = useAppSettings();
+  const datosPdf = useDatosPdf(quoteData.quoteReference);
 
   useEffect(() => {
     const timer = setTimeout(() => setViewerReady(true), 2000);
@@ -75,7 +77,7 @@ export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreen
             </div>
 
             <PDFDownloadLink
-              document={<QuoteDocument quoteData={{ ...quoteData, lines: activeLines }} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} />}
+              document={<QuoteDocument quoteData={{ ...quoteData, lines: activeLines }} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={datosPdf} />}
               fileName={fileName}
             >
               {({ loading }) => (
@@ -114,7 +116,7 @@ export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreen
             style={{ minHeight: 'calc(100vh - 220px)', border: 'none' }}
             showToolbar={false}
           >
-            <QuoteDocument quoteData={{ ...quoteData, lines: activeLines }} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} />
+            <QuoteDocument quoteData={{ ...quoteData, lines: activeLines }} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={datosPdf} />
           </PDFViewer>
         </div>
 

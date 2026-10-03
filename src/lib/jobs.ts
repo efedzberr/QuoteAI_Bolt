@@ -28,6 +28,8 @@ export interface Job {
   owner?: { id: string; full_name: string | null; email: string } | null;
   extraccion_original?: any[] | null;
   sf_sync_pendiente?: boolean;
+  /** Copia de la cuenta de Salesforce elegida al capturar la cotización (la usa el PDF). */
+  cuenta_sf?: Record<string, unknown> | null;
 }
 
 export async function reassignJobOwner(jobId: string, ownerId: string): Promise<boolean> {

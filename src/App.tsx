@@ -4,6 +4,7 @@ import QuoteUploadScreen from './components/QuoteUploadScreen';
 import PayloadPreviewScreen from './components/PayloadPreviewScreen';
 import QuoteReviewScreen from './components/QuoteReviewScreen';
 import PDFPreviewScreen from './components/PDFPreviewScreen';
+import { guardarCuentaCotizacion } from './lib/pdf/pdfCotizacion';
 import AdminScreen from './components/AdminScreen';
 import CatalogScreen from './components/CatalogScreen';
 import AuthScreen from './components/AuthScreen';
@@ -307,6 +308,8 @@ function App() {
 
     if (jobReferencia) {
       updateJobStatus(jobReferencia, 'revision_datos');
+      // Copia de la cuenta de Salesforce elegida: de ahí toma el PDF los datos del cliente
+      if (data.salesforceAccount) guardarCuentaCotizacion(jobReferencia, data.salesforceAccount);
     }
   }, [jobReferencia]);
 
@@ -502,6 +505,8 @@ function App() {
     createJob(newRef, cliente).then((job) => {
       if (job) {
         setJobId(job.id);
+        // La cotización nueva conserva la cuenta de la original
+        if (reexecJob.cuenta_sf) guardarCuentaCotizacion(newRef, reexecJob.cuenta_sf);
         if (reexecJob.extraccion_original) {
           saveExtraccionOriginal(job.id, reexecJob.extraccion_original);
         }
