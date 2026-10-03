@@ -1,6 +1,6 @@
 import { ArrowDown, ArrowUp, Eye, EyeOff, Plus, Trash2 } from 'lucide-react';
 import type { CeldaPdf } from '../../../lib/pdf/pdfConfig';
-import { CAMPOS_PDF } from '../../../lib/pdf/pdfDatos';
+import { CAMPOS_PDF, esTextoCombinado } from '../../../lib/pdf/pdfDatos';
 import { claseBotonEliminar, claseBotonIcono, claseCampo, moverElemento, nuevoIdCelda } from './pdfEditorUtil';
 
 const GRUPOS = ['Cotización', 'Cliente', 'Usuario'] as const;
@@ -31,7 +31,11 @@ interface Props {
   textoAgregar: string;
 }
 
-/** Editor de una lista de celdas o renglones: orden, título, dato, texto fijo y si se imprime. */
+/**
+ * Editor de una lista de celdas o renglones: orden, título, dato, texto fijo y si se imprime.
+ * Un renglón puede combinar varios datos: se escriben entre llaves dentro del texto
+ * (`{cliente_ciudad}, {cliente_estado}`) y «Agregar otro dato al renglón» los inserta.
+ */
 export default function PdfListaCeldas({ celdas, onCambio, nombreEtiqueta, textoAgregar }: Props) {
   const cambiar = (i: number, parcial: Partial<CeldaPdf>) =>
     onCambio(celdas.map((c, k) => (k === i ? { ...c, ...parcial } : c)));
@@ -67,20 +71,48 @@ export default function PdfListaCeldas({ celdas, onCambio, nombreEtiqueta, texto
               <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <select value={c.campo} onChange={(e) => cambiar(i, { campo: e.target.value })} aria-label="Dato" className={claseCampo}>
-              <OpcionesCampo vacio="Sin dato (solo texto fijo)" />
-            </select>
+          {esTextoCombinado(c.texto) ? (
             <input
               value={c.texto}
               onChange={(e) => cambiar(i, { texto: e.target.value })}
-              placeholder={c.campo ? 'Texto si el dato viene vacío' : 'Texto fijo'}
-              aria-label="Texto fijo"
-              className={claseCampo}
+              aria-label="Texto con datos"
+              title="Los datos van entre llaves. Lo demás se imprime tal cual."
+              className={`${claseCampo} font-mono text-xs`}
             />
-          </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <select value={c.campo} onChange={(e) => cambiar(i, { campo: e.target.value })} aria-label="Dato" className={claseCampo}>
+                <OpcionesCampo vacio="Sin dato (solo texto fijo)" />
+              </select>
+              <input
+                value={c.texto}
+                onChange={(e) => cambiar(i, { texto: e.target.value })}
+                placeholder={c.campo ? 'Texto si el dato viene vacío' : 'Texto fijo'}
+                aria-label="Texto fijo"
+                className={claseCampo}
+              />
+            </div>
+          )}
+          <select
+            value=""
+            onChange={(e) => {
+              if (!e.target.value) return;
+              // El primer dato que se agrega convierte el renglón: el dato elegido pasa al texto, entre llaves
+              const base = esTextoCombinado(c.texto) ? c.texto : c.campo ? `{${c.campo}}` : c.texto;
+              const separador = base && !/[\s,(]$/.test(base) ? ', ' : '';
+              cambiar(i, { campo: '', texto: `${base}${separador}{${e.target.value}}` });
+            }}
+            aria-label="Agregar otro dato al renglón"
+            className="w-full h-7 px-2 border border-dashed border-rule rounded-md text-xs text-ink-soft bg-white focus:outline-none focus:border-brand"
+          >
+            <OpcionesCampo vacio="+ Agregar otro dato al renglón…" />
+          </select>
         </div>
       ))}
+      <p className="text-xs text-ink-faint">
+        Para poner varios datos en un renglón usa «Agregar otro dato al renglón». Entre un dato y otro puedes escribir lo que quieras
+        (comas, «C.P.»…); si un dato viene vacío, se quita junto con el texto que lo antecede.
+      </p>
       <button
         type="button"
         onClick={() => onCambio([...celdas, { id: nuevoIdCelda(), etiqueta: '', campo: '', texto: '', visible: true }])}

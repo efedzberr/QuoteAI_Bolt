@@ -13,7 +13,10 @@ export interface CeldaPdf {
   etiqueta: string;
   /** Clave del campo (ver CAMPOS_PDF en pdfDatos.ts). Vacío = solo texto fijo. */
   campo: string;
-  /** Texto fijo. Se usa cuando no hay campo o cuando el campo viene vacío. */
+  /**
+   * Texto fijo: se usa cuando no hay campo o cuando el campo viene vacío.
+   * Si trae datos entre llaves (`{cliente_ciudad}, {cliente_estado}`) combina varios datos en el renglón y el campo no se usa.
+   */
   texto: string;
   visible: boolean;
 }
@@ -100,8 +103,9 @@ export function configInicialPdf(): PdfConfig {
       titulo: 'VENDIDO A',
       lineas: [
         celda('cliente', '', 'cliente'),
-        celda('calle', '', 'cliente_calle'),
-        celda('estado', '', 'cliente_estado'),
+        celda('rfc', 'R.F.C.', 'cliente_rfc'),
+        celda('direccion1', '', '', '{cliente_calle}, {cliente_ciudad}'),
+        celda('direccion2', '', '', '{cliente_estado}, {cliente_pais}, C.P. {cliente_cp}'),
         celda('telefono', 'Tel.', 'cliente_telefono'),
         celda('contacto', 'Contacto:', 'contacto_nombre'),
         celda('correo', '', 'contacto_correo'),
@@ -112,8 +116,8 @@ export function configInicialPdf(): PdfConfig {
       titulo: 'CONSIGNADO A',
       lineas: [
         celda('cliente', '', 'cliente'),
-        celda('calle', '', 'cliente_calle'),
-        celda('estado', '', 'cliente_estado'),
+        celda('direccion1', '', '', '{cliente_calle}, {cliente_ciudad}'),
+        celda('direccion2', '', '', '{cliente_estado}, {cliente_pais}, C.P. {cliente_cp}'),
         celda('telefono', 'Tel.', 'cliente_telefono'),
       ],
     },

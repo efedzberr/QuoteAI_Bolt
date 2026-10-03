@@ -19,6 +19,8 @@ export interface CampoPdf {
   grupo: 'Cotización' | 'Cliente' | 'Usuario';
   /** Propiedad de la cuenta de Salesforce de donde sale (solo campos del cliente). */
   propiedadCuenta?: string;
+  /** Propiedad que se usa cuando la principal viene vacía. */
+  propiedadAlterna?: string;
   /** false = el servicio de cuentas todavía no lo devuelve: sale vacío. */
   disponible: boolean;
 }
@@ -34,15 +36,16 @@ export const CAMPOS_PDF: CampoPdf[] = [
   { clave: 'cliente', etiqueta: 'Cliente (como se capturó)', grupo: 'Cliente', disponible: true },
   { clave: 'cliente_nombre', etiqueta: 'Nombre de la cuenta', grupo: 'Cliente', propiedadCuenta: 'name', disponible: true },
   { clave: 'cliente_numero', etiqueta: 'Número de cliente', grupo: 'Cliente', propiedadCuenta: 'noCliente', disponible: true },
-  { clave: 'cliente_calle', etiqueta: 'Calle', grupo: 'Cliente', propiedadCuenta: 'calle', disponible: true },
-  { clave: 'cliente_estado', etiqueta: 'Estado', grupo: 'Cliente', propiedadCuenta: 'estado', disponible: true },
+  { clave: 'cliente_rfc', etiqueta: 'RFC', grupo: 'Cliente', propiedadCuenta: 'rfc', disponible: true },
+  { clave: 'cliente_calle', etiqueta: 'Calle', grupo: 'Cliente', propiedadCuenta: 'billingStreet', propiedadAlterna: 'calle', disponible: true },
+  { clave: 'cliente_ciudad', etiqueta: 'Ciudad', grupo: 'Cliente', propiedadCuenta: 'billingCity', disponible: true },
+  { clave: 'cliente_estado', etiqueta: 'Estado', grupo: 'Cliente', propiedadCuenta: 'billingState', propiedadAlterna: 'estado', disponible: true },
+  { clave: 'cliente_cp', etiqueta: 'Código postal', grupo: 'Cliente', propiedadCuenta: 'billingPostalCode', disponible: true },
+  { clave: 'cliente_pais', etiqueta: 'País', grupo: 'Cliente', propiedadCuenta: 'billingCountry', disponible: true },
   { clave: 'cliente_telefono', etiqueta: 'Teléfono', grupo: 'Cliente', propiedadCuenta: 'phone', disponible: true },
   { clave: 'contacto_nombre', etiqueta: 'Contacto principal', grupo: 'Cliente', propiedadCuenta: 'primaryContactName', disponible: true },
   { clave: 'contacto_correo', etiqueta: 'Correo del contacto', grupo: 'Cliente', propiedadCuenta: 'primaryContactEmail', disponible: true },
-  { clave: 'cliente_rfc', etiqueta: 'RFC', grupo: 'Cliente', propiedadCuenta: 'rfc', disponible: false },
   { clave: 'cliente_colonia', etiqueta: 'Colonia', grupo: 'Cliente', propiedadCuenta: 'colonia', disponible: false },
-  { clave: 'cliente_ciudad', etiqueta: 'Ciudad', grupo: 'Cliente', propiedadCuenta: 'ciudad', disponible: false },
-  { clave: 'cliente_cp', etiqueta: 'Código postal', grupo: 'Cliente', propiedadCuenta: 'codigoPostal', disponible: false },
   { clave: 'dias_entrega', etiqueta: 'Días de entrega', grupo: 'Cliente', propiedadCuenta: 'diasEntrega', disponible: false },
   { clave: 'condiciones_pago', etiqueta: 'Condiciones de pago', grupo: 'Cliente', propiedadCuenta: 'condicionesPago', disponible: false },
   { clave: 'agente', etiqueta: 'Agente', grupo: 'Cliente', propiedadCuenta: 'agente', disponible: false },
@@ -52,7 +55,7 @@ export const CAMPOS_PDF: CampoPdf[] = [
   { clave: 'elaboro_correo', etiqueta: 'Elaboró (correo)', grupo: 'Usuario', disponible: true },
 ];
 
-const limpio = (v: unknown): string => (v === null || v === undefined ? '' : String(v).trim());
+const limpio = (v: unknown): string => (v === null || v === undefined ? '' : String(v).replace(/\r\n?/g, '\n').trim());
 
 /** Número de la cotización: los dígitos de la referencia (QAI-1790864620688 -> 1790864620688). */
 export function numeroCotizacion(quoteData: QuoteData): string {
@@ -82,13 +85,47 @@ export function valorCampo(campo: string, quoteData: QuoteData, datos: DatosPdf)
     default: {
       const def = CAMPOS_PDF.find((c) => c.clave === campo);
       if (!def?.propiedadCuenta || !datos.cuenta) return '';
-      return limpio(datos.cuenta[def.propiedadCuenta]);
+      const valor = limpio(datos.cuenta[def.propiedadCuenta]) || (def.propiedadAlterna ? limpio(datos.cuenta[def.propiedadAlterna]) : '');
+      // Un dato que viene en varios renglones (por ejemplo calle y colonia) se imprime en uno, separado por comas
+      return valor.split('\n').map((parte) => parte.trim()).filter(Boolean).join(', ');
     }
   }
 }
 
-/** Valor de una celda: el campo y, si no hay campo o viene vacío, el texto fijo. */
+/** true si el texto combina datos, es decir, trae al menos un dato entre llaves: `{cliente_ciudad}`. */
+export function esTextoCombinado(texto: string): boolean {
+  return /\{[a-z_]+\}/.test(texto || '');
+}
+
+/**
+ * Arma un texto que combina varios datos: `{cliente_ciudad}, {cliente_estado}, C.P. {cliente_cp}`.
+ * Un dato vacío se quita junto con el texto que lo antecede, para no dejar comas ni etiquetas sueltas.
+ * Si todos los datos vienen vacíos el resultado es una cadena vacía.
+ */
+export function textoCombinado(texto: string, quoteData: QuoteData, datos: DatosPdf): string {
+  const partes = (texto || '').split(/\{([a-z_]+)\}/);
+  // partes: [texto, clave, texto, clave, ..., texto]
+  let salida = '';
+  let impresos = 0;
+  for (let i = 1; i < partes.length; i += 2) {
+    const valor = valorCampo(partes[i], quoteData, datos);
+    if (!valor) continue;
+    const antes = partes[i - 1];
+    // El primer dato que sí se imprime no lleva el separador de un dato anterior que quedó vacío
+    salida += impresos === 0 && i > 1 ? antes.replace(/^[\s,;:|/·-]+/, '') : antes;
+    salida += valor;
+    impresos++;
+  }
+  if (impresos === 0) return '';
+  return (salida + partes[partes.length - 1]).trim();
+}
+
+/**
+ * Valor de una celda. Si el texto combina datos (trae llaves) se arma con ellos;
+ * si no, es el campo y, cuando no hay campo o viene vacío, el texto fijo.
+ */
 export function valorCelda(celda: CeldaPdf, quoteData: QuoteData, datos: DatosPdf): string {
+  if (esTextoCombinado(celda.texto)) return textoCombinado(celda.texto, quoteData, datos);
   const delCampo = celda.campo ? valorCampo(celda.campo, quoteData, datos) : '';
   return delCampo || limpio(celda.texto);
 }
