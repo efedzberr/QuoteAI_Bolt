@@ -203,7 +203,8 @@ export function nodoCriterio(c: FilterCriterion, f: ObjectFieldDef, userId: stri
     return { campo: col, op: c.operator === 'not_equal' ? 'neq' : 'eq', valor: val };
   }
   if (f.dataType === 'boolean') {
-    const b = v === 'true';
+    // Igual que en la lista: vacío cuenta como Sí
+    const b = v !== 'false';
     const esVerdadero = c.operator === 'not_equal' ? !b : b;
     return { campo: col, op: esVerdadero ? 'is_true' : 'is_false' };
   }

@@ -247,7 +247,8 @@ export function criterionToPostgrest(c: FilterCriterion, f: ObjectFieldDef, user
     return c.operator === 'not_equal' ? `${col}.neq.${pgQuote(val)}` : `${col}.eq.${pgQuote(val)}`;
   }
   if (f.dataType === 'boolean') {
-    const b = v === 'true';
+    // El selector muestra «Sí» cuando todavía no se elige valor: vacío cuenta como Sí
+    const b = v !== 'false';
     return c.operator === 'not_equal' ? `${col}.is.${!b}` : `${col}.is.${b}`;
   }
   return null;

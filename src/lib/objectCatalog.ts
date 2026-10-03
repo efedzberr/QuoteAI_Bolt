@@ -163,6 +163,8 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
     analisis: {
       fecha: 'updated_at',
       presets: [
+        { nombre: 'Activos e inactivos', modo: 'campo', campoGrupo: 'activo' },
+        { nombre: 'Vistos en carga por día', modo: 'fecha', campoFecha: 'visto_at', granularidad: 'day' },
         { nombre: 'Modificaciones por día', modo: 'fecha', campoFecha: 'updated_at', granularidad: 'day' },
         { nombre: 'Modificaciones por mes', modo: 'fecha', campoFecha: 'updated_at', granularidad: 'month' },
         { nombre: 'Cargas por día', modo: 'fecha', campoFecha: 'loaded_at', granularidad: 'day' },
@@ -180,6 +182,8 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
       { key: 'precio_art', label: 'Precio', dataType: 'currency', editable: true, align: 'right' },
       { key: 'precio_promo_art', label: 'Precio promo', dataType: 'currency', editable: true, align: 'right', notes: 'Si es > 0 tiene prioridad en el matching' },
       { key: 'loaded_at', label: 'Cargado', dataType: 'datetime', notes: 'Fecha de carga externa' },
+      { key: 'activo', label: 'Activo', dataType: 'boolean', notes: 'Lo marca la carga. Sí = el precio llegó en la carga más reciente. No = dejó de llegar (al cotizar lleva el badge ESP)' },
+      { key: 'visto_at', label: 'Visto en carga', dataType: 'datetime', notes: 'Última carga en la que llegó este precio' },
       ...AUDIT_FIELDS,
     ],
   },
