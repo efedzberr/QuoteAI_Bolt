@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Search, X, ChevronDown, Lock } from 'lucide-react';
 import { usePermissions } from '../hooks/usePermissions';
 import GeneralSettingsTab from './admin/GeneralSettingsTab';
+import PdfConfigTab from './admin/PdfConfigTab';
 import UsersTab from './admin/UsersTab';
 import PerfilesTab from './admin/PerfilesTab';
 import RolesTab from './admin/RolesTab';
@@ -12,7 +13,7 @@ interface AdminScreenProps {
   onBack: () => void;
 }
 
-type AdminItemId = 'users' | 'profiles' | 'roles' | 'general' | `obj_${string}`;
+type AdminItemId = 'users' | 'profiles' | 'roles' | 'general' | 'pdf' | `obj_${string}`;
 
 interface MenuItem { id: AdminItemId; label: string; adminOnly?: boolean; soon?: boolean; objectId?: string }
 interface MenuSection { id: string; label: string; items: MenuItem[] }
@@ -31,6 +32,7 @@ const MENU: MenuSection[] = [
   {
     id: 'configuration', label: 'Configuración', items: [
       { id: 'general', label: 'Configuración general' },
+      { id: 'pdf', label: 'PDF de cotización', adminOnly: true },
     ],
   },
 ];
@@ -172,6 +174,7 @@ export default function AdminScreen(_props: AdminScreenProps) {
             </div>
             <div className="bg-white rounded-card shadow-sm border border-rule p-6">
               {active === 'general' && <GeneralSettingsTab />}
+              {active === 'pdf' && isAdmin && <PdfConfigTab onToast={handleToast} />}
               {active === 'users' && isAdmin && <UsersTab onToast={handleToast} />}
               {active === 'profiles' && isAdmin && <PerfilesTab onToast={handleToast} />}
               {active === 'roles' && isAdmin && <RolesTab onToast={handleToast} />}
