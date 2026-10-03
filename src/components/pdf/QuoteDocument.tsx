@@ -120,7 +120,7 @@ function Header({
       {filas.length > 0 && (
         <View style={styles.headerRight}>
           {filas.map((c, i) => (
-            <View key={c.id} style={i === filas.length - 1 ? styles.headerInfoRowLast : styles.headerInfoRow}>
+            <View key={i} style={i === filas.length - 1 ? styles.headerInfoRowLast : styles.headerInfoRow}>
               <Text style={styles.headerInfoLabel}>{c.etiqueta}</Text>
               <Text style={styles.headerInfoValue}>{valorCelda(c, quoteData, datos)}</Text>
             </View>
@@ -198,12 +198,12 @@ function OrderDataSection({ quoteData, datos, config }: { quoteData: QuoteData; 
     <View style={styles.orderSection}>
       <View style={styles.orderHeaderRow}>
         {celdas.map((c, i) => (
-          <Text key={c.id} style={i === ultima ? styles.orderCellBoldLast : styles.orderCellBold}>{c.etiqueta}</Text>
+          <Text key={i} style={i === ultima ? styles.orderCellBoldLast : styles.orderCellBold}>{c.etiqueta}</Text>
         ))}
       </View>
       <View style={styles.orderDataRow}>
         {celdas.map((c, i) => (
-          <Text key={c.id} style={i === ultima ? styles.orderCellLast : styles.orderCell}>{valorCelda(c, quoteData, datos)}</Text>
+          <Text key={i} style={i === ultima ? styles.orderCellLast : styles.orderCell}>{valorCelda(c, quoteData, datos)}</Text>
         ))}
       </View>
     </View>
@@ -224,7 +224,7 @@ function TableHeaderRow({ columnas }: { columnas: ColumnaPdf[] }) {
   return (
     <View style={styles.tableHeader} fixed>
       {columnas.map((col, i) => (
-        <View key={col.id} style={estiloColumna(col, i === columnas.length - 1)}>
+        <View key={i} style={estiloColumna(col, i === columnas.length - 1)}>
           <Text style={styles.colHeaderText}>{col.etiqueta}</Text>
         </View>
       ))}
@@ -254,7 +254,7 @@ function TableRow({ line, index, columnas, sinFondo }: { line: Linea; index: num
   return (
     <View style={rowStyle} wrap={false}>
       {columnas.map((col, i) => (
-        <View key={col.id} style={estiloColumna(col, i === columnas.length - 1)}>
+        <View key={i} style={estiloColumna(col, i === columnas.length - 1)}>
           <Text>{textoColumna(col, line, index)}</Text>
           {col.clave === 'descripcion' && comentario ? (
             <Text style={{ fontSize: 6, color: '#6B7280', marginTop: 2 }}>{comentario}</Text>
