@@ -4,11 +4,32 @@ import type { CeldaPdf } from './pdfConfig';
 /** Copia de la cuenta de Salesforce guardada con la cotización (jobs.cuenta_sf). */
 export type CuentaPdf = Record<string, unknown>;
 
-/** Datos que no vienen en la cotización: la cuenta del cliente y quién la elaboró. */
+/** Datos de un artículo del catálogo (tabla products) que se pueden imprimir en la tabla del PDF. */
+export interface ProductoCatalogo {
+  marca: string;
+  descripcionLarga: string;
+  garantia: string;
+  codigoBarras: string;
+  departamento: string;
+  categoria: string;
+  subcategoria: string;
+  peso: string;
+  /** Precio de lista del catálogo; respaldo cuando la partida no guardó el suyo. */
+  precio: number | null;
+  /** Valores de los atributos del artículo (ValorAtrib4 a ValorAtrib8) que traen dato. */
+  atributos: string[];
+}
+
+/** Artículos del catálogo de la cotización, por código (CodigoArt). */
+export type CatalogoPdf = Record<string, ProductoCatalogo>;
+
+/** Datos que no vienen en la cotización: la cuenta del cliente, quién la elaboró y el catálogo de sus artículos. */
 export interface DatosPdf {
   cuenta: CuentaPdf | null;
   elaboro: string;
   elaboroCorreo: string;
+  /** Solo se consulta cuando alguna columna de la tabla usa datos del catálogo. */
+  catalogo?: CatalogoPdf;
 }
 
 export const DATOS_PDF_VACIOS: DatosPdf = { cuenta: null, elaboro: '', elaboroCorreo: '' };
@@ -99,16 +120,17 @@ export function esTextoCombinado(texto: string): boolean {
 
 /**
  * Arma un texto que combina varios datos: `{cliente_ciudad}, {cliente_estado}, C.P. {cliente_cp}`.
+ * `valorDe` da el valor de cada dato (los del encabezado o los de una partida de la tabla).
  * Un dato vacío se quita junto con el texto que lo antecede, para no dejar comas ni etiquetas sueltas.
  * Si todos los datos vienen vacíos el resultado es una cadena vacía.
  */
-export function textoCombinado(texto: string, quoteData: QuoteData, datos: DatosPdf): string {
+export function combinarDatos(texto: string, valorDe: (clave: string) => string): string {
   const partes = (texto || '').split(/\{([a-z_]+)\}/);
   // partes: [texto, clave, texto, clave, ..., texto]
   let salida = '';
   let impresos = 0;
   for (let i = 1; i < partes.length; i += 2) {
-    const valor = valorCampo(partes[i], quoteData, datos);
+    const valor = valorDe(partes[i]);
     if (!valor) continue;
     const antes = partes[i - 1];
     // El primer dato que sí se imprime no lleva el separador de un dato anterior que quedó vacío
@@ -118,6 +140,11 @@ export function textoCombinado(texto: string, quoteData: QuoteData, datos: Datos
   }
   if (impresos === 0) return '';
   return (salida + partes[partes.length - 1]).trim();
+}
+
+/** Texto que combina datos del encabezado, los bloques de cliente y los datos del pedido. */
+export function textoCombinado(texto: string, quoteData: QuoteData, datos: DatosPdf): string {
+  return combinarDatos(texto, (clave) => valorCampo(clave, quoteData, datos));
 }
 
 /**

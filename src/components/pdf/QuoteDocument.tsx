@@ -6,6 +6,7 @@ import { resolverPdfConfig, type AlineacionPdf, type PdfConfig, type CeldaPdf, t
 import { DATOS_PDF_VACIOS, valorCampo, valorCelda, type DatosPdf } from '../../lib/pdf/pdfDatos';
 import { importeConLetra } from '../../lib/pdf/numeroALetras';
 import { codigo128 } from '../../lib/pdf/codigoBarras';
+import { columnaDelComentario, valorColumna, type ContextoLinea } from '../../lib/pdf/pdfLinea';
 
 interface QuoteDocumentProps {
   quoteData: QuoteData;
@@ -245,31 +246,35 @@ function TableHeaderRow({ columnas }: { columnas: ColumnaPdf[] }) {
   );
 }
 
-function textoColumna(col: ColumnaPdf, line: Linea, index: number): string {
-  switch (col.clave) {
-    case 'partida': return String(index + 1);
-    case 'clave': return line.matched_product_code || 'Especial';
-    case 'descripcion': return line.matched_product_name || '';
-    case 'almacen': return col.texto || '';
-    case 'um': return line.matched_unit_of_measure || 'PZ';
-    case 'cantidad': return String(line.quantity);
-    case 'precio': return line.matched_unit_price !== null ? formatNumber(line.matched_unit_price) : '0.00';
-    case 'importe': return formatNumber((line.quantity || 0) * (line.matched_unit_price || 0));
-    default: return '';
-  }
-}
-
-function TableRow({ line, index, columnas, sinFondo }: { line: Linea; index: number; columnas: ColumnaPdf[]; sinFondo: boolean }) {
+function TableRow({
+  line,
+  index,
+  columnas,
+  sinFondo,
+  tasaIva,
+  datos,
+  columnaComentario,
+}: {
+  line: Linea;
+  index: number;
+  columnas: ColumnaPdf[];
+  sinFondo: boolean;
+  tasaIva: number;
+  datos: DatosPdf;
+  /** Columna que lleva el comentario de la partida debajo de su texto (-1 = ninguna). */
+  columnaComentario: number;
+}) {
   // Con marca de agua los renglones van sin fondo alterno, para no taparla
   const rowStyle = index % 2 === 1 && !sinFondo ? styles.tableRowAlt : styles.tableRow;
-  const comentario = (line as any).comentario;
+  const comentario = line.comentario;
+  const contexto: ContextoLinea = { linea: line, indice: index, tasaIva, catalogo: datos.catalogo };
 
   return (
     <View style={rowStyle} wrap={false}>
       {columnas.map((col, i) => (
         <View key={i} style={estiloColumna(col, i === columnas.length - 1)}>
-          <Text>{textoColumna(col, line, index)}</Text>
-          {col.clave === 'descripcion' && comentario ? (
+          <Text>{valorColumna(col, contexto)}</Text>
+          {i === columnaComentario && comentario ? (
             <Text style={{ fontSize: 6, color: '#6B7280', marginTop: 2 }}>{comentario}</Text>
           ) : null}
         </View>
@@ -374,6 +379,7 @@ export default function QuoteDocument({ quoteData, pdfLogoUrl, pdfLogoWidthPx, p
   }, 0);
   const articulos = activeLines.reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
   const columnas = cfg.columnas.filter((c) => c.visible);
+  const columnaComentario = columnaDelComentario(columnas);
   const conMarcaAgua = cfg.marcaAgua.visible && !!cfg.marcaAgua.url;
 
   return (
@@ -401,7 +407,16 @@ export default function QuoteDocument({ quoteData, pdfLogoUrl, pdfLogoWidthPx, p
           <View style={styles.tableContainer}>
             <TableHeaderRow columnas={columnas} />
             {activeLines.map((line, index) => (
-              <TableRow key={index} line={line} index={index} columnas={columnas} sinFondo={conMarcaAgua} />
+              <TableRow
+                key={index}
+                line={line}
+                index={index}
+                columnas={columnas}
+                sinFondo={conMarcaAgua}
+                tasaIva={cfg.totales.tasaIva}
+                datos={dat}
+                columnaComentario={columnaComentario}
+              />
             ))}
           </View>
         )}

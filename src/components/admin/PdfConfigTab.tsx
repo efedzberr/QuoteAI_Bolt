@@ -3,10 +3,6 @@ import {
   AlignCenter,
   AlignLeft,
   AlignRight,
-  ArrowDown,
-  ArrowUp,
-  Eye,
-  EyeOff,
   FileText,
   Loader2,
   Maximize2,
@@ -20,25 +16,16 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppSettings } from '../../hooks/useAppSettings';
-import {
-  configInicialPdf,
-  type AlineacionPdf,
-  type ClaveColumnaPdf,
-  type ColumnaPdf,
-  type OrientacionPagina,
-  type PdfConfig,
-  type TamanoPagina,
-} from '../../lib/pdf/pdfConfig';
+import { configInicialPdf, type OrientacionPagina, type PdfConfig, type TamanoPagina } from '../../lib/pdf/pdfConfig';
 import { Campo, Interruptor, Seccion, Segmentado, Subtitulo } from './pdf/PdfControles';
+import PdfColumnas from './pdf/PdfColumnas';
 import PdfListaCeldas, { OpcionesCampo } from './pdf/PdfListaCeldas';
 import PdfVistaPrevia from './pdf/PdfVistaPrevia';
 import {
   acotar,
   claseBotonEliminar,
-  claseBotonIcono,
   claseCampo,
   claseEtiqueta,
-  moverElemento,
   prepararImagenLogo,
   prepararImagenMarcaAgua,
 } from './pdf/pdfEditorUtil';
@@ -55,17 +42,6 @@ interface LogoPdf {
   ancho: number;
   alto: number;
 }
-
-const NOMBRE_COLUMNA: Record<ClaveColumnaPdf, string> = {
-  partida: 'Partida (número de renglón)',
-  clave: 'Clave',
-  descripcion: 'Descripción',
-  almacen: 'Almacén',
-  um: 'Unidad de medida',
-  cantidad: 'Cantidad',
-  precio: 'Precio unitario',
-  importe: 'Importe',
-};
 
 const NOMBRE_TAMANO: Record<TamanoPagina, string> = { LETTER: 'Carta', A4: 'A4', LEGAL: 'Legal' };
 
@@ -133,8 +109,6 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
   const setBarras = (p: Partial<PdfConfig['codigoBarras']>) => set({ codigoBarras: { ...codigoBarras, ...p } });
   const setMarca = (p: Partial<PdfConfig['marcaAgua']>) => set({ marcaAgua: { ...marcaAgua, ...p } });
   const setPie = (p: Partial<PdfConfig['pie']>) => set({ pie: { ...pie, ...p } });
-  const cambiarColumna = (i: number, p: Partial<ColumnaPdf>) =>
-    set({ columnas: columnas.map((c, k) => (k === i ? { ...c, ...p } : c)) });
 
   const guardar = async () => {
     setGuardando(true);
@@ -455,79 +429,7 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
             abierta={abierta === 'tabla'}
             onAlternar={() => alternar('tabla')}
           >
-            <p className="text-xs text-ink-faint">
-              Las columnas se imprimen de izquierda a derecha en el orden de esta lista. El ancho va en puntos (la hoja carta
-              vertical mide 612); con 0 la columna ocupa el espacio que sobra.
-            </p>
-            <div className="space-y-2">
-              {columnas.map((col, i) => (
-                <div key={col.id} className={`border border-rule rounded-lg p-2 space-y-2 ${col.visible ? 'bg-white' : 'bg-rule-soft'}`}>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      title="Subir"
-                      aria-label="Subir columna"
-                      disabled={i === 0}
-                      onClick={() => set({ columnas: moverElemento(columnas, i, -1) })}
-                      className={claseBotonIcono}
-                    >
-                      <ArrowUp className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      title="Bajar"
-                      aria-label="Bajar columna"
-                      disabled={i === columnas.length - 1}
-                      onClick={() => set({ columnas: moverElemento(columnas, i, 1) })}
-                      className={claseBotonIcono}
-                    >
-                      <ArrowDown className="w-3.5 h-3.5" />
-                    </button>
-                    <span className="flex-1 min-w-0 px-1 text-sm font-semibold text-ink truncate">{NOMBRE_COLUMNA[col.clave]}</span>
-                    <button
-                      type="button"
-                      title={col.visible ? 'Se imprime. Clic para ocultar' : 'No se imprime. Clic para mostrar'}
-                      aria-label={col.visible ? 'Ocultar columna' : 'Mostrar columna'}
-                      onClick={() => cambiarColumna(i, { visible: !col.visible })}
-                      className={claseBotonIcono}
-                    >
-                      {col.visible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-                    </button>
-                  </div>
-                  <div className="grid grid-cols-[minmax(0,1fr)_68px_104px] gap-2">
-                    <Campo etiqueta="Título">
-                      <input value={col.etiqueta} onChange={(e) => cambiarColumna(i, { etiqueta: e.target.value })} className={claseCampo} />
-                    </Campo>
-                    <Campo etiqueta="Ancho">
-                      <input
-                        type="number"
-                        min={0}
-                        max={400}
-                        value={col.ancho}
-                        onChange={(e) => cambiarColumna(i, { ancho: acotar(parseInt(e.target.value, 10), 0, 400) })}
-                        className={claseCampo}
-                      />
-                    </Campo>
-                    <Campo etiqueta="Alineación">
-                      <select
-                        value={col.alineacion}
-                        onChange={(e) => cambiarColumna(i, { alineacion: e.target.value as AlineacionPdf })}
-                        className={claseCampo}
-                      >
-                        <option value="left">Izquierda</option>
-                        <option value="center">Centro</option>
-                        <option value="right">Derecha</option>
-                      </select>
-                    </Campo>
-                  </div>
-                  {col.clave === 'almacen' && (
-                    <Campo etiqueta="Valor fijo para todos los renglones">
-                      <input value={col.texto} onChange={(e) => cambiarColumna(i, { texto: e.target.value })} className={claseCampo} />
-                    </Campo>
-                  )}
-                </div>
-              ))}
-            </div>
+            <PdfColumnas columnas={columnas} pagina={pagina} onCambio={(columnas) => set({ columnas })} />
           </Seccion>
 
           <Seccion

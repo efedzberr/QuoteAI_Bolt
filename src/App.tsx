@@ -437,6 +437,7 @@ function App() {
             ignored: jl.estado === 'ignorada',
             approved: jl.estado === 'aprobada',
             badgeType: jl.origen === 'manual' ? 'manual' : jl.origen === 'producto_nuevo' ? 'producto_nuevo' : undefined,
+            comentario: jl.comentario || null,
             precio_lista: jl.precio_lista ?? null,
             precio_grupo: jl.precio_grupo ?? null,
             descuento_pct: jl.descuento_pct ?? null,

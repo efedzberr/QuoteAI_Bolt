@@ -21,17 +21,21 @@ export interface CeldaPdf {
   visible: boolean;
 }
 
-export type ClaveColumnaPdf = 'partida' | 'clave' | 'descripcion' | 'almacen' | 'um' | 'cantidad' | 'precio' | 'importe';
-
+/** Columna de la tabla de productos: imprime un dato de cada partida, un texto fijo o varios datos juntos. */
 export interface ColumnaPdf {
   id: string;
-  clave: ClaveColumnaPdf;
+  /** Dato de la partida (ver CAMPOS_LINEA en pdfLinea.ts). Vacío = solo texto fijo. */
+  campo: string;
+  /** Título de la columna. */
   etiqueta: string;
   /** Ancho en puntos. 0 = toma el espacio que sobra. */
   ancho: number;
   alineacion: AlineacionPdf;
   visible: boolean;
-  /** Valor fijo para todas las líneas (solo lo usa la columna Almacén). */
+  /**
+   * Texto fijo: se usa cuando no hay dato o cuando el dato viene vacío.
+   * Si trae datos entre llaves (`{clave} / {marca}`) los combina en la celda y el dato no se usa.
+   */
   texto: string;
 }
 
@@ -75,13 +79,14 @@ export interface PdfConfig {
 const celda = (id: string, etiqueta: string, campo: string, texto = ''): CeldaPdf => ({ id, etiqueta, campo, texto, visible: true });
 
 const columna = (
-  clave: ClaveColumnaPdf,
+  campo: string,
   etiqueta: string,
   ancho: number,
   alineacion: AlineacionPdf,
   visible = true,
-  texto = ''
-): ColumnaPdf => ({ id: clave, clave, etiqueta, ancho, alineacion, visible, texto });
+  texto = '',
+  id = campo
+): ColumnaPdf => ({ id, campo, etiqueta, ancho, alineacion, visible, texto });
 
 /** Plantilla inicial: el diseño actual de QuoteAI más los elementos del PDF de JDE. */
 export function configInicialPdf(): PdfConfig {
@@ -143,7 +148,7 @@ export function configInicialPdf(): PdfConfig {
       columna('partida', '#', 24, 'center', false),
       columna('clave', 'CLAVE', 70, 'left'),
       columna('descripcion', 'DESCRIPCION', 0, 'left'),
-      columna('almacen', 'ALMACEN', 55, 'center', true, '1080'),
+      columna('', 'ALMACEN', 55, 'center', true, '1080', 'almacen'),
       columna('um', 'U.M.', 35, 'center'),
       columna('cantidad', 'CANTIDAD', 55, 'center'),
       columna('precio', 'PRECIO UNITARIO', 70, 'right'),
@@ -186,7 +191,52 @@ function combinar<T>(base: T, guardado: unknown): T {
   return (typeof guardado === typeof base ? guardado : base) as T;
 }
 
+// Las plantillas guardadas antes de poder elegir el dato de cada columna traen `clave` en lugar de `campo`.
+// Almacén era la única columna con valor fijo: queda como columna de texto fijo.
+const CAMPO_DE_CLAVE_ANTERIOR = new Map([
+  ['partida', 'partida'],
+  ['clave', 'clave'],
+  ['descripcion', 'descripcion'],
+  ['almacen', ''],
+  ['um', 'um'],
+  ['cantidad', 'cantidad'],
+  ['precio', 'precio'],
+  ['importe', 'importe'],
+]);
+
+/** Columna completa a partir de lo guardado: los datos que falten o no tengan el tipo esperado toman su valor inicial. */
+function normalizarColumna(guardada: unknown, i: number): ColumnaPdf {
+  const c = (guardada !== null && typeof guardada === 'object' ? guardada : {}) as Record<string, unknown>;
+  const texto = (v: unknown) => (typeof v === 'string' ? v : '');
+  const anterior = texto(c.clave);
+  return {
+    id: texto(c.id) || anterior || `columna${i + 1}`,
+    campo: typeof c.campo === 'string' ? c.campo : CAMPO_DE_CLAVE_ANTERIOR.get(anterior) ?? '',
+    etiqueta: texto(c.etiqueta),
+    ancho: typeof c.ancho === 'number' && Number.isFinite(c.ancho) && c.ancho > 0 ? c.ancho : 0,
+    alineacion: c.alineacion === 'center' || c.alineacion === 'right' ? c.alineacion : 'left',
+    visible: typeof c.visible === 'boolean' ? c.visible : true,
+    texto: texto(c.texto),
+  };
+}
+
 /** Configuración completa a partir de lo guardado en app_settings.pdf_config (puede venir vacío o nulo). */
 export function resolverPdfConfig(guardado: unknown): PdfConfig {
-  return combinar(configInicialPdf(), guardado);
+  const config = combinar(configInicialPdf(), guardado);
+  return { ...config, columnas: config.columnas.map(normalizarColumna) };
+}
+
+// Medidas de cada tamaño de hoja en vertical, en puntos
+const MEDIDAS_PAGINA: Record<TamanoPagina, [number, number]> = {
+  LETTER: [612, 792],
+  A4: [595.28, 841.89],
+  LEGAL: [612, 1008],
+};
+// Margen izquierdo más margen derecho de la hoja (styles.page: paddingHorizontal 20)
+const MARGENES_HORIZONTALES = 40;
+
+/** Ancho de la tabla de productos en la hoja elegida, en puntos. */
+export function anchoTabla(pagina: PdfConfig['pagina']): number {
+  const [ancho, alto] = MEDIDAS_PAGINA[pagina.tamano] ?? MEDIDAS_PAGINA.LETTER;
+  return Math.round((pagina.orientacion === 'landscape' ? alto : ancho) - MARGENES_HORIZONTALES);
 }

@@ -6,7 +6,7 @@ import QuoteDocument from './pdf/QuoteDocument';
 import { normalizeLines } from '../lib/normalizeLines';
 import type { QuoteData } from '../types/quote';
 import { useAppSettings } from '../hooks/useAppSettings';
-import { useDatosPdf } from '../lib/pdf/pdfCotizacion';
+import { useCatalogoPdf, useDatosPdf } from '../lib/pdf/pdfCotizacion';
 
 interface PDFPreviewScreenProps {
   quoteData: QuoteData;
@@ -25,7 +25,7 @@ function buildFileName(quoteData: QuoteData): string {
 export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreenProps) {
   const [viewerReady, setViewerReady] = useState(false);
   const fileName = buildFileName(quoteData);
-  const { pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig } = useAppSettings();
+  const { pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, loading: cargandoPlantilla } = useAppSettings();
   const datosPdf = useDatosPdf(quoteData.quoteReference);
 
   useEffect(() => {
@@ -35,6 +35,11 @@ export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreen
 
   const normalizedLinesList = normalizeLines(quoteData.lines);
   const activeLines = normalizedLinesList.filter((l) => !l.ignored);
+  // Marca, garantía y demás datos del catálogo, solo si alguna columna los usa.
+  // El PDF espera a tener la plantilla y esos datos para no salir incompleto.
+  const { catalogo, cargando: cargandoCatalogo } = useCatalogoPdf(activeLines, pdfConfig);
+  const datos = { ...datosPdf, catalogo };
+  const cargandoDatos = cargandoPlantilla || cargandoCatalogo;
   const subtotal = activeLines.reduce(
     (sum, line) => sum + (line.quantity || 0) * (line.matched_unit_price || 0),
     0
@@ -76,8 +81,17 @@ export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreen
               </span>
             </div>
 
+            {cargandoDatos ? (
+              <button
+                disabled
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-lg font-semibold text-sm bg-gray-300 text-gray-500 cursor-wait"
+              >
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Cargando datos...
+              </button>
+            ) : (
             <PDFDownloadLink
-              document={<QuoteDocument quoteData={{ ...quoteData, lines: activeLines }} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={datosPdf} />}
+              document={<QuoteDocument quoteData={{ ...quoteData, lines: activeLines }} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={datos} />}
               fileName={fileName}
             >
               {({ loading }) => (
@@ -98,26 +112,29 @@ export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreen
                 </button>
               )}
             </PDFDownloadLink>
+            )}
           </div>
         </div>
       </div>
 
       <div className="flex-1 flex flex-col items-center p-6">
         <div className="w-full max-w-5xl flex-1 bg-white rounded-xl shadow-lg overflow-hidden border border-gray-200 relative">
-          {!viewerReady && (
+          {(!viewerReady || cargandoDatos) && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10">
               <Loader2 className="w-10 h-10 text-[#E8521A] animate-spin mb-4" />
               <p className="text-sm text-gray-500 font-medium">Generando vista previa del documento...</p>
             </div>
           )}
+          {!cargandoDatos && (
           <PDFViewer
             width="100%"
             height="100%"
             style={{ minHeight: 'calc(100vh - 220px)', border: 'none' }}
             showToolbar={false}
           >
-            <QuoteDocument quoteData={{ ...quoteData, lines: activeLines }} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={datosPdf} />
+            <QuoteDocument quoteData={{ ...quoteData, lines: activeLines }} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={datos} />
           </PDFViewer>
+          )}
         </div>
 
         <div className="mt-4 flex items-center gap-6 text-xs text-gray-400">
