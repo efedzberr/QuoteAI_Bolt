@@ -2,7 +2,7 @@ import { Document, Page, Text, View, Image, Svg, Rect, StyleSheet, Font } from '
 import { styles, BORDER_COLOR } from './styles';
 import { normalizeLines } from '../../lib/normalizeLines';
 import type { QuoteData } from '../../types/quote';
-import { resolverPdfConfig, type PdfConfig, type CeldaPdf, type ColumnaPdf } from '../../lib/pdf/pdfConfig';
+import { resolverPdfConfig, type AlineacionPdf, type PdfConfig, type CeldaPdf, type ColumnaPdf } from '../../lib/pdf/pdfConfig';
 import { DATOS_PDF_VACIOS, valorCampo, valorCelda, type DatosPdf } from '../../lib/pdf/pdfDatos';
 import { importeConLetra } from '../../lib/pdf/numeroALetras';
 import { codigo128 } from '../../lib/pdf/codigoBarras';
@@ -25,6 +25,10 @@ Font.registerHyphenationCallback((palabra) => [palabra]);
 
 // Ancho de cada módulo del código de barras, en puntos (1 pt = 0.35 mm)
 const MODULO_BARRAS = 1;
+
+// Alineación del bloque de la empresa: dónde queda el logo dentro de su renglón
+const ALINEACIONES: AlineacionPdf[] = ['left', 'center', 'right'];
+const LOGO_EN_RENGLON = { left: 'flex-start', center: 'center', right: 'flex-end' } as const;
 
 // Estilos de los elementos nuevos; el resto del diseño sigue en styles.ts
 const extra = StyleSheet.create({
@@ -94,27 +98,36 @@ function Header({
   pdfLogoHeightPx?: number;
 }) {
   const filas = config.cuadro.filter((c) => c.visible);
+  // Un valor guardado que no se reconoce se toma como izquierda
+  const alineacion = ALINEACIONES.includes(config.empresa.alineacion) ? config.empresa.alineacion : 'left';
+  const texto = { textAlign: alineacion };
+  // Al centro o a la derecha, el bloque deja un espacio antes del cuadro de fecha y folio
+  const separacion = alineacion !== 'left' && filas.length > 0 ? { paddingRight: 12 } : {};
 
   return (
     <View style={styles.headerRow}>
-      <View style={styles.headerLeft}>
+      <View style={[styles.headerLeft, separacion]}>
         {config.empresa.mostrarLogo && pdfLogoUrl && (
-          <View style={styles.logoRow}>
+          <View style={[styles.logoRow, { justifyContent: LOGO_EN_RENGLON[alineacion] }]}>
             <Image
               src={pdfLogoUrl}
               style={{
                 width: pdfLogoWidthPx ?? 200,
                 height: pdfLogoHeightPx ?? 80,
+                maxWidth: '100%',
                 objectFit: 'contain',
+                // La imagen se pega al lado elegido dentro de su recuadro. Sin esto queda centrada en él
+                // y, alineada a la izquierda, no arranca en el mismo margen que el texto.
+                objectPosition: `${alineacion} center`,
               }}
             />
           </View>
         )}
-        {config.empresa.nombre ? <Text style={styles.companyName}>{config.empresa.nombre}</Text> : null}
+        {config.empresa.nombre ? <Text style={[styles.companyName, texto]}>{config.empresa.nombre}</Text> : null}
         {config.empresa.lineas.filter(Boolean).map((linea, i) => (
-          <Text key={i} style={styles.companyDetail}>{linea}</Text>
+          <Text key={i} style={[styles.companyDetail, texto]}>{linea}</Text>
         ))}
-        {config.empresa.sitioWeb ? <Text style={styles.companyWebsite}>{config.empresa.sitioWeb}</Text> : null}
+        {config.empresa.sitioWeb ? <Text style={[styles.companyWebsite, texto]}>{config.empresa.sitioWeb}</Text> : null}
       </View>
 
       {filas.length > 0 && (

@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { Upload, Trash2, Save, Loader2, Image as ImageIcon, FileText, Percent } from 'lucide-react';
+import { Upload, Trash2, Save, Loader2, Image as ImageIcon, Percent } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppSettings } from '../../hooks/useAppSettings';
 
-type LogoKind = 'app' | 'pdf';
+// El logo del PDF se configura en Ajustes > PDF de cotización (PdfConfigTab), junto con su alineación.
 
 const BUCKET = 'app-assets';
+
+const mensajeDe = (e: unknown) => (e as { message?: string })?.message || String(e);
 
 function extensionOf(file: File): string {
   const fromName = file.name.split('.').pop()?.toLowerCase();
@@ -23,39 +25,32 @@ export default function GeneralSettingsTab() {
 
   const [appWidth, setAppWidth] = useState(160);
   const [appHeight, setAppHeight] = useState(48);
-  const [pdfWidth, setPdfWidth] = useState(200);
-  const [pdfHeight, setPdfHeight] = useState(80);
   const [thresholdPct, setThresholdPct] = useState(90);
 
   const [savingAppLogo, setSavingAppLogo] = useState(false);
-  const [savingPdfLogo, setSavingPdfLogo] = useState(false);
   const [savingThreshold, setSavingThreshold] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const appFileRef = useRef<HTMLInputElement>(null);
-  const pdfFileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!settings.loading) {
       setAppWidth(settings.appLogoWidthPx);
       setAppHeight(settings.appLogoHeightPx);
-      setPdfWidth(settings.pdfLogoWidthPx);
-      setPdfHeight(settings.pdfLogoHeightPx);
       setThresholdPct(Math.round(settings.confidenceThreshold * 100));
     }
-  }, [settings.loading, settings.appLogoWidthPx, settings.appLogoHeightPx, settings.pdfLogoWidthPx, settings.pdfLogoHeightPx, settings.confidenceThreshold]);
+  }, [settings.loading, settings.appLogoWidthPx, settings.appLogoHeightPx, settings.confidenceThreshold]);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 3500);
   };
 
-  const uploadLogo = async (kind: LogoKind, file: File) => {
-    const setSaving = kind === 'app' ? setSavingAppLogo : setSavingPdfLogo;
-    setSaving(true);
+  const uploadLogo = async (file: File) => {
+    setSavingAppLogo(true);
     try {
       const ext = extensionOf(file);
-      const path = `${kind}-logo.${ext}`;
+      const path = `app-logo.${ext}`;
 
       const { error: uploadError } = await supabase.storage
         .from(BUCKET)
@@ -65,72 +60,58 @@ export default function GeneralSettingsTab() {
       const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
       const publicUrl = `${pub.publicUrl}?t=${Date.now()}`;
 
-      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
-      if (kind === 'app') {
-        updates.app_logo_url = publicUrl;
-        updates.app_logo_width_px = appWidth;
-        updates.app_logo_height_px = appHeight;
-      } else {
-        updates.pdf_logo_url = publicUrl;
-        updates.pdf_logo_width_px = pdfWidth;
-        updates.pdf_logo_height_px = pdfHeight;
-      }
-
       const { error: updateError } = await supabase
         .from('app_settings')
-        .update(updates)
+        .update({
+          app_logo_url: publicUrl,
+          app_logo_width_px: appWidth,
+          app_logo_height_px: appHeight,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', 1);
       if (updateError) throw updateError;
 
       await settings.refresh();
-      showToast('success', `Logo ${kind === 'app' ? 'de aplicación' : 'del PDF'} actualizado`);
-    } catch (e: any) {
-      showToast('error', `Error al subir logo: ${e?.message || String(e)}`);
+      showToast('success', 'Logo de aplicación actualizado');
+    } catch (e) {
+      showToast('error', `Error al subir logo: ${mensajeDe(e)}`);
     } finally {
-      setSaving(false);
+      setSavingAppLogo(false);
     }
   };
 
-  const deleteLogo = async (kind: LogoKind) => {
-    const setSaving = kind === 'app' ? setSavingAppLogo : setSavingPdfLogo;
-    setSaving(true);
+  const deleteLogo = async () => {
+    setSavingAppLogo(true);
     try {
-      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
-      if (kind === 'app') updates.app_logo_url = null;
-      else updates.pdf_logo_url = null;
-
-      const { error } = await supabase.from('app_settings').update(updates).eq('id', 1);
+      const { error } = await supabase
+        .from('app_settings')
+        .update({ app_logo_url: null, updated_at: new Date().toISOString() })
+        .eq('id', 1);
       if (error) throw error;
 
       await settings.refresh();
       showToast('success', 'Logo eliminado');
-    } catch (e: any) {
-      showToast('error', `Error al eliminar logo: ${e?.message || String(e)}`);
+    } catch (e) {
+      showToast('error', `Error al eliminar logo: ${mensajeDe(e)}`);
     } finally {
-      setSaving(false);
+      setSavingAppLogo(false);
     }
   };
 
-  const saveDimensions = async (kind: LogoKind) => {
-    const setSaving = kind === 'app' ? setSavingAppLogo : setSavingPdfLogo;
-    setSaving(true);
+  const saveDimensions = async () => {
+    setSavingAppLogo(true);
     try {
-      const updates: Record<string, any> = { updated_at: new Date().toISOString() };
-      if (kind === 'app') {
-        updates.app_logo_width_px = appWidth;
-        updates.app_logo_height_px = appHeight;
-      } else {
-        updates.pdf_logo_width_px = pdfWidth;
-        updates.pdf_logo_height_px = pdfHeight;
-      }
-      const { error } = await supabase.from('app_settings').update(updates).eq('id', 1);
+      const { error } = await supabase
+        .from('app_settings')
+        .update({ app_logo_width_px: appWidth, app_logo_height_px: appHeight, updated_at: new Date().toISOString() })
+        .eq('id', 1);
       if (error) throw error;
       await settings.refresh();
       showToast('success', 'Dimensiones guardadas');
-    } catch (e: any) {
-      showToast('error', `Error: ${e?.message || String(e)}`);
+    } catch (e) {
+      showToast('error', `Error: ${mensajeDe(e)}`);
     } finally {
-      setSaving(false);
+      setSavingAppLogo(false);
     }
   };
 
@@ -145,8 +126,8 @@ export default function GeneralSettingsTab() {
       if (error) throw error;
       await settings.refresh();
       showToast('success', 'Umbral guardado');
-    } catch (e: any) {
-      showToast('error', `Error: ${e?.message || String(e)}`);
+    } catch (e) {
+      showToast('error', `Error: ${mensajeDe(e)}`);
     } finally {
       setSavingThreshold(false);
     }
@@ -156,7 +137,9 @@ export default function GeneralSettingsTab() {
     <div className="space-y-8">
         <div>
           <h2 className="text-xl font-bold text-gray-900">Configuración general</h2>
-          <p className="text-sm text-gray-500 mt-1">Logos de la aplicación y del PDF, y umbral de confianza para revisión.</p>
+          <p className="text-sm text-gray-500 mt-1">
+            Logo de la aplicación y umbral de confianza para revisión. El logo del PDF se configura en PDF de cotización.
+          </p>
         </div>
 
         {/* Section A - App logo */}
@@ -212,7 +195,7 @@ export default function GeneralSettingsTab() {
                 </label>
               </div>
               <button
-                onClick={() => saveDimensions('app')}
+                onClick={saveDimensions}
                 disabled={savingAppLogo}
                 className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
               >
@@ -229,7 +212,7 @@ export default function GeneralSettingsTab() {
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f) uploadLogo('app', f);
+                if (f) uploadLogo(f);
                 e.target.value = '';
               }}
             />
@@ -243,102 +226,8 @@ export default function GeneralSettingsTab() {
             </button>
             {settings.appLogoUrl && (
               <button
-                onClick={() => deleteLogo('app')}
+                onClick={deleteLogo}
                 disabled={savingAppLogo}
-                className="inline-flex items-center gap-2 px-5 py-2.5 border border-red-300 text-red-600 font-semibold rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
-              >
-                <Trash2 className="w-4 h-4" /> Eliminar logo
-              </button>
-            )}
-          </div>
-        </section>
-
-        {/* Section B - PDF logo */}
-        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-8">
-          <div className="flex items-start gap-3 mb-1">
-            <FileText className="w-5 h-5 text-[#E8521A] mt-1" />
-            <h2 className="text-xl font-bold text-gray-900">Logo para cotización en PDF</h2>
-          </div>
-          <p className="text-sm text-gray-500 mb-6 ml-8">
-            Este logo aparece en el encabezado del PDF generado. Recomendado: PNG de alta resolución (mínimo 800 px de ancho) o SVG, para buena calidad de impresión.
-          </p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            <div className="border border-dashed border-gray-300 rounded-lg p-6 flex items-center justify-center bg-gray-50 min-h-[120px]">
-              {settings.pdfLogoUrl ? (
-                <img
-                  src={settings.pdfLogoUrl}
-                  alt="PDF logo"
-                  style={{
-                    width: `${settings.pdfLogoWidthPx}px`,
-                    height: `${settings.pdfLogoHeightPx}px`,
-                    objectFit: 'contain',
-                  }}
-                />
-              ) : (
-                <span className="text-xs text-gray-400">Sin logo</span>
-              )}
-            </div>
-
-            <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Ancho (px)</span>
-                  <input
-                    type="number"
-                    min={20}
-                    max={800}
-                    value={pdfWidth}
-                    onChange={(e) => setPdfWidth(parseInt(e.target.value) || 0)}
-                    className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00A99D]"
-                  />
-                </label>
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Alto (px)</span>
-                  <input
-                    type="number"
-                    min={20}
-                    max={400}
-                    value={pdfHeight}
-                    onChange={(e) => setPdfHeight(parseInt(e.target.value) || 0)}
-                    className="w-full mt-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00A99D]"
-                  />
-                </label>
-              </div>
-              <button
-                onClick={() => saveDimensions('pdf')}
-                disabled={savingPdfLogo}
-                className="w-full inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
-              >
-                <Save className="w-4 h-4" /> Guardar dimensiones
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <input
-              ref={pdfFileRef}
-              type="file"
-              accept="image/png, image/jpeg, image/svg+xml"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) uploadLogo('pdf', f);
-                e.target.value = '';
-              }}
-            />
-            <button
-              onClick={() => pdfFileRef.current?.click()}
-              disabled={savingPdfLogo}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E3A5F] text-white font-semibold rounded-lg hover:bg-[#2a4d7f] transition-colors disabled:opacity-50"
-            >
-              {savingPdfLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-              Subir logo
-            </button>
-            {settings.pdfLogoUrl && (
-              <button
-                onClick={() => deleteLogo('pdf')}
-                disabled={savingPdfLogo}
                 className="inline-flex items-center gap-2 px-5 py-2.5 border border-red-300 text-red-600 font-semibold rounded-lg hover:bg-red-50 transition-colors disabled:opacity-50"
               >
                 <Trash2 className="w-4 h-4" /> Eliminar logo

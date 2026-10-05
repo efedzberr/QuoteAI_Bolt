@@ -82,3 +82,39 @@ export function Interruptor({
     </div>
   );
 }
+
+/** Botones juntos para elegir una sola opción, por ejemplo la alineación. */
+export function Segmentado<T extends string>({
+  etiqueta,
+  valor,
+  opciones,
+  onCambio,
+}: {
+  etiqueta: string;
+  valor: T;
+  opciones: { valor: T; texto: string; icono?: ReactNode }[];
+  onCambio: (valor: T) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label={etiqueta} className="flex w-full p-0.5 rounded-lg border border-rule bg-rule-soft">
+      {opciones.map((o) => {
+        const activo = o.valor === valor;
+        return (
+          <button
+            key={o.valor}
+            type="button"
+            role="radio"
+            aria-checked={activo}
+            onClick={() => onCambio(o.valor)}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 h-8 px-2 rounded-md text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-brand-soft ${
+              activo ? 'bg-white text-brand shadow-sm' : 'text-ink-soft hover:text-ink'
+            }`}
+          >
+            {o.icono}
+            {o.texto}
+          </button>
+        );
+      })}
+    </div>
+  );
+}

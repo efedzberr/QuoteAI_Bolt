@@ -72,3 +72,81 @@ export async function prepararImagenMarcaAgua(archivo: File): Promise<string> {
     URL.revokeObjectURL(url);
   }
 }
+
+// --- Imagen del logo ---
+// El logo se guarda como PNG (conserva la transparencia) en app_settings.pdf_logo_url, igual que la marca de agua
+// en la plantilla: no depende de los permisos del bucket. Lado mayor de cada intento hasta que quepa en el límite.
+const INTENTOS_LOGO = [1200, 900, 600];
+const LIMITE_LOGO = 350000;
+const ERROR_LECTURA_LOGO = 'No se pudo leer la imagen. Usa un archivo PNG, JPG o SVG.';
+
+/** Recuadro con contenido del lienzo: sin los márgenes en blanco o transparentes. */
+function recuadroConContenido(ctx: CanvasRenderingContext2D, ancho: number, alto: number) {
+  const { data } = ctx.getImageData(0, 0, ancho, alto);
+  let x0 = ancho;
+  let y0 = alto;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < alto; y++) {
+    for (let x = 0; x < ancho; x++) {
+      const i = (y * ancho + x) * 4;
+      const fondo = data[i + 3] < 16 || (data[i] > 244 && data[i + 1] > 244 && data[i + 2] > 244);
+      if (fondo) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  // Imagen completamente en blanco: se deja como está
+  if (x1 < 0) return { x: 0, y: 0, ancho, alto };
+  return { x: x0, y: y0, ancho: x1 - x0 + 1, alto: y1 - y0 + 1 };
+}
+
+/**
+ * Convierte el logo elegido en un PNG ligero, como texto (data URL), sin los márgenes en blanco o transparentes:
+ * así el logo queda al ras del texto del encabezado. Un SVG se convierte a PNG porque el PDF no dibuja SVG.
+ */
+export async function prepararImagenLogo(archivo: File): Promise<string> {
+  const url = URL.createObjectURL(archivo);
+  try {
+    const img = await cargarImagen(url).catch(() => {
+      throw new Error(ERROR_LECTURA_LOGO);
+    });
+    const ancho = img.naturalWidth;
+    const alto = img.naturalHeight;
+    if (!ancho || !alto) throw new Error(ERROR_LECTURA_LOGO);
+
+    // Lienzo de trabajo: un SVG es vectorial y se dibuja a 1600 en su lado mayor; una imagen solo se reduce
+    const vectorial = archivo.type === 'image/svg+xml' || /\.svg$/i.test(archivo.name);
+    const escala = vectorial ? 1600 / Math.max(ancho, alto) : Math.min(1, 1600 / Math.max(ancho, alto));
+    const base = document.createElement('canvas');
+    base.width = Math.max(1, Math.round(ancho * escala));
+    base.height = Math.max(1, Math.round(alto * escala));
+    const ctxBase = base.getContext('2d');
+    if (!ctxBase) throw new Error('El navegador no pudo preparar la imagen.');
+    ctxBase.drawImage(img, 0, 0, base.width, base.height);
+
+    let recorte = { x: 0, y: 0, ancho: base.width, alto: base.height };
+    try {
+      recorte = recuadroConContenido(ctxBase, base.width, base.height);
+    } catch {
+      // El navegador no dejó leer la imagen: se usa completa, sin recortar
+    }
+
+    for (const ladoMayor of INTENTOS_LOGO) {
+      const k = Math.min(1, ladoMayor / Math.max(recorte.ancho, recorte.alto));
+      const lienzo = document.createElement('canvas');
+      lienzo.width = Math.max(1, Math.round(recorte.ancho * k));
+      lienzo.height = Math.max(1, Math.round(recorte.alto * k));
+      const ctx = lienzo.getContext('2d');
+      if (!ctx) throw new Error('El navegador no pudo preparar la imagen.');
+      ctx.drawImage(base, recorte.x, recorte.y, recorte.ancho, recorte.alto, 0, 0, lienzo.width, lienzo.height);
+      const datos = lienzo.toDataURL('image/png');
+      if (datos.length <= LIMITE_LOGO) return datos;
+    }
+    throw new Error('El logo pesa demasiado aun reducido. Usa una imagen más sencilla.');
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}

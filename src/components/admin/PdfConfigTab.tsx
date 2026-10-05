@@ -1,5 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, Eye, EyeOff, FileText, Loader2, Maximize2, Minimize2, Plus, RotateCcw, Save, Trash2, Undo2, Upload } from 'lucide-react';
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  ArrowDown,
+  ArrowUp,
+  Eye,
+  EyeOff,
+  FileText,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Plus,
+  RotateCcw,
+  Save,
+  Trash2,
+  Undo2,
+  Upload,
+} from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAppSettings } from '../../hooks/useAppSettings';
 import {
@@ -11,7 +29,7 @@ import {
   type PdfConfig,
   type TamanoPagina,
 } from '../../lib/pdf/pdfConfig';
-import { Campo, Interruptor, Seccion, Subtitulo } from './pdf/PdfControles';
+import { Campo, Interruptor, Seccion, Segmentado, Subtitulo } from './pdf/PdfControles';
 import PdfListaCeldas, { OpcionesCampo } from './pdf/PdfListaCeldas';
 import PdfVistaPrevia from './pdf/PdfVistaPrevia';
 import {
@@ -21,6 +39,7 @@ import {
   claseCampo,
   claseEtiqueta,
   moverElemento,
+  prepararImagenLogo,
   prepararImagenMarcaAgua,
 } from './pdf/pdfEditorUtil';
 
@@ -29,6 +48,13 @@ interface PdfConfigTabProps {
 }
 
 type IdSeccion = 'pagina' | 'encabezado' | 'cliente' | 'pedido' | 'tabla' | 'totales' | 'barras' | 'marca' | 'pie';
+
+/** Logo del PDF: la imagen y su tamaño máximo en puntos. Se guarda en sus propias columnas de app_settings. */
+interface LogoPdf {
+  url: string | null;
+  ancho: number;
+  alto: number;
+}
 
 const NOMBRE_COLUMNA: Record<ClaveColumnaPdf, string> = {
   partida: 'Partida (número de renglón)',
@@ -63,23 +89,40 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
   // Vista previa en grande: ocupa todo el ancho y el editor se oculta mientras tanto
   const [amplia, setAmplia] = useState(false);
   const archivoRef = useRef<HTMLInputElement>(null);
+  const logoRef = useRef<HTMLInputElement>(null);
+  const [preparandoLogo, setPreparandoLogo] = useState(false);
+  // El logo (imagen y tamaño) está en sus propias columnas de app_settings, fuera de la plantilla,
+  // pero se edita, se descarta y se guarda junto con ella
+  const logoGuardado = useMemo<LogoPdf>(
+    () => ({ url: settings.pdfLogoUrl, ancho: settings.pdfLogoWidthPx, alto: settings.pdfLogoHeightPx }),
+    [settings.pdfLogoUrl, settings.pdfLogoWidthPx, settings.pdfLogoHeightPx]
+  );
+  const [logo, setLogo] = useState<LogoPdf>(logoGuardado);
   // La vista previa sigue al borrador con un pequeño retraso, para no volver a generar el PDF en cada tecla
   const [configVista, setConfigVista] = useState<PdfConfig>(settings.pdfConfig);
+  const [logoVista, setLogoVista] = useState<LogoPdf>(logoGuardado);
 
   useEffect(() => {
-    const t = setTimeout(() => setConfigVista(borrador), 500);
+    const t = setTimeout(() => {
+      setConfigVista(borrador);
+      setLogoVista(logo);
+    }, 500);
     return () => clearTimeout(t);
-  }, [borrador]);
+  }, [borrador, logo]);
 
   // Al terminar de cargar, y después de guardar, el borrador y la vista previa toman lo guardado
   useEffect(() => {
     if (settings.loading) return;
     setBorrador(settings.pdfConfig);
     setConfigVista(settings.pdfConfig);
-  }, [settings.loading, settings.pdfConfig]);
+    setLogo(logoGuardado);
+    setLogoVista(logoGuardado);
+  }, [settings.loading, settings.pdfConfig, logoGuardado]);
 
   const guardado = useMemo(() => JSON.stringify(settings.pdfConfig), [settings.pdfConfig]);
-  const hayCambios = JSON.stringify(borrador) !== guardado;
+  const plantillaCambiada = JSON.stringify(borrador) !== guardado;
+  const logoCambiado = logo.url !== logoGuardado.url || logo.ancho !== logoGuardado.ancho || logo.alto !== logoGuardado.alto;
+  const hayCambios = plantillaCambiada || logoCambiado;
 
   const set = (parcial: Partial<PdfConfig>) => setBorrador((b) => ({ ...b, ...parcial }));
   const alternar = (id: IdSeccion) => setAbierta((a) => (a === id ? null : id));
@@ -96,11 +139,15 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
   const guardar = async () => {
     setGuardando(true);
     try {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .update({ pdf_config: borrador, updated_at: new Date().toISOString() })
-        .eq('id', 1)
-        .select('id');
+      // Solo se manda lo que cambió: la plantilla y el logo pueden traer imágenes incrustadas
+      const cambios: Record<string, unknown> = { updated_at: new Date().toISOString() };
+      if (plantillaCambiada) cambios.pdf_config = borrador;
+      if (logoCambiado) {
+        cambios.pdf_logo_url = logo.url;
+        cambios.pdf_logo_width_px = logo.ancho;
+        cambios.pdf_logo_height_px = logo.alto;
+      }
+      const { data, error } = await supabase.from('app_settings').update(cambios).eq('id', 1).select('id');
       if (error) throw error;
       if (!data || data.length === 0) throw new Error('no tienes permiso para cambiar la configuración.');
       await settings.refresh();
@@ -109,6 +156,23 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
       onToast(`No se pudo guardar la plantilla: ${mensajeDe(e)}`, 'error');
     } finally {
       setGuardando(false);
+    }
+  };
+
+  const descartar = () => {
+    setBorrador(settings.pdfConfig);
+    setLogo(logoGuardado);
+  };
+
+  const elegirLogo = async (archivo: File) => {
+    setPreparandoLogo(true);
+    try {
+      const url = await prepararImagenLogo(archivo);
+      setLogo((l) => ({ ...l, url }));
+    } catch (e) {
+      onToast(mensajeDe(e), 'error');
+    } finally {
+      setPreparandoLogo(false);
     }
   };
 
@@ -183,12 +247,97 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
             abierta={abierta === 'encabezado'}
             onAlternar={() => alternar('encabezado')}
           >
-            <Interruptor
-              activo={empresa.mostrarLogo}
-              onCambio={(v) => setEmpresa({ mostrarLogo: v })}
-              etiqueta="Mostrar el logo"
-              ayuda="El logo y su tamaño se cambian en Configuración general."
-            />
+            <Interruptor activo={empresa.mostrarLogo} onCambio={(v) => setEmpresa({ mostrarLogo: v })} etiqueta="Mostrar el logo" />
+            {empresa.mostrarLogo && (
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="w-28 h-16 flex-shrink-0 flex items-center justify-center overflow-hidden border border-dashed border-rule rounded-lg bg-white p-1.5">
+                    {logo.url ? (
+                      <img src={logo.url} alt="Logo del PDF" className="max-w-full max-h-full object-contain" />
+                    ) : (
+                      <span className="text-[11px] text-ink-faint">Sin logo</span>
+                    )}
+                  </div>
+                  <div className="space-y-2 min-w-0">
+                    <input
+                      ref={logoRef}
+                      type="file"
+                      accept="image/png, image/jpeg, image/svg+xml, image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const archivo = e.target.files?.[0];
+                        if (archivo) elegirLogo(archivo);
+                        e.target.value = '';
+                      }}
+                    />
+                    <div className="flex flex-wrap items-center gap-3">
+                      <button type="button" onClick={() => logoRef.current?.click()} disabled={preparandoLogo} className={botonSecundario}>
+                        {preparandoLogo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                        {logo.url ? 'Cambiar logo' : 'Subir logo'}
+                      </button>
+                      {logo.url && (
+                        <button
+                          type="button"
+                          onClick={() => setLogo((l) => ({ ...l, url: null }))}
+                          className="inline-flex items-center gap-1.5 text-sm font-semibold text-bad hover:opacity-80"
+                        >
+                          <Trash2 className="w-4 h-4" /> Quitar
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-ink-faint">PNG, JPG o SVG. Al subirlo se recortan sus márgenes en blanco.</p>
+                  </div>
+                </div>
+                {!logo.url && (
+                  <p className="text-xs text-warn bg-warn-soft rounded-lg px-3 py-2">Falta subir el logo: sin logo no se dibuja nada.</p>
+                )}
+                {logo.url && (
+                  <div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Campo etiqueta={`Ancho máximo: ${logo.ancho} pt`}>
+                        <input
+                          type="range"
+                          min={40}
+                          max={400}
+                          step={5}
+                          value={logo.ancho}
+                          onChange={(e) => setLogo((l) => ({ ...l, ancho: Number(e.target.value) }))}
+                          className={claseRango}
+                        />
+                      </Campo>
+                      <Campo etiqueta={`Alto máximo: ${logo.alto} pt`}>
+                        <input
+                          type="range"
+                          min={20}
+                          max={200}
+                          step={2}
+                          value={logo.alto}
+                          onChange={(e) => setLogo((l) => ({ ...l, alto: Number(e.target.value) }))}
+                          className={claseRango}
+                        />
+                      </Campo>
+                    </div>
+                    <p className="text-xs text-ink-faint mt-1">
+                      En puntos (la hoja carta mide 612 de ancho). El logo se ajusta dentro de este tamaño sin deformarse.
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
+            <div>
+              <span className={claseEtiqueta}>Alineación</span>
+              <Segmentado
+                etiqueta="Alineación del logo y los datos de la empresa"
+                valor={empresa.alineacion}
+                onCambio={(alineacion) => setEmpresa({ alineacion })}
+                opciones={[
+                  { valor: 'left', texto: 'Izquierda', icono: <AlignLeft className="w-4 h-4" /> },
+                  { valor: 'center', texto: 'Centro', icono: <AlignCenter className="w-4 h-4" /> },
+                  { valor: 'right', texto: 'Derecha', icono: <AlignRight className="w-4 h-4" /> },
+                ]}
+              />
+              <span className="block text-xs text-ink-faint mt-1">Acomoda juntos el logo, el nombre, los renglones y el sitio web.</span>
+            </div>
             <Campo etiqueta="Nombre de la empresa">
               <input value={empresa.nombre} onChange={(e) => setEmpresa({ nombre: e.target.value })} className={claseCampo} />
             </Campo>
@@ -590,7 +739,7 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
               <button type="button" onClick={() => setAmplia((a) => !a)} className={botonSecundario}>
                 {amplia ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />} {amplia ? 'Volver a editar' : 'Ampliar'}
               </button>
-              <button type="button" onClick={() => setBorrador(settings.pdfConfig)} disabled={!hayCambios || guardando} className={botonSecundario}>
+              <button type="button" onClick={descartar} disabled={!hayCambios || guardando} className={botonSecundario}>
                 <Undo2 className="w-4 h-4" /> Descartar
               </button>
               <button type="button" onClick={guardar} disabled={!hayCambios || guardando} className={botonPrimario}>
@@ -601,9 +750,9 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
           <div className="h-[calc(100vh-190px)] min-h-[420px] border border-rule rounded-card overflow-hidden">
             <PdfVistaPrevia
               config={configVista}
-              pdfLogoUrl={settings.pdfLogoUrl}
-              pdfLogoWidthPx={settings.pdfLogoWidthPx}
-              pdfLogoHeightPx={settings.pdfLogoHeightPx}
+              pdfLogoUrl={logoVista.url}
+              pdfLogoWidthPx={logoVista.ancho}
+              pdfLogoHeightPx={logoVista.alto}
               ajuste={amplia ? 'ancho' : 'pagina'}
             />
           </div>

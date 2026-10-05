@@ -37,8 +37,12 @@ export interface ColumnaPdf {
 
 export interface PdfConfig {
   pagina: { tamano: TamanoPagina; orientacion: OrientacionPagina };
-  /** Encabezado, lado izquierdo: logo y datos de la empresa. */
-  empresa: { mostrarLogo: boolean; nombre: string; lineas: string[]; sitioWeb: string };
+  /**
+   * Encabezado, lado izquierdo: logo y datos de la empresa. `alineacion` acomoda el bloque completo (logo, nombre,
+   * renglones y sitio web) en su espacio, a un lado del cuadro de fecha y folio. La imagen y el tamaño del logo se
+   * guardan aparte, en app_settings (pdf_logo_url, pdf_logo_width_px, pdf_logo_height_px).
+   */
+  empresa: { mostrarLogo: boolean; alineacion: AlineacionPdf; nombre: string; lineas: string[]; sitioWeb: string };
   /** Encabezado, lado derecho: cuadro con fecha, referencia, etc. */
   cuadro: CeldaPdf[];
   vendidoA: { titulo: string; lineas: CeldaPdf[] };
@@ -85,6 +89,7 @@ export function configInicialPdf(): PdfConfig {
     pagina: { tamano: 'LETTER', orientacion: 'portrait' },
     empresa: {
       mostrarLogo: true,
+      alineacion: 'left',
       nombre: 'IMPULSORA INDUSTRIAL MONTERREY, SA DE CV',
       lineas: [
         'Carretera Miguel Aleman 1500',
