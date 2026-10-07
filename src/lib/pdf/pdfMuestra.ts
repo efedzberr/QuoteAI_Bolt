@@ -90,6 +90,8 @@ export const DATOS_MUESTRA: DatosPdf = {
   },
   elaboro: 'Nombre del usuario',
   elaboroCorreo: 'usuario@impulsora.com',
+  transporte: 'ENTREGA A DOMICILIO',
+  ordenCompra: 'OC-000123',
   catalogo: {
     'NQ424AB225F-D150': articulo('MARCA DE EJEMPLO', 'Tablero de alumbrado ensamblado de 42 polos, 225 A, con interruptor principal', '1 año', '7501000000011', 'Distribución', 'Tableros', ['42P', '225 A']),
     'QO320S-O': articulo('MARCA DE EJEMPLO', 'Centro de carga de 20 polos, 3 fases, zapatas principales, con tapa', '1 año', '7501000000028', 'Distribución', 'Centros de carga', ['20P', '3F']),

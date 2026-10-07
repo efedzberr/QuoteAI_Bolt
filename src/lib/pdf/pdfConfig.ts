@@ -136,9 +136,9 @@ export function configInicialPdf(): PdfConfig {
       visible: true,
       celdas: [
         celda('pedido', 'PEDIDO #', 'pedido'),
-        celda('orden_compra', 'ORDEN DE COMPRA', ''),
+        celda('orden_compra', 'ORDEN DE COMPRA', 'orden_compra'),
         celda('condiciones_pago', 'CONDICIONES DE PAGO', 'condiciones_pago'),
-        celda('transporte', 'TRANSPORTE', ''),
+        celda('transporte', 'TRANSPORTE', 'transporte'),
         celda('agente', 'AGENTE', 'agente'),
         celda('elaboro', 'ELABORO', 'elaboro'),
         celda('zona', 'ZONA', 'zona'),
@@ -223,7 +223,21 @@ function normalizarColumna(guardada: unknown, i: number): ColumnaPdf {
 /** Configuración completa a partir de lo guardado en app_settings.pdf_config (puede venir vacío o nulo). */
 export function resolverPdfConfig(guardado: unknown): PdfConfig {
   const config = combinar(configInicialPdf(), guardado);
-  return { ...config, columnas: config.columnas.map(normalizarColumna) };
+  return {
+    ...config,
+    columnas: config.columnas.map(normalizarColumna),
+    pedido: { ...config.pedido, celdas: config.pedido.celdas.map(enlazarCeldaPedido) },
+  };
+}
+
+// Las celdas ORDEN DE COMPRA y TRANSPORTE de los datos del pedido nacieron sin dato (salían vacías).
+// En una plantilla guardada antes de QA_ENC1 se enlazan solas al dato que captura el ejecutivo,
+// siempre que el administrador no les haya puesto otro dato o un texto fijo.
+const CAMPO_DE_CELDA_PEDIDO: Record<string, string> = { orden_compra: 'orden_compra', transporte: 'transporte' };
+
+function enlazarCeldaPedido(c: CeldaPdf): CeldaPdf {
+  const campo = c && typeof c.id === 'string' ? CAMPO_DE_CELDA_PEDIDO[c.id] : undefined;
+  return campo && !c.campo && !c.texto ? { ...c, campo } : c;
 }
 
 // Medidas de cada tamaño de hoja en vertical, en puntos

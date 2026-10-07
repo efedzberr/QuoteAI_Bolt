@@ -32,16 +32,20 @@ export async function fetchDatosPdf(referencia?: string | null): Promise<DatosPd
   let cuenta: CuentaPdf | null = null;
   let elaboro = '';
   let elaboroCorreo = '';
+  let transporte = '';
+  let ordenCompra = '';
   try {
     if (referencia) {
       const { data, error } = await supabase
         .from('jobs')
-        .select('cuenta_sf, owner:user_profiles!jobs_owner_id_fkey(full_name, email)')
+        .select('cuenta_sf, transporte, orden_compra, owner:user_profiles!jobs_owner_id_fkey(full_name, email)')
         .eq('referencia', referencia)
         .maybeSingle();
       if (error) console.error('[pdf] fetchDatosPdf error:', error);
-      const fila = data as { cuenta_sf?: unknown; owner?: unknown } | null;
+      const fila = data as { cuenta_sf?: unknown; transporte?: string | null; orden_compra?: string | null; owner?: unknown } | null;
       if (fila?.cuenta_sf && typeof fila.cuenta_sf === 'object') cuenta = fila.cuenta_sf as CuentaPdf;
+      transporte = fila?.transporte || '';
+      ordenCompra = fila?.orden_compra || '';
       const dueno = (Array.isArray(fila?.owner) ? fila?.owner[0] : fila?.owner) as { full_name?: string | null; email?: string | null } | null | undefined;
       if (dueno) {
         elaboroCorreo = dueno.email || '';
@@ -56,7 +60,7 @@ export async function fetchDatosPdf(referencia?: string | null): Promise<DatosPd
   } catch (e) {
     console.error('[pdf] fetchDatosPdf error:', e);
   }
-  return { cuenta, elaboro, elaboroCorreo };
+  return { cuenta, elaboro, elaboroCorreo, transporte, ordenCompra };
 }
 
 // Columnas del catálogo que lee la tabla del PDF. Si la consulta falla (por ejemplo, porque alguna columna

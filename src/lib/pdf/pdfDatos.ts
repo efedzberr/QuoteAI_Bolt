@@ -28,11 +28,15 @@ export interface DatosPdf {
   cuenta: CuentaPdf | null;
   elaboro: string;
   elaboroCorreo: string;
+  /** Transporte que capturó el ejecutivo en el encabezado de la cotización (jobs.transporte). */
+  transporte: string;
+  /** Orden de compra del cliente que capturó el ejecutivo (jobs.orden_compra). */
+  ordenCompra: string;
   /** Solo se consulta cuando alguna columna de la tabla usa datos del catálogo. */
   catalogo?: CatalogoPdf;
 }
 
-export const DATOS_PDF_VACIOS: DatosPdf = { cuenta: null, elaboro: '', elaboroCorreo: '' };
+export const DATOS_PDF_VACIOS: DatosPdf = { cuenta: null, elaboro: '', elaboroCorreo: '', transporte: '', ordenCompra: '' };
 
 export interface CampoPdf {
   clave: string;
@@ -54,6 +58,8 @@ export const CAMPOS_PDF: CampoPdf[] = [
   { clave: 'numero', etiqueta: 'Número de cotización', grupo: 'Cotización', disponible: true },
   { clave: 'pedido', etiqueta: 'Pedido (123 SQ)', grupo: 'Cotización', disponible: true },
   { clave: 'proyecto', etiqueta: 'Proyecto', grupo: 'Cotización', disponible: true },
+  { clave: 'orden_compra', etiqueta: 'Orden de compra del cliente', grupo: 'Cotización', disponible: true },
+  { clave: 'transporte', etiqueta: 'Transporte', grupo: 'Cotización', disponible: true },
   { clave: 'cliente', etiqueta: 'Cliente (como se capturó)', grupo: 'Cliente', disponible: true },
   { clave: 'cliente_nombre', etiqueta: 'Nombre de la cuenta', grupo: 'Cliente', propiedadCuenta: 'name', disponible: true },
   { clave: 'cliente_numero', etiqueta: 'Número de cliente', grupo: 'Cliente', propiedadCuenta: 'noCliente', disponible: true },
@@ -100,6 +106,8 @@ export function valorCampo(campo: string, quoteData: QuoteData, datos: DatosPdf)
     case 'numero': return numero;
     case 'pedido': return numero ? `${numero} SQ` : '';
     case 'proyecto': return limpio(quoteData.projectName);
+    case 'orden_compra': return limpio(datos.ordenCompra);
+    case 'transporte': return limpio(datos.transporte);
     case 'cliente': return limpio(quoteData.customerName);
     case 'elaboro': return limpio(datos.elaboro);
     case 'elaboro_correo': return limpio(datos.elaboroCorreo);

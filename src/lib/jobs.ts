@@ -30,6 +30,12 @@ export interface Job {
   sf_sync_pendiente?: boolean;
   /** Copia de la cuenta de Salesforce elegida al capturar la cotización (la usa el PDF). */
   cuenta_sf?: Record<string, unknown> | null;
+  /** Transporte de la cotización (texto libre; sale en el PDF). */
+  transporte?: string | null;
+  /** Orden de compra del cliente (texto libre; sale en el PDF). */
+  orden_compra?: string | null;
+  /** Primera vez que se generó el PDF. Con valor, el cliente ya no se puede cambiar. */
+  pdf_generado_at?: string | null;
 }
 
 export async function reassignJobOwner(jobId: string, ownerId: string): Promise<boolean> {
