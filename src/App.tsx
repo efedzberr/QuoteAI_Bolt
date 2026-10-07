@@ -17,7 +17,7 @@ import { useAuth } from './hooks/useAuth';
 import { supabase, isPasswordSetupRedirect, confirmLinkParams } from './lib/supabase';
 import MfaEnroll from './components/MfaEnroll';
 import MfaVerify from './components/MfaVerify';
-import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus, reopenJobForEdit, saveExtraccionOriginal } from './lib/jobs';
+import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus, reopenJobForEdit, saveExtraccionOriginal, getJobByReferencia } from './lib/jobs';
 import { createJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 import type { Job } from './lib/jobs';
 
@@ -761,6 +761,17 @@ function App() {
     });
   }, [jobReferencia, jobId, editedQuoteData, webhookResponse]);
 
+  // El ejecutivo cambió un dato del encabezado en Validar productos.
+  // recargarLineas = true cuando cambió el cliente: los precios se recalcularon y hay que volver a leer las líneas.
+  const handleEncabezadoGuardado = useCallback(async (recargarLineas: boolean) => {
+    if (!jobReferencia) return;
+    const job = await getJobByReferencia(jobReferencia);
+    if (!job) return;
+    setProjectName(job.nombre_proyecto || '');
+    // Proyecto, transporte y orden de compra no tocan las líneas: no se vuelven a leer
+    if (recargarLineas) openJobResults(job);
+  }, [jobReferencia, openJobResults]);
+
   const navigateToJobScreen = useCallback((job: Job) => {
     const s = job.status;
     setJobReferencia(job.referencia);
@@ -1071,6 +1082,7 @@ function App() {
           readOnly={reviewReadOnly}
           userEmail={auth.user?.email || ''}
           salesforceAccount={uploadData?.salesforceAccount}
+          onEncabezadoGuardado={handleEncabezadoGuardado}
         />
       </AppLayout>
     );

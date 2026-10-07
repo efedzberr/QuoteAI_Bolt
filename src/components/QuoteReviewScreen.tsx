@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw, Warehouse } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw, Warehouse, Pencil, Lock } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
@@ -8,7 +8,7 @@ import ProductLookupModal, { type ProductResult } from './ProductLookupModal';
 import { type SearchProduct } from './InlineProductSearch';
 import AddLineModal, { type AddLineResult } from './quote/AddLineModal';
 import QuoteDocument from './pdf/QuoteDocument';
-import { fetchCatalogoPdf, useDatosPdf } from '../lib/pdf/pdfCotizacion';
+import { fetchCatalogoPdf, fetchDatosPdf, useDatosPdf } from '../lib/pdf/pdfCotizacion';
 import { codigosCatalogo, usaCatalogo } from '../lib/pdf/pdfLinea';
 import SolicitudOriginalTable from './quote/SolicitudOriginalTable';
 import ReconocimientoIATable from './quote/ReconocimientoIATable';
@@ -21,6 +21,16 @@ import EliminarLineaModal from './quote/EliminarLineaModal';
 import { updateJobProgreso, updateJobStatus, getJobByReferencia, markJobSentToSalesforce } from '../lib/jobs';
 import { fetchDisponibilidadArticulos, fijarGrupoCotizacion, type MapaDisponibilidad } from '../lib/disponibilidad';
 import { fetchInventarioArticulos, type InventarioArticulo } from '../lib/inventario';
+import CampoEncabezadoEditable from './quote/CampoEncabezadoEditable';
+import CambiarClienteModal from './quote/CambiarClienteModal';
+import {
+  guardarCampoEncabezado,
+  motivoBloqueoCliente,
+  LARGO_CAMPO_ENCABEZADO,
+  type CampoEncabezado,
+  type CuentaSalesforce,
+  type ResumenCambioCliente,
+} from '../lib/encabezadoCotizacion';
 
 interface QuoteData {
   status?: string;
@@ -51,6 +61,8 @@ interface QuoteReviewScreenProps {
   onBackToPreview?: () => void;
   onGoToPdf?: () => void;
   onEditQuote?: () => void;
+  /** Avisa a App que cambió el encabezado. true = cambió el cliente y hay que volver a leer las líneas. */
+  onEncabezadoGuardado?: (recargarLineas: boolean) => Promise<void> | void;
   jobId?: string;
   jobReferencia?: string;
   readOnly?: boolean;
@@ -76,7 +88,7 @@ function formatCurrency(value: number, currency: string): string {
   }).format(value);
 }
 
-export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, onEditQuote, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
+export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, onEditQuote, onEncabezadoGuardado, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
   const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig } = useAppSettings();
   const datosPdf = useDatosPdf(jobReferencia);
   const { verInventario } = usePermissions();
@@ -118,6 +130,19 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [jobNoCliente, setJobNoCliente] = useState<string | null>(null);
   const [jobGrupo, setJobGrupo] = useState<string | null>(null);
+  // ── Encabezado editable (QA_ENC1) ──
+  // null = la cotización todavía no se lee de la base: el encabezado se muestra de solo lectura.
+  const [encabezado, setEncabezado] = useState<{ proyecto: string; transporte: string; ordenCompra: string } | null>(null);
+  const [clienteJob, setClienteJob] = useState<string | null>(null);
+  // Solo tiene valor cuando el cliente se cambió en esta pantalla: la cuenta nueva, o null si se escribió sin cuenta.
+  // undefined = no se ha cambiado: el envío a Salesforce usa la cuenta que llegó por props, igual que antes.
+  const [cuentaJob, setCuentaJob] = useState<CuentaSalesforce | null | undefined>(undefined);
+  const [pdfGeneradoAt, setPdfGeneradoAt] = useState<string | null>(null);
+  const [showCambiarCliente, setShowCambiarCliente] = useState(false);
+  const [avisoEncabezado, setAvisoEncabezado] = useState<string | null>(null);
+  // Lo que se muestra y lo que se imprime: lo guardado en la cotización; mientras se lee, lo que llegó por props
+  const clienteMostrado = clienteJob ?? activeQuoteData.customerName;
+  const proyectoMostrado = encabezado ? encabezado.proyecto : (activeQuoteData.projectName || '');
   // Productos especiales (ESP): se consultan cuando ya se conoce el grupo de la cotización
   const [grupoListo, setGrupoListo] = useState(!jobReferencia);
   const [disponibilidad, setDisponibilidad] = useState<MapaDisponibilidad>({});
@@ -179,6 +204,15 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       setSfSyncPendiente(!!job?.sf_sync_pendiente);
       setJobNoCliente(job?.no_cliente ?? null);
       setJobGrupo(job?.grupo ?? null);
+      if (job) {
+        setEncabezado({
+          proyecto: job.nombre_proyecto || '',
+          transporte: job.transporte || '',
+          ordenCompra: job.orden_compra || '',
+        });
+        setClienteJob(job.cliente || null);
+        setPdfGeneradoAt(job.pdf_generado_at ?? null);
+      }
       fijarGrupoCotizacion(job?.grupo ?? null);
       setGrupoListo(true);
     });
@@ -844,8 +878,11 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const handleGeneratePDF = useCallback(() => {
     if (!canGeneratePDF) return;
     const approvedLines = lines.filter((l) => !l.ignored);
-    onApproved(approvedLines, { ...activeQuoteData, subtotal, lines: approvedLines, totalLines: approvedLines.length });
-  }, [canGeneratePDF, lines, activeQuoteData, subtotal, onApproved]);
+    onApproved(approvedLines, { ...activeQuoteData, customerName: clienteMostrado, projectName: proyectoMostrado, subtotal, lines: approvedLines, totalLines: approvedLines.length });
+  }, [canGeneratePDF, lines, activeQuoteData, clienteMostrado, proyectoMostrado, subtotal, onApproved]);
+
+  // Cuenta para el envío a Salesforce: si el cliente se cambió en esta pantalla, la nueva; si no, la de la captura (como antes)
+  const cuentaVigente = cuentaJob !== undefined ? cuentaJob : (salesforceAccount as CuentaSalesforce | undefined) ?? null;
 
   const handleSendToSalesforce = useCallback(async () => {
     if (sfSending) return;
@@ -944,10 +981,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     const body: Record<string, any> = {
       userEmail: userEmail || null,
       referencia: jobReferencia || activeQuoteData.quoteReference || null,
-      salesforceAccountId: salesforceAccount?.id || null,
-      noCliente: salesforceAccount?.noCliente || null,
-      ownerId: salesforceAccount?.ownerId || null,
-      accountName: salesforceAccount?.name || activeQuoteData.customerName || null,
+      salesforceAccountId: cuentaVigente?.id || null,
+      noCliente: cuentaVigente?.noCliente || null,
+      ownerId: cuentaVigente?.ownerId || null,
+      accountName: cuentaVigente?.name || clienteJob || activeQuoteData.customerName || null,
       lineas: validLines,
       pdfBase64: null,
       opportunityId: sfSentData?.opportunityId || null,
@@ -1000,11 +1037,13 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
 
           try {
             const activeLines = lines.filter((l) => !l.ignored);
-            const pdfQuoteData = { ...activeQuoteData, lines: activeLines, totalLines: activeLines.length } as any;
+            const pdfQuoteData = { ...activeQuoteData, customerName: clienteMostrado, projectName: proyectoMostrado, lines: activeLines, totalLines: activeLines.length } as any;
             // Marca, garantía y demás datos del catálogo, solo si alguna columna los usa
             const catalogo = usaCatalogo(pdfConfig) ? await fetchCatalogoPdf(codigosCatalogo(activeLines)) : {};
+            // Se vuelven a leer: el ejecutivo pudo cambiar el encabezado después de abrir la pantalla
+            const datosVigentes = jobReferencia ? await fetchDatosPdf(jobReferencia) : datosPdf;
             const blob = await pdf(
-              <QuoteDocument quoteData={pdfQuoteData} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={{ ...datosPdf, catalogo }} />
+              <QuoteDocument quoteData={pdfQuoteData} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={{ ...datosVigentes, catalogo }} />
             ).toBlob();
 
             const MAX_PDF_BYTES = 4 * 1024 * 1024;
@@ -1073,7 +1112,49 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       setSfSendingPhase(null);
     }
     setSfSyncPendiente(false);
-  }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, salesforceAccount, sfSentData, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, datosPdf]);
+  }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, cuentaVigente, clienteJob, clienteMostrado, proyectoMostrado, sfSentData, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, datosPdf]);
+
+  // ── Encabezado editable (QA_ENC1) ──
+  // Se edita solo una cotización guardada, ya leída de la base y que no está en modo de solo lectura
+  const puedeEditarEncabezado = !!jobId && !!jobReferencia && !readOnly && encabezado !== null;
+  const bloqueoCliente = motivoBloqueoCliente(!!sfSentData, !!pdfGeneradoAt);
+
+  const handleGuardarCampoEncabezado = useCallback(async (campo: CampoEncabezado, valor: string): Promise<string | null> => {
+    if (!jobReferencia) return 'La cotización todavía no está guardada.';
+    const error = await guardarCampoEncabezado(jobReferencia, campo, valor);
+    if (error) return error;
+    setEncabezado((prev) => {
+      const base = prev ?? { proyecto: '', transporte: '', ordenCompra: '' };
+      if (campo === 'nombre_proyecto') return { ...base, proyecto: valor.trim() };
+      if (campo === 'transporte') return { ...base, transporte: valor.trim() };
+      return { ...base, ordenCompra: valor.trim() };
+    });
+    if (campo === 'nombre_proyecto') await onEncabezadoGuardado?.(false);
+    return null;
+  }, [jobReferencia, onEncabezadoGuardado]);
+
+  const handleClienteCambiado = useCallback(async (resumen: ResumenCambioCliente, cuenta: CuentaSalesforce | null) => {
+    setShowCambiarCliente(false);
+    setClienteJob(resumen.cliente);
+    setCuentaJob(cuenta);
+    setJobNoCliente(resumen.no_cliente);
+    setJobStatus(resumen.status);
+    if (resumen.grupo !== jobGrupo) {
+      // Grupo nuevo: los especiales (ESP) se vuelven a consultar con ese grupo
+      disponibilidadSolicitadaRef.current = new Set();
+      setDisponibilidad({});
+      setJobGrupo(resumen.grupo);
+      fijarGrupoCotizacion(resumen.grupo);
+    }
+    await onEncabezadoGuardado?.(true);
+    const cambios = resumen.lineas_con_cambio;
+    setAvisoEncabezado(
+      cambios > 0
+        ? `Cliente cambiado. ${cambios} ${cambios === 1 ? 'línea cambió' : 'líneas cambiaron'} de precio.`
+        : 'Cliente cambiado. Los precios no cambiaron.'
+    );
+    setTimeout(() => setAvisoEncabezado(null), 8000);
+  }, [jobGrupo, onEncabezadoGuardado]);
 
   const totalLinesCount = lines.length;
 
@@ -1126,8 +1207,43 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       <div className="w-full bg-white border-b border-[#E5E5E5]">
         <div className="max-w-[1480px] mx-auto px-7 pt-5 pb-3 flex flex-wrap items-center gap-x-8 gap-y-2">
           <SummaryField label="Referencia" value={activeQuoteData.quoteReference} />
-          <SummaryField label="Cliente" value={activeQuoteData.customerName} />
-          <SummaryField label="Proyecto" value={activeQuoteData.projectName || '\u2014'} />
+          <div className="flex flex-col">
+            <span
+              className="uppercase text-[#747474]"
+              style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.08em' }}
+            >
+              Cliente
+            </span>
+            {puedeEditarEncabezado && !bloqueoCliente ? (
+              <button
+                type="button"
+                onClick={() => setShowCambiarCliente(true)}
+                title="Cambiar cliente"
+                className="group mt-1 inline-flex items-center gap-1.5 text-left rounded focus:outline-none focus:ring-2 focus:ring-[#EAF5FE]"
+                style={{ fontSize: 14, fontWeight: 700 }}
+              >
+                <span className="text-[#181818] group-hover:text-[#0176D3]">{clienteMostrado}</span>
+                <Pencil className="w-3 h-3 text-[#A3A3A3] group-hover:text-[#0176D3]" />
+              </button>
+            ) : (
+              <span
+                className="mt-1 inline-flex items-center gap-1.5 text-[#181818]"
+                style={{ fontSize: 14, fontWeight: 700 }}
+                title={puedeEditarEncabezado && bloqueoCliente ? bloqueoCliente : undefined}
+              >
+                {clienteMostrado}
+                {puedeEditarEncabezado && bloqueoCliente && <Lock className="w-3 h-3 text-[#A3A3A3]" />}
+              </span>
+            )}
+          </div>
+          <CampoEncabezadoEditable
+            label="Proyecto"
+            value={proyectoMostrado}
+            editable={puedeEditarEncabezado}
+            maxLength={LARGO_CAMPO_ENCABEZADO.nombre_proyecto}
+            mayusculas
+            onSave={(valor) => handleGuardarCampoEncabezado('nombre_proyecto', valor)}
+          />
           <SummaryField label="No. cliente" value={jobNoCliente || '\u2014'} />
           <div className="flex flex-col">
             <span
@@ -1147,6 +1263,34 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               <span className="mt-1 text-[#A3A3A3]" style={{ fontSize: 14, fontWeight: 700 }}>{'\u2014'}</span>
             )}
           </div>
+
+          {jobId && encabezado && (
+            <>
+              <CampoEncabezadoEditable
+                label="Transporte"
+                value={encabezado.transporte}
+                editable={puedeEditarEncabezado}
+                maxLength={LARGO_CAMPO_ENCABEZADO.transporte}
+                placeholder="ej. ENTREGA A DOMICILIO"
+                onSave={(valor) => handleGuardarCampoEncabezado('transporte', valor)}
+              />
+              <CampoEncabezadoEditable
+                label="Orden de compra"
+                value={encabezado.ordenCompra}
+                editable={puedeEditarEncabezado}
+                maxLength={LARGO_CAMPO_ENCABEZADO.orden_compra}
+                placeholder="OC del cliente"
+                onSave={(valor) => handleGuardarCampoEncabezado('orden_compra', valor)}
+              />
+            </>
+          )}
+
+          {avisoEncabezado && (
+            <div className="flex items-center gap-1.5 self-center">
+              <Check className="w-3.5 h-3.5 text-[#2E844A]" />
+              <span className="text-[#2E844A]" style={{ fontSize: 11, fontWeight: 600 }}>{avisoEncabezado}</span>
+            </div>
+          )}
 
           {jobId && saveStatus !== 'idle' && (
             <div className="flex items-center gap-1.5 self-center">
@@ -1807,6 +1951,16 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             </div>
           </div>
         </div>
+      )}
+
+      {showCambiarCliente && jobReferencia && (
+        <CambiarClienteModal
+          referencia={jobReferencia}
+          clienteActual={clienteMostrado}
+          userEmail={userEmail || ''}
+          onClose={() => setShowCambiarCliente(false)}
+          onCambiado={handleClienteCambiado}
+        />
       )}
 
       {showEditConfirm && (
