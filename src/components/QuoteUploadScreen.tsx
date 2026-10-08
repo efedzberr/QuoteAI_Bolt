@@ -8,6 +8,7 @@ import FractionalQuantitiesDialog, {
   type FractionalRow,
   type FractionalDecision,
 } from './FractionalQuantitiesDialog';
+import { buscarCuentasSalesforce } from '../lib/encabezadoCotizacion';
 
 interface SalesforceAccount {
   id: string;
@@ -41,7 +42,6 @@ interface QuoteUploadScreenProps {
 type ParseStatus = 'idle' | 'processing' | 'success' | 'error';
 
 const RAILWAY_EXTRACT_URL = 'https://quoteai-production.up.railway.app/extract';
-const RAILWAY_ACCOUNTS_URL = 'https://quoteai-production.up.railway.app/accounts/search';
 
 const SUPPORTED_EXTENSIONS = ['xlsx', 'xls', 'csv', 'pdf', 'docx', 'doc', 'txt', 'md', 'rtf', 'html', 'htm', 'json', 'xml', 'png', 'jpg', 'jpeg', 'webp'];
 
@@ -93,19 +93,11 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
     setSfSearching(true);
     setSfError(null);
     try {
-      const res = await fetch(RAILWAY_ACCOUNTS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userEmail, query: query.trim() }),
-      });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.message || 'Error buscando cuentas');
-      }
-      setSfAccounts(json.records || []);
+      const encontradas = await buscarCuentasSalesforce(userEmail, query);
+      setSfAccounts(encontradas as unknown as SalesforceAccount[]);
       setSfShowDropdown(true);
     } catch (err: any) {
-      setSfError(err.message || 'Error de conexión');
+      setSfError(err?.message || 'Error desconocido al buscar cuentas.');
       setSfAccounts([]);
       setSfShowDropdown(true);
     } finally {
@@ -480,8 +472,12 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
                         Buscando en Salesforce...
                       </div>
                     ) : sfError ? (
-                      <div className="px-4 py-3 text-[#B86C00]" style={{ fontSize: 13 }}>
-                        {sfError}
+                      <div className="px-4 py-3" style={{ fontSize: 13 }}>
+                        <p className="text-[#B86C00] font-semibold">No se pudo buscar la cuenta en Salesforce</p>
+                        <p className="text-[#B86C00] mt-1 break-words whitespace-pre-wrap">{sfError}</p>
+                        <p className="text-[#747474] mt-1" style={{ fontSize: 11 }}>
+                          Puedes continuar escribiendo el nombre del cliente como texto libre o presionar Enter para reintentar.
+                        </p>
                       </div>
                     ) : sfAccounts.length === 0 ? (
                       <div className="px-4 py-3 text-[#747474]" style={{ fontSize: 13 }}>

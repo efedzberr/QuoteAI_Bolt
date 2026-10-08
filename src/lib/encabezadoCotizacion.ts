@@ -91,16 +91,82 @@ export async function cambiarClienteCotizacion(
   return { resumen: data as ResumenCambioCliente, error: null };
 }
 
-/** Busca cuentas en Salesforce con el mismo servicio que usa la captura de la cotización. */
+/** Convierte cualquier valor de error del servidor en texto legible. */
+function textoDeError(v: unknown): string {
+  if (v === null || v === undefined || v === '') return '';
+  if (typeof v === 'string') return v;
+  if (Array.isArray(v)) return v.map((d: any) => d?.msg || d?.message || JSON.stringify(d)).join('; ');
+  if (typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    return String(o.message || o.msg || o.error_description || o.error || JSON.stringify(o));
+  }
+  return String(v);
+}
+
+/** Explicación en lenguaje claro según el código HTTP. */
+function causaPorStatus(status: number): string {
+  if (status === 401 || status === 403) return 'Salesforce rechazó la autenticación (sesión o credenciales de la integración vencidas).';
+  if (status === 404) return 'El usuario no tiene acceso configurado a Salesforce o la ruta de búsqueda no existe.';
+  if (status === 400 || status === 422) return 'La solicitud de búsqueda no es válida.';
+  if (status === 502 || status === 503 || status === 504) return 'El servidor de Railway no está respondiendo (puede estar reiniciándose).';
+  if (status >= 500) return 'Error interno del servidor al consultar Salesforce.';
+  return 'Salesforce no pudo completar la búsqueda.';
+}
+
+/**
+ * Busca cuentas en Salesforce con el mismo servicio que usa la captura de la cotización.
+ * Si falla, lanza un Error cuyo mensaje incluye: causa + detalle del servidor + HTTP + respuesta cruda.
+ */
 export async function buscarCuentasSalesforce(userEmail: string, texto: string): Promise<CuentaSalesforce[]> {
-  const res = await fetch(RAILWAY_ACCOUNTS_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userEmail, query: texto.trim() }),
-  });
-  const json = await res.json();
-  if (!res.ok || !json.success) throw new Error(json.message || 'Error buscando cuentas');
-  return (json.records || []) as CuentaSalesforce[];
+  let res: Response;
+  try {
+    res = await fetch(RAILWAY_ACCOUNTS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userEmail, query: texto.trim() }),
+    });
+  } catch (netErr: any) {
+    console.error('[accounts/search] Error de red:', netErr);
+    throw new Error(
+      `No se pudo conectar con el servicio de cuentas en Railway. Revisa tu conexión e intenta de nuevo. (Detalle técnico: ${netErr?.message || String(netErr)})`
+    );
+  }
+
+  const cuerpo = await res.text();
+  let json: any = null;
+  try {
+    json = cuerpo ? JSON.parse(cuerpo) : null;
+  } catch {
+    json = null;
+  }
+
+  if (res.ok && json && json.success !== false) {
+    return (json.records || []) as CuentaSalesforce[];
+  }
+
+  const detalle =
+    textoDeError(json?.message) ||
+    textoDeError(json?.error) ||
+    textoDeError(json?.detail) ||
+    textoDeError(json?.errors) ||
+    textoDeError(json?.msg) ||
+    textoDeError(json?.reason);
+
+  const causa = res.ok
+    ? 'Salesforce no pudo completar la búsqueda.'
+    : causaPorStatus(res.status);
+
+  const crudo = (json ? JSON.stringify(json) : cuerpo.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())
+    .substring(0, 300);
+
+  console.error('[accounts/search] Falla', { status: res.status, cuerpo: cuerpo.substring(0, 2000) });
+
+  const partes = [causa];
+  if (detalle) partes.push(`Motivo: ${detalle}.`);
+  partes.push(`(HTTP ${res.status})`);
+  if (!detalle) partes.push(`Respuesta del servidor: ${crudo || '(vacía)'}`);
+
+  throw new Error(partes.join(' '));
 }
 
 /** Por qué ya no se puede cambiar el cliente; null si todavía se puede. */
