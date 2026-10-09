@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw, Warehouse, Pencil, Lock } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw, Warehouse, Pencil, Lock, Plus, Minus, Cloud } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
@@ -23,6 +23,7 @@ import { fetchDisponibilidadArticulos, fijarGrupoCotizacion, type MapaDisponibil
 import { fetchInventarioArticulos, type InventarioArticulo } from '../lib/inventario';
 import CampoEncabezadoEditable from './quote/CampoEncabezadoEditable';
 import CambiarClienteModal from './quote/CambiarClienteModal';
+import InfoSalesforcePanel from './quote/InfoSalesforcePanel';
 import {
   guardarCampoEncabezado,
   motivoBloqueoCliente,
@@ -91,7 +92,9 @@ function formatCurrency(value: number, currency: string): string {
 export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, onEditQuote, onEncabezadoGuardado, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
   const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig } = useAppSettings();
   const datosPdf = useDatosPdf(jobReferencia);
-  const { verInventario } = usePermissions();
+  const { verInventario, verInfoSalesforce } = usePermissions();
+  const [infoSfAbierto, setInfoSfAbierto] = useState(false);
+  const [infoSfRefresh, setInfoSfRefresh] = useState(0);
 
   const [viewMode, setViewMode] = useState<ViewMode>(editedQuoteData ? 'edited' : 'original');
 
@@ -1029,6 +1032,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           await markJobSentToSalesforce(jobReferencia, oppId, qId);
           setSfSentData({ opportunityId: oppId, quoteId: qId || undefined, sentAt: new Date().toISOString() });
         }
+        setInfoSfRefresh((n) => n + 1);
 
         // --- STEP 3: Upload PDF ---
         if (qId) {
@@ -1408,7 +1412,30 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             </div>
           )}
           <SummaryField label="Subtotal" value={formatCurrency(subtotal, activeQuoteData.currency)} />
+          {verInfoSalesforce && jobReferencia && (
+            <button
+              type="button"
+              onClick={() => setInfoSfAbierto((v) => !v)}
+              className={`ml-auto self-center inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-colors ${
+                infoSfAbierto
+                  ? 'border-[#0176D3] bg-[#EAF5FE] text-[#0176D3]'
+                  : 'border-[#E5E5E5] bg-white text-[#444444] hover:border-[#0176D3] hover:text-[#0176D3]'
+              }`}
+              style={{ fontSize: 12, fontWeight: 600 }}
+              title="Muestra cómo llega la oportunidad a Salesforce"
+              aria-expanded={infoSfAbierto}
+            >
+              {infoSfAbierto ? <Minus className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
+              <Cloud className="w-3.5 h-3.5" />
+              Información Salesforce
+            </button>
+          )}
         </div>
+        )}
+        {versionTab === 'final' && verInfoSalesforce && infoSfAbierto && jobReferencia && (
+          <div className="max-w-[1480px] mx-auto px-7 pb-4">
+            <InfoSalesforcePanel referencia={jobReferencia} subtotal={subtotal} refreshKey={infoSfRefresh} />
+          </div>
         )}
       </div>
 

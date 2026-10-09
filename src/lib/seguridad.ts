@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 
 export type ObjetoSeguridad = 'cotizaciones' | 'productos_nuevos' | 'grupos' | 'precio_grupo' | 'aprendizaje' | 'unidades';
 export type AccionObjeto = 'leer' | 'crear' | 'editar' | 'eliminar';
-export type PermisoSistema = 'ver_todos_datos' | 'modificar_todos_datos' | 'administrar_usuarios' | 'administrar_configuracion' | 'ver_inventario';
+export type PermisoSistema = 'ver_todos_datos' | 'modificar_todos_datos' | 'administrar_usuarios' | 'administrar_configuracion' | 'ver_inventario' | 'ver_info_salesforce';
 
 export const OBJETOS: { id: ObjetoSeguridad; label: string; hint: string }[] = [
   { id: 'cotizaciones', label: 'Cotizaciones', hint: 'Solicitudes, matching, validación y PDF' },
@@ -26,6 +26,7 @@ export const PERMISOS_SISTEMA: { id: PermisoSistema; label: string; hint: string
   { id: 'administrar_usuarios', label: 'Administrar usuarios, perfiles y roles', hint: 'Acceso completo a Ajustes › Usuarios y permisos.' },
   { id: 'administrar_configuracion', label: 'Administrar configuración general', hint: 'Puede cambiar los ajustes generales del sistema.' },
   { id: 'ver_inventario', label: 'Ver inventario', hint: 'Muestra la casilla «Mostrar inventario» en Validar productos (disponibilidad y almacenes).' },
+  { id: 'ver_info_salesforce', label: 'Ver información Salesforce', hint: 'Muestra el botón «+ Información Salesforce» en Validar productos (cómo llega la oportunidad a Salesforce).' },
 ];
 
 export interface Perfil {
@@ -38,6 +39,7 @@ export interface Perfil {
   administrar_usuarios: boolean;
   administrar_configuracion: boolean;
   ver_inventario: boolean;
+  ver_info_salesforce: boolean;
   created_at: string;
   updated_at: string;
 }

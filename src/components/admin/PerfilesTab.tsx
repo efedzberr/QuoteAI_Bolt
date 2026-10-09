@@ -36,6 +36,7 @@ function toDraft(p: Perfil, permisos: PermisoObjeto[]): Draft {
       administrar_usuarios: p.administrar_usuarios,
       administrar_configuracion: p.administrar_configuracion,
       ver_inventario: p.ver_inventario,
+      ver_info_salesforce: p.ver_info_salesforce === true,
     },
     objetos,
   };

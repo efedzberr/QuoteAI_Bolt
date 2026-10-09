@@ -7,6 +7,7 @@ export interface Permissions {
   isAdmin: boolean;
   fullName: string | null;
   verInventario: boolean;
+  verInfoSalesforce: boolean;
   perfil: string | null;
   rol: string | null;
   verTodosDatos: boolean;
@@ -41,18 +42,21 @@ const EMPTY: MisPermisos = {
 export function usePermissions(): Permissions {
   const [p, setP] = useState<MisPermisos>(EMPTY);
   const [verInventarioUsuario, setVerInventarioUsuario] = useState(false);
+  const [verInfoSalesforce, setVerInfoSalesforce] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setLoading(false); return; }
-    const [{ data: perms, error }, { data: perm }] = await Promise.all([
+    const [{ data: perms, error }, { data: perm }, { data: infoSf }] = await Promise.all([
       supabase.rpc('mis_permisos'),
       supabase.from('user_permissions').select('ver_inventario').eq('user_id', user.id).maybeSingle(),
+      supabase.rpc('puede_ver_info_salesforce'),
     ]);
     if (error) console.error('[usePermissions] mis_permisos error:', error);
     setP(perms ? { ...EMPTY, ...(perms as MisPermisos) } : EMPTY);
     setVerInventarioUsuario(perm?.ver_inventario === true);
+    setVerInfoSalesforce(infoSf === true);
     setLoading(false);
   }, []);
 
@@ -72,6 +76,7 @@ export function usePermissions(): Permissions {
     isAdmin: p.is_admin,
     fullName: p.full_name,
     verInventario: INVENTARIO_HABILITADO && (p.ver_inventario || verInventarioUsuario),
+    verInfoSalesforce,
     perfil: p.perfil,
     rol: p.rol,
     verTodosDatos: p.ver_todos_datos,
