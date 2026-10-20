@@ -258,6 +258,19 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   editValuesRef.current = editValues;
   linesRef.current = lines;
 
+  // Reserva el siguiente line_index: el mayor entre la pantalla, la base y lo ya reservado en esta sesión
+  const ultimoIndexReservadoRef = useRef<number>(-1);
+  const reservarLineIndex = useCallback(async (): Promise<number> => {
+    const maxLocal = linesRef.current.reduce(
+      (m: number, l: any) => (typeof l._lineIndex === 'number' && l._lineIndex > m ? l._lineIndex : m),
+      -1
+    );
+    const maxBase = jobId ? await getMaxLineIndex(jobId) : -1;
+    const siguiente = Math.max(maxLocal, maxBase, ultimoIndexReservadoRef.current) + 1;
+    ultimoIndexReservadoRef.current = siguiente;
+    return siguiente;
+  }, [jobId]);
+
   useEffect(() => {
     return () => {
       const idx = editingIndexRef2.current;
@@ -438,8 +451,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     setSubtotal(total);
   }, []);
 
-  const handleProductSelect = useCallback((product: ProductResult) => {
+  const handleProductSelect = useCallback(async (product: ProductResult) => {
     ensureEditedMode();
+    const newIdx = await reservarLineIndex();
     const newLine: QuoteLine = {
       original_text: 'Agregado manualmente',
       quantity: 1,
@@ -452,32 +466,32 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       match_reason: 'Agregado manualmente por el usuario',
       needs_review: false,
       alternative_product_code: null,
+      _lineIndex: newIdx,
     } as any;
-    const updatedLines = [...lines, newLine];
-    setLines(updatedLines);
-    recalculate(updatedLines);
+    setLines((prev) => {
+      const updatedLines = [...prev, newLine];
+      recalculate(updatedLines);
+      updateProgreso(updatedLines);
+      return updatedLines;
+    });
     setShowProductModal(false);
 
     if (jobId) {
-      getMaxLineIndex(jobId).then((maxIdx) => {
-        const newIdx = maxIdx + 1;
-        upsertJobLine(jobId, newIdx, {
-          descripcion_original: 'Agregado manualmente',
-          producto_codigo: product.ProductCode,
-          producto_descripcion: product.ProductName,
-          precio_unitario: product.UnitPrice,
-          unidad_medida: product.UnitOfMeasure,
-          cantidad: 1,
-          confianza: 1.0,
-          origen: 'manual',
-          estado: 'aprobada',
-          requiere_revision: false,
-          total_linea: product.UnitPrice,
-        });
+      upsertJobLine(jobId, newIdx, {
+        descripcion_original: 'Agregado manualmente',
+        producto_codigo: product.ProductCode,
+        producto_descripcion: product.ProductName,
+        precio_unitario: product.UnitPrice,
+        unidad_medida: product.UnitOfMeasure,
+        cantidad: 1,
+        confianza: 1.0,
+        origen: 'manual',
+        estado: 'aprobada',
+        requiere_revision: false,
+        total_linea: product.UnitPrice,
       });
     }
-    updateProgreso(updatedLines);
-  }, [lines, recalculate, ensureEditedMode, jobId, updateProgreso]);
+  }, [recalculate, ensureEditedMode, jobId, updateProgreso, reservarLineIndex]);
 
   const handleProductSelectInEdit = useCallback((product: SearchProduct) => {
     const idx = editingIndexRef.current ?? editingIndex;
@@ -522,8 +536,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     setEditValues(EMPTY_EDIT);
   }, [editingIndex, recalculate, ensureEditedMode, persistLineAction, getLineIndex, lines]);
 
-  const handleInlineProductSelect = useCallback((product: SearchProduct) => {
+  const handleInlineProductSelect = useCallback(async (product: SearchProduct) => {
     ensureEditedMode();
+    const newIdx = await reservarLineIndex();
     const newLine: QuoteLine = {
       original_text: 'Agregado manualmente',
       quantity: 1,
@@ -533,35 +548,36 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       matched_unit_price: Number(product.Precio),
       confidence: 1.0,
       needs_review: false,
-    };
-    const updatedLines = [...lines, newLine];
-    setLines(updatedLines);
-    recalculate(updatedLines);
+      _lineIndex: newIdx,
+    } as any;
+    setLines((prev) => {
+      const updatedLines = [...prev, newLine];
+      recalculate(updatedLines);
+      updateProgreso(updatedLines);
+      return updatedLines;
+    });
     setShowInlineAddRow(false);
 
     if (jobId) {
-      getMaxLineIndex(jobId).then((maxIdx) => {
-        const newIdx = maxIdx + 1;
-        upsertJobLine(jobId, newIdx, {
-          descripcion_original: 'Agregado manualmente',
-          producto_codigo: product.CodigoArt,
-          producto_descripcion: product.DescCortaArt,
-          precio_unitario: Number(product.Precio),
-          unidad_medida: product.UMP,
-          cantidad: 1,
-          confianza: 1.0,
-          origen: 'manual',
-          estado: 'aprobada',
-          requiere_revision: false,
-          total_linea: Number(product.Precio),
-        });
+      upsertJobLine(jobId, newIdx, {
+        descripcion_original: 'Agregado manualmente',
+        producto_codigo: product.CodigoArt,
+        producto_descripcion: product.DescCortaArt,
+        precio_unitario: Number(product.Precio),
+        unidad_medida: product.UMP,
+        cantidad: 1,
+        confianza: 1.0,
+        origen: 'manual',
+        estado: 'aprobada',
+        requiere_revision: false,
+        total_linea: Number(product.Precio),
       });
     }
-    updateProgreso(updatedLines);
-  }, [lines, recalculate, ensureEditedMode, jobId, updateProgreso]);
+  }, [recalculate, ensureEditedMode, jobId, updateProgreso, reservarLineIndex]);
 
-  const handleAddLineFromModal = useCallback((result: AddLineResult) => {
+  const handleAddLineFromModal = useCallback(async (result: AddLineResult) => {
     ensureEditedMode();
+    const newIdx = await reservarLineIndex();
     const newLine: QuoteLine = {
       original_text: 'Agregado manualmente',
       quantity: result.quantity,
@@ -572,33 +588,33 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       confidence: 1.0,
       needs_review: false,
       badgeType: result.source === 'producto_nuevo' ? 'producto_nuevo' : 'manual',
-    };
-    const updatedLines = [...lines, newLine];
-    setLines(updatedLines);
-    recalculate(updatedLines);
+      _lineIndex: newIdx,
+    } as any;
+    setLines((prev) => {
+      const updatedLines = [...prev, newLine];
+      recalculate(updatedLines);
+      updateProgreso(updatedLines);
+      return updatedLines;
+    });
     setShowAddLineModal(false);
 
     if (jobId) {
       const origen = result.source === 'producto_nuevo' ? 'producto_nuevo' : 'manual';
-      getMaxLineIndex(jobId).then((maxIdx) => {
-        const newIdx = maxIdx + 1;
-        upsertJobLine(jobId, newIdx, {
-          descripcion_original: 'Agregado manualmente',
-          producto_codigo: result.matched_product_code,
-          producto_descripcion: result.matched_product_name,
-          precio_unitario: result.matched_unit_price,
-          unidad_medida: result.matched_unit_of_measure,
-          cantidad: result.quantity,
-          confianza: 1.0,
-          origen: origen as any,
-          estado: 'aprobada',
-          requiere_revision: false,
-          total_linea: result.quantity * result.matched_unit_price,
-        });
+      upsertJobLine(jobId, newIdx, {
+        descripcion_original: 'Agregado manualmente',
+        producto_codigo: result.matched_product_code,
+        producto_descripcion: result.matched_product_name,
+        precio_unitario: result.matched_unit_price,
+        unidad_medida: result.matched_unit_of_measure,
+        cantidad: result.quantity,
+        confianza: 1.0,
+        origen: origen as any,
+        estado: 'aprobada',
+        requiere_revision: false,
+        total_linea: result.quantity * result.matched_unit_price,
       });
     }
-    updateProgreso(updatedLines);
-  }, [lines, recalculate, ensureEditedMode, jobId, updateProgreso]);
+  }, [recalculate, ensureEditedMode, jobId, updateProgreso, reservarLineIndex]);
 
   const handleReplaceLineFromModal = useCallback((result: AddLineResult) => {
     if (replaceLineIndex === null) return;

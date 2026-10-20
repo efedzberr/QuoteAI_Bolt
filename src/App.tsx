@@ -406,6 +406,25 @@ function App() {
     setProjectName('');
   }, []);
 
+  // Deja la app lista para una cotización nueva: ningún dato de la cotización anterior se reutiliza
+  const iniciarCotizacionNueva = useCallback(() => {
+    setUploadData(null);
+    setWebhookResponse(null);
+    setRawResponse('');
+    setWebhookError(null);
+    setApprovedData(null);
+    setEditedQuoteData(null);
+    setManualQuoteData(null);
+    setReexecJob(null);
+    setProgressJob(null);
+    setJobReferencia(null);
+    setJobId(null);
+    setResumeExtraction(null);
+    setReviewReadOnly(false);
+    setProjectName('');
+    setCurrentScreen('upload');
+  }, []);
+
   const handleBackToPreview = useCallback(() => {
     if (uploadData) {
       setWebhookResponse(null);
@@ -890,9 +909,7 @@ function App() {
 
   const handleLayoutNavigate = (section: string) => {
     if (section === 'home') setCurrentScreen('home');
-    else if (section === 'cotizar') {
-      setCurrentScreen('upload');
-    }
+    else if (section === 'cotizar') iniciarCotizacionNueva();
     else if (section === 'catalogo') setCurrentScreen('catalogo');
     else if (section === 'clientes') setCurrentScreen('clientes');
     else if (section === 'ajustes') setCurrentScreen('admin');
@@ -902,12 +919,7 @@ function App() {
     return (
     <>
       <HomeDashboard
-        onNewQuote={() => {
-          setResumeExtraction(null);
-          setJobReferencia(null);
-          setJobId(null);
-          setCurrentScreen('upload');
-        }}
+        onNewQuote={iniciarCotizacionNueva}
         onOpenAdmin={() => setCurrentScreen('admin')}
         onOpenCatalog={() => setCurrentScreen('catalogo')}
         onReexecuteJob={(job) => setReexecJob(job)}
@@ -987,7 +999,7 @@ function App() {
         active="cotizar"
         breadcrumbs={[
           { label: 'Inicio', onClick: () => setCurrentScreen('home') },
-          { label: 'Cotizar', onClick: () => setCurrentScreen('upload') },
+          { label: 'Cotizar', onClick: iniciarCotizacionNueva },
           { label: 'Revisar archivo' },
         ]}
         onNavigate={handleLayoutNavigate}
@@ -1034,7 +1046,7 @@ function App() {
         active="cotizar"
         breadcrumbs={[
           { label: 'Inicio', onClick: () => setCurrentScreen('home') },
-          { label: 'Cotizar', onClick: () => setCurrentScreen('upload') },
+          { label: 'Cotizar', onClick: iniciarCotizacionNueva },
           { label: 'Cotización manual' },
         ]}
         onNavigate={handleLayoutNavigate}
