@@ -16,8 +16,12 @@ import { normalizeLines } from '../lib/normalizeLines';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { usePermissions } from '../hooks/usePermissions';
 import { supabase } from '../lib/supabase';
-import { upsertJobLine, getMaxLineIndex, fetchJobLineVersionMeta, fetchMotivosEliminacion, type JobLineVersionMeta, type MotivoEliminacion } from '../lib/jobLines';
+import { upsertJobLine, getMaxLineIndex, fetchJobLineVersionMeta, fetchMotivosEliminacion, updateJobLinesCampos, type JobLineVersionMeta, type MotivoEliminacion } from '../lib/jobLines';
 import EliminarLineaModal from './quote/EliminarLineaModal';
+import ComentarioMasivoModal from './quote/ComentarioMasivoModal';
+import BarraAccionesMasivas from './quote/BarraAccionesMasivas';
+import PaginadorLineas from './quote/PaginadorLineas';
+import { ChipsFiltroLineas, FILTROS_LINEAS, type FiltroLineas } from './quote/FiltrosLineas';
 import { updateJobProgreso, updateJobStatus, getJobByReferencia, markJobSentToSalesforce } from '../lib/jobs';
 import { fetchDisponibilidadArticulos, fijarGrupoCotizacion, type MapaDisponibilidad } from '../lib/disponibilidad';
 import { fetchInventarioArticulos, type InventarioArticulo } from '../lib/inventario';
@@ -106,6 +110,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   useEffect(() => {
     const nextLines = normalizeLines(activeQuoteData?.lines) || [];
     setLines(nextLines);
+    setSeleccion(new Set());
     const total = nextLines.reduce((sum: number, l: any) => {
       if (l.ignored) return sum;
       return sum + (l.quantity || 0) * (l.matched_unit_price || 0);
@@ -430,6 +435,67 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   ).length;
   const ignoredCount = linesWithReview.filter((l: any) => l.ignored).length;
   const okCount = linesWithReview.filter((l: any) => !l.ignored && !l.needs_review || (!l.ignored && l.approved)).length;
+
+  const [filtro, setFiltro] = useState<FiltroLineas>('todas');
+  const [tamPagina, setTamPagina] = useState(25);
+  const [pagina, setPagina] = useState(1);
+  const [seleccion, setSeleccion] = useState<Set<number>>(() => new Set());
+  const tablaRef = useRef<HTMLDivElement>(null);
+
+  const cumpleFiltro = useCallback((l: any, f: FiltroLineas) => {
+    switch (f) {
+      case 'pendientes': return !l.ignored && l.needs_review && !l.approved;
+      case 'validadas': return !l.ignored && (l.approved || !l.needs_review);
+      case 'especiales': return esEspecial(l);
+      case 'eliminadas': return !!l.ignored;
+      default: return true;
+    }
+  }, [esEspecial]);
+
+  const conteosFiltro = useMemo(() => {
+    const c: Record<FiltroLineas, number> = { todas: 0, pendientes: 0, validadas: 0, especiales: 0, eliminadas: 0 };
+    for (const l of linesWithReview) {
+      for (const f of FILTROS_LINEAS) if (cumpleFiltro(l, f.id)) c[f.id]++;
+    }
+    return c;
+  }, [linesWithReview, cumpleFiltro]);
+
+  const posicionesFiltradas = useMemo(
+    () => linesWithReview.map((_, i) => i).filter((i) => i === editingIndex || cumpleFiltro(linesWithReview[i], filtro)),
+    [linesWithReview, filtro, editingIndex, cumpleFiltro]
+  );
+
+  const totalPaginas = Math.max(1, Math.ceil(posicionesFiltradas.length / tamPagina));
+
+  useEffect(() => {
+    if (pagina > totalPaginas) setPagina(totalPaginas);
+  }, [pagina, totalPaginas]);
+
+  const paginaActual = Math.min(pagina, totalPaginas);
+  const posicionesPagina = useMemo(
+    () => posicionesFiltradas.slice((paginaActual - 1) * tamPagina, paginaActual * tamPagina),
+    [posicionesFiltradas, paginaActual, tamPagina]
+  );
+
+  const etiquetaFiltro = FILTROS_LINEAS.find((f) => f.id === filtro)?.etiqueta ?? 'Todos';
+  const paginaCompletaMarcada = posicionesPagina.length > 0 && posicionesPagina.every((p) => seleccion.has(p));
+  const filtroCompletoMarcado = posicionesFiltradas.length > 0 && posicionesFiltradas.every((p) => seleccion.has(p));
+
+  const cambiarFiltro = useCallback((f: FiltroLineas) => {
+    setFiltro(f);
+    setPagina(1);
+    setSeleccion(new Set());
+  }, []);
+
+  const irAPagina = useCallback((p: number) => {
+    setPagina(p);
+    tablaRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
+
+  const irAUltimaPagina = useCallback(() => {
+    setFiltro('todas');
+    setPagina(Number.MAX_SAFE_INTEGER);
+  }, []);
   const formattedDebugJson = useMemo(() => {
     try {
       return JSON.stringify(JSON.parse(rawResponse), null, 2);
@@ -475,6 +541,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       return updatedLines;
     });
     setShowProductModal(false);
+    irAUltimaPagina();
 
     if (jobId) {
       upsertJobLine(jobId, newIdx, {
@@ -557,6 +624,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       return updatedLines;
     });
     setShowInlineAddRow(false);
+    irAUltimaPagina();
 
     if (jobId) {
       upsertJobLine(jobId, newIdx, {
@@ -597,6 +665,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       return updatedLines;
     });
     setShowAddLineModal(false);
+    irAUltimaPagina();
 
     if (jobId) {
       const origen = result.source === 'producto_nuevo' ? 'producto_nuevo' : 'manual';
@@ -667,6 +736,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     const updatedLines = lines.filter((_, i) => i !== deleteConfirmIndex);
     setLines(updatedLines);
     recalculate(updatedLines);
+    setSeleccion(new Set());
     setDeleteConfirmIndex(null);
   }, [deleteConfirmIndex, lines, recalculate, ensureEditedMode]);
 
@@ -865,6 +935,149 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       }
     },
     [lines, jobId, getLineIndex]
+  );
+
+  const [eliminarMasivo, setEliminarMasivo] = useState<number[] | null>(null);
+  const [confirmValidarMasivo, setConfirmValidarMasivo] = useState<number[] | null>(null);
+  const [comentarioMasivo, setComentarioMasivo] = useState<number[] | null>(null);
+  const [avisoMasivo, setAvisoMasivo] = useState<string | null>(null);
+  const avisoMasivoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const mostrarAvisoMasivo = useCallback((mensaje: string) => {
+    if (avisoMasivoTimer.current) clearTimeout(avisoMasivoTimer.current);
+    setAvisoMasivo(mensaje);
+    avisoMasivoTimer.current = setTimeout(() => setAvisoMasivo(null), 4000);
+  }, []);
+
+  useEffect(() => () => {
+    if (avisoMasivoTimer.current) clearTimeout(avisoMasivoTimer.current);
+  }, []);
+
+  const seleccionadas = useMemo(
+    () => [...seleccion].filter((p) => p < lines.length).sort((a, b) => a - b),
+    [seleccion, lines.length]
+  );
+  const aplicaValidar = useMemo(
+    () => seleccionadas.filter((p) => { const l: any = linesWithReview[p]; return !l.ignored && l.needs_review && !l.approved; }),
+    [seleccionadas, linesWithReview]
+  );
+  const aplicaEliminar = useMemo(() => seleccionadas.filter((p) => !lines[p].ignored), [seleccionadas, lines]);
+  const aplicaRestaurar = useMemo(() => seleccionadas.filter((p) => lines[p].ignored), [seleccionadas, lines]);
+
+  const toggleSeleccion = useCallback((pos: number) => {
+    setSeleccion((prev) => {
+      const next = new Set(prev);
+      if (next.has(pos)) next.delete(pos); else next.add(pos);
+      return next;
+    });
+  }, []);
+
+  const toggleSeleccionVisibles = useCallback((marcar: boolean) => {
+    setSeleccion((prev) => {
+      const next = new Set(prev);
+      for (const p of posicionesPagina) {
+        if (marcar) next.add(p); else next.delete(p);
+      }
+      return next;
+    });
+  }, [posicionesPagina]);
+
+  const resumenMasivo = (singular: string, plural: string, hechas: number, total: number) => {
+    const base = `Se ${hechas === 1 ? singular : plural} ${hechas} ${hechas === 1 ? 'línea' : 'líneas'}.`;
+    const omitidas = total - hechas;
+    if (omitidas <= 0) return base;
+    return `${base} ${omitidas} no ${omitidas === 1 ? 'aplicaba' : 'aplicaban'}.`;
+  };
+
+  const aplicarCambioMasivo = useCallback(
+    (posiciones: number[], cambio: (l: QuoteLine) => QuoteLine) => {
+      ensureEditedMode();
+      const set = new Set(posiciones);
+      const updatedLines = lines.map((l, i) => (set.has(i) ? cambio(l) : l));
+      setLines(updatedLines);
+      recalculate(updatedLines);
+      updateProgreso(updatedLines);
+      setSeleccion(new Set());
+    },
+    [lines, ensureEditedMode, recalculate, updateProgreso]
+  );
+
+  const persistirMasivo = useCallback(
+    async (lotes: { posiciones: number[]; campos: Record<string, any> }[], mensaje: string) => {
+      if (!jobId) {
+        mostrarAvisoMasivo(mensaje);
+        return;
+      }
+      const resultados = await Promise.all(
+        lotes
+          .filter((l) => l.posiciones.length > 0)
+          .map((l) => updateJobLinesCampos(jobId, l.posiciones.map(getLineIndex), l.campos))
+      );
+      mostrarAvisoMasivo(resultados.every(Boolean) ? mensaje : 'No se pudieron guardar todos los cambios. Intenta de nuevo.');
+    },
+    [jobId, getLineIndex, mostrarAvisoMasivo]
+  );
+
+  const ejecutarValidarMasivo = useCallback(() => {
+    const posiciones = confirmValidarMasivo;
+    setConfirmValidarMasivo(null);
+    if (!posiciones || posiciones.length === 0) return;
+    const total = seleccionadas.length;
+    aplicarCambioMasivo(posiciones, (l) => ({ ...l, approved: true }));
+    persistirMasivo([{ posiciones, campos: { estado: 'aprobada' } }], resumenMasivo('validó', 'validaron', posiciones.length, total));
+  }, [confirmValidarMasivo, seleccionadas, aplicarCambioMasivo, persistirMasivo]);
+
+  const handleEliminarMasivoConfirm = useCallback(
+    (motivoId: number | null, comentario: string | null) => {
+      const posiciones = eliminarMasivo;
+      setEliminarMasivo(null);
+      if (!posiciones || posiciones.length === 0) return;
+      const total = seleccionadas.length;
+      const liIdxs = new Set(posiciones.map(getLineIndex));
+      aplicarCambioMasivo(posiciones, (l) => ({ ...l, ignored: true }));
+      setVersionMeta((prev) => prev.map((vm) =>
+        liIdxs.has(vm.line_index) ? { ...vm, motivo_eliminacion_id: motivoId, comentario_eliminacion: comentario } : vm
+      ));
+      persistirMasivo(
+        [{ posiciones, campos: { estado: 'ignorada', motivo_eliminacion_id: motivoId, comentario_eliminacion: comentario } }],
+        resumenMasivo('eliminó', 'eliminaron', posiciones.length, total)
+      );
+    },
+    [eliminarMasivo, seleccionadas, getLineIndex, aplicarCambioMasivo, persistirMasivo]
+  );
+
+  const handleRestaurarMasivo = useCallback(() => {
+    const posiciones = aplicaRestaurar;
+    if (posiciones.length === 0) return;
+    const total = seleccionadas.length;
+    const aprobadas = posiciones.filter((p) => lines[p].approved);
+    const resto = posiciones.filter((p) => !lines[p].approved);
+    const liIdxs = new Set(posiciones.map(getLineIndex));
+    aplicarCambioMasivo(posiciones, (l) => ({ ...l, ignored: false }));
+    setVersionMeta((prev) => prev.map((vm) =>
+      liIdxs.has(vm.line_index) ? { ...vm, motivo_eliminacion_id: null, comentario_eliminacion: null, eliminada_at: null } : vm
+    ));
+    persistirMasivo(
+      [
+        { posiciones: aprobadas, campos: { estado: 'aprobada' } },
+        { posiciones: resto, campos: { estado: 'pendiente' } },
+      ],
+      resumenMasivo('restauró', 'restauraron', posiciones.length, total)
+    );
+  }, [aplicaRestaurar, seleccionadas, lines, getLineIndex, aplicarCambioMasivo, persistirMasivo]);
+
+  const handleComentarioMasivoConfirm = useCallback(
+    (comentario: string | null) => {
+      const posiciones = comentarioMasivo;
+      setComentarioMasivo(null);
+      if (!posiciones || posiciones.length === 0) return;
+      aplicarCambioMasivo(posiciones, (l) => ({ ...l, comentario }));
+      persistirMasivo(
+        [{ posiciones, campos: { comentario } }],
+        `Se ${comentario ? 'guardó el comentario en' : 'borró el comentario de'} ${posiciones.length} ${posiciones.length === 1 ? 'línea' : 'líneas'}.`
+      );
+    },
+    [comentarioMasivo, aplicarCambioMasivo, persistirMasivo]
   );
 
   const handleBack = useCallback(() => {
@@ -1196,6 +1409,205 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     );
   }
 
+  const renderAccionesCotizacion = (posicionTooltip: 'arriba' | 'abajo') => {
+    const compacto = posicionTooltip === 'abajo';
+    const pad5 = compacto ? 'px-4 py-2' : 'px-5 py-3';
+    const pad6 = compacto ? 'px-4 py-2' : 'px-6 py-3';
+    const pad7 = compacto ? 'px-4 py-2' : 'px-7 py-3';
+    const fs = compacto ? 13 : 14;
+    const tipCaja = compacto ? 'absolute top-full right-0 mt-2 z-20' : 'absolute bottom-full right-0 mb-2';
+    const tipFlecha = compacto
+      ? 'absolute bottom-full right-4 w-2 h-2 bg-[#181818] rotate-45 translate-y-1'
+      : 'absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1';
+    return (readOnly ? (
+            <>
+              {onEditQuote && isAlreadyValidated && (
+                <button
+                  onClick={() => setShowEditConfirm(true)}
+                  className={`${pad5} rounded-lg border border-[#0176D3] text-[#0176D3] hover:bg-[#EAF5FE] transition-all flex items-center gap-2`}
+                  style={{ fontSize: fs, fontWeight: 600 }}
+                >
+                  <PenSquare className="w-4 h-4" />
+                  Editar cotizacion
+                </button>
+              )}
+              {onGoToPdf && (
+                <button
+                  onClick={onGoToPdf}
+                  className={`${pad7} rounded-lg bg-[#0176D3] text-white hover:bg-[#014486] transition-all flex items-center gap-2`}
+                  style={{ fontSize: fs, fontWeight: 700 }}
+                >
+                  Ver PDF →
+                </button>
+              )}
+              {/* SF button visible in readOnly (after PDF) if validated */}
+              {isAlreadyValidated && (
+                sfSentData && !sfSyncPendiente ? (
+                  <div className="relative group">
+                    <button
+                      disabled
+                      className={`${pad5} rounded-lg bg-[#E5E7EB] text-[#6B7280] cursor-default flex items-center gap-2`}
+                      style={{ fontSize: fs, fontWeight: 600 }}
+                    >
+                      <Check className="w-4 h-4" />
+                      Enviado a Salesforce
+                    </button>
+                    <div
+                      className={`${tipCaja} px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`}
+                      style={{ fontSize: 11, fontWeight: 500 }}
+                    >
+                      Opp: {sfSentData.opportunityId}{sfSentData.sentAt && ` | ${new Date(sfSentData.sentAt).toLocaleDateString('es-MX')}`}
+                      <div className={tipFlecha}></div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleSendToSalesforce}
+                    disabled={sfSending}
+                    className={`${pad5} rounded-lg flex items-center gap-2 transition-all ${
+                      sfSending
+                        ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
+                        : sfSyncPendiente
+                          ? 'bg-[#B86C00] text-white hover:bg-[#925600]'
+                          : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
+                    }`}
+                    style={{ fontSize: fs, fontWeight: 600 }}
+                  >
+                    {sfSyncPendiente ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : sfSyncPendiente ? 'Actualizar en Salesforce' : 'Enviar a Salesforce'}
+                  </button>
+                )
+              )}
+            </>
+          ) : (
+            <>
+              {/* Enviar a Salesforce */}
+              {isAlreadyValidated ? (
+                sfSentData && !sfSyncPendiente ? (
+                  <div className="relative group">
+                    <button
+                      disabled
+                      className={`${pad5} rounded-lg bg-[#E5E7EB] text-[#6B7280] cursor-default flex items-center gap-2`}
+                      style={{ fontSize: fs, fontWeight: 600 }}
+                    >
+                      <Check className="w-4 h-4" />
+                      Enviado a Salesforce
+                    </button>
+                    <div
+                      className={`${tipCaja} px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`}
+                      style={{ fontSize: 11, fontWeight: 500 }}
+                    >
+                      Opp: {sfSentData.opportunityId}{sfSentData.sentAt && ` | ${new Date(sfSentData.sentAt).toLocaleDateString('es-MX')}`}
+                      <div className={tipFlecha}></div>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleSendToSalesforce}
+                    disabled={sfSending}
+                    className={`${pad5} rounded-lg flex items-center gap-2 transition-all ${
+                      sfSending
+                        ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
+                        : sfSyncPendiente
+                          ? 'bg-[#B86C00] text-white hover:bg-[#925600]'
+                          : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
+                    }`}
+                    style={{ fontSize: fs, fontWeight: 600 }}
+                  >
+                    {sfSyncPendiente ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : sfSyncPendiente ? 'Actualizar en Salesforce' : 'Enviar a Salesforce'}
+                  </button>
+                )
+              ) : (
+                <div className="relative group">
+                  <button
+                    disabled
+                    className={`${pad5} rounded-lg bg-[#D1D5DB] text-[#747474] cursor-not-allowed flex items-center gap-2`}
+                    style={{ fontSize: fs, fontWeight: 600 }}
+                  >
+                    <Send className="w-4 h-4" />
+                    Enviar a Salesforce
+                  </button>
+                  <div
+                    className={`${tipCaja} px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`}
+                    style={{ fontSize: 11, fontWeight: 500 }}
+                  >
+                    Valida primero para enviar a Salesforce
+                    <div className={tipFlecha}></div>
+                  </div>
+                </div>
+              )}
+
+              {/* Validar button - only visible before validation */}
+              {!isAlreadyValidated && (
+                <div className="relative group">
+                  <button
+                    onClick={handleValidateByUser}
+                    disabled={!canValidate || validating}
+                    className={`${pad6} rounded-lg transition-all flex items-center gap-2 ${
+                      canValidate && !validating
+                        ? 'bg-[#2E844A] text-white hover:bg-[#236B3B]'
+                        : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
+                    }`}
+                    style={{ fontSize: fs, fontWeight: 700 }}
+                  >
+                    <ShieldCheck className="w-4 h-4" />
+                    {validating ? 'Validando...' : 'Validado por el usuario'}
+                  </button>
+                  {!canValidate && (
+                    <div
+                      className={`${tipCaja} px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`}
+                      style={{ fontSize: 11, fontWeight: 500 }}
+                    >
+                      Resuelve todas las lineas pendientes para poder validar
+                      <div className={tipFlecha}></div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Generar PDF - only available after validation */}
+              {isAlreadyValidated && (
+                <div className="relative group">
+                  <button
+                    onClick={handleGeneratePDF}
+                    disabled={!canGeneratePDF}
+                    className={`${pad7} rounded-lg transition-all flex items-center gap-2 ${
+                      canGeneratePDF
+                        ? 'bg-[#0176D3] text-white hover:bg-[#014486]'
+                        : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
+                    }`}
+                    style={{ fontSize: fs, fontWeight: 700 }}
+                  >
+                    Generar PDF →
+                  </button>
+                  {!canGeneratePDF && (
+                    <div
+                      className={`${tipCaja} px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`}
+                      style={{ fontSize: 11, fontWeight: 500 }}
+                    >
+                      Valida primero para poder generar el PDF
+                      <div className={tipFlecha}></div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {onEditQuote && isAlreadyValidated && (
+                <button
+                  onClick={() => setShowEditConfirm(true)}
+                  className={`${pad5} rounded-lg border border-[#0176D3] text-[#0176D3] hover:bg-[#EAF5FE] transition-all flex items-center gap-2`}
+                  style={{ fontSize: fs, fontWeight: 600 }}
+                >
+                  <PenSquare className="w-4 h-4" />
+                  Editar cotizacion
+                </button>
+              )}
+            </>
+          )
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#F3F3F3] flex flex-col" style={{ fontFamily: "'Manrope', sans-serif" }}>
       <Header hideHeader />
@@ -1479,11 +1891,84 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         </div>
       )}
 
+      <div
+        className="sticky z-[9] bg-white border-b border-[#E5E5E5]"
+        style={{ top: 60, boxShadow: '0 2px 6px rgba(0,0,0,.06)' }}
+      >
+        <div className="max-w-[1480px] mx-auto px-7 py-2.5 flex items-center gap-4 flex-wrap">
+          <div className="flex items-baseline gap-2" style={{ fontVariantNumeric: 'tabular-nums' }}>
+            <span className="text-[#747474]" style={{ fontSize: 12, fontWeight: 600 }}>Subtotal</span>
+            <span className="text-[#181818]" style={{ fontSize: 15, fontWeight: 700 }}>
+              {formatCurrency(subtotal, activeQuoteData.currency)}
+            </span>
+            {flaggedCount > 0 && (
+              <span className="text-[#B86C00]" style={{ fontSize: 12, fontWeight: 600 }}>
+                · {flaggedCount} {flaggedCount === 1 ? 'pendiente' : 'pendientes'}
+              </span>
+            )}
+          </div>
+          <div className="flex-1" />
+          {renderAccionesCotizacion('abajo')}
+        </div>
+        {!readOnly && seleccion.size > 0 && (
+          <BarraAccionesMasivas
+            cantidad={seleccionadas.length}
+            aplicaValidar={aplicaValidar.length}
+            aplicaEliminar={aplicaEliminar.length}
+            aplicaRestaurar={aplicaRestaurar.length}
+            onValidar={() => setConfirmValidarMasivo(aplicaValidar)}
+            onEliminar={() => setEliminarMasivo(aplicaEliminar)}
+            onRestaurar={handleRestaurarMasivo}
+            onComentario={() => setComentarioMasivo(seleccionadas)}
+            onQuitar={() => setSeleccion(new Set())}
+          />
+        )}
+        {!readOnly && paginaCompletaMarcada && posicionesFiltradas.length > posicionesPagina.length && (
+          <div className="bg-[#EAF5FE] text-[#014486] border-t border-[#0176D3]/10" style={{ fontSize: 12 }}>
+            <div className="max-w-[1480px] mx-auto px-7 py-1.5 text-center">
+              {filtroCompletoMarcado ? (
+                <>
+                  Se seleccionaron las {posicionesFiltradas.length} líneas de «{etiquetaFiltro}».{' '}
+                  <button onClick={() => setSeleccion(new Set())} className="text-[#0176D3] hover:underline" style={{ fontWeight: 700 }}>
+                    Quitar selección
+                  </button>
+                </>
+              ) : (
+                <>
+                  Se seleccionaron las {posicionesPagina.length} líneas de esta página.{' '}
+                  <button onClick={() => setSeleccion(new Set(posicionesFiltradas))} className="text-[#0176D3] hover:underline" style={{ fontWeight: 700 }}>
+                    Seleccionar las {posicionesFiltradas.length} líneas de «{etiquetaFiltro}»
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
       <div className="flex-1 pt-5 bg-[#F3F3F3]">
-        <div className="max-w-[1480px] mx-auto">
-          {lines.length > 0 || showInlineAddRow ? (
+        {lines.length > 0 && (
+          <div className="max-w-[1480px] mx-auto px-7 pb-4">
+            <ChipsFiltroLineas activo={filtro} conteos={conteosFiltro} onCambiar={cambiarFiltro} />
+          </div>
+        )}
+        <div ref={tablaRef} className="max-w-[1480px] mx-auto" style={{ scrollMarginTop: 130 }}>
+          {lines.length > 0 && posicionesFiltradas.length === 0 && !showInlineAddRow ? (
+            <div className="px-7 py-12 text-center">
+              <p className="text-[#444444]" style={{ fontSize: 13, fontWeight: 500 }}>
+                No hay líneas en «{etiquetaFiltro}».{' '}
+                <button onClick={() => cambiarFiltro('todas')} className="text-[#0176D3] hover:underline" style={{ fontWeight: 600 }}>
+                  Ver todas
+                </button>
+              </p>
+            </div>
+          ) : lines.length > 0 || showInlineAddRow ? (
             <QuoteReviewTable
               lines={lineasTabla}
+              visibles={posicionesPagina}
+              seleccion={readOnly ? undefined : seleccion}
+              onToggleSeleccion={readOnly ? undefined : toggleSeleccion}
+              onToggleSeleccionVisibles={readOnly ? undefined : toggleSeleccionVisibles}
               currency={activeQuoteData.currency}
               editingIndex={readOnly ? null : editingIndex}
               editValues={editValues}
@@ -1534,6 +2019,17 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                 </button>
               </div>
             </div>
+          )}
+
+          {lines.length > 25 && posicionesFiltradas.length > 0 && (
+            <PaginadorLineas
+              total={posicionesFiltradas.length}
+              pagina={paginaActual}
+              totalPaginas={totalPaginas}
+              tamPagina={tamPagina}
+              onPagina={irAPagina}
+              onTamPagina={(t) => { setTamPagina(t); irAPagina(1); }}
+            />
           )}
 
           {isManualMode && !readOnly && !showInlineAddRow && lines.length > 0 && (
@@ -1595,192 +2091,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
 
           <div className="flex-1" />
 
-          {readOnly ? (
-            <>
-              {onEditQuote && isAlreadyValidated && (
-                <button
-                  onClick={() => setShowEditConfirm(true)}
-                  className="px-5 py-3 rounded-lg border border-[#0176D3] text-[#0176D3] hover:bg-[#EAF5FE] transition-all flex items-center gap-2"
-                  style={{ fontSize: 14, fontWeight: 600 }}
-                >
-                  <PenSquare className="w-4 h-4" />
-                  Editar cotizacion
-                </button>
-              )}
-              {onGoToPdf && (
-                <button
-                  onClick={onGoToPdf}
-                  className="px-7 py-3 rounded-lg bg-[#0176D3] text-white hover:bg-[#014486] transition-all flex items-center gap-2"
-                  style={{ fontSize: 14, fontWeight: 700 }}
-                >
-                  Ver PDF →
-                </button>
-              )}
-              {/* SF button visible in readOnly (after PDF) if validated */}
-              {isAlreadyValidated && (
-                sfSentData && !sfSyncPendiente ? (
-                  <div className="relative group">
-                    <button
-                      disabled
-                      className="px-5 py-3 rounded-lg bg-[#E5E7EB] text-[#6B7280] cursor-default flex items-center gap-2"
-                      style={{ fontSize: 14, fontWeight: 600 }}
-                    >
-                      <Check className="w-4 h-4" />
-                      Enviado a Salesforce
-                    </button>
-                    <div
-                      className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                      style={{ fontSize: 11, fontWeight: 500 }}
-                    >
-                      Opp: {sfSentData.opportunityId}{sfSentData.sentAt && ` | ${new Date(sfSentData.sentAt).toLocaleDateString('es-MX')}`}
-                      <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleSendToSalesforce}
-                    disabled={sfSending}
-                    className={`px-5 py-3 rounded-lg flex items-center gap-2 transition-all ${
-                      sfSending
-                        ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
-                        : sfSyncPendiente
-                          ? 'bg-[#B86C00] text-white hover:bg-[#925600]'
-                          : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
-                    }`}
-                    style={{ fontSize: 14, fontWeight: 600 }}
-                  >
-                    {sfSyncPendiente ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : sfSyncPendiente ? 'Actualizar en Salesforce' : 'Enviar a Salesforce'}
-                  </button>
-                )
-              )}
-            </>
-          ) : (
-            <>
-              {/* Enviar a Salesforce */}
-              {isAlreadyValidated ? (
-                sfSentData && !sfSyncPendiente ? (
-                  <div className="relative group">
-                    <button
-                      disabled
-                      className="px-5 py-3 rounded-lg bg-[#E5E7EB] text-[#6B7280] cursor-default flex items-center gap-2"
-                      style={{ fontSize: 14, fontWeight: 600 }}
-                    >
-                      <Check className="w-4 h-4" />
-                      Enviado a Salesforce
-                    </button>
-                    <div
-                      className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                      style={{ fontSize: 11, fontWeight: 500 }}
-                    >
-                      Opp: {sfSentData.opportunityId}{sfSentData.sentAt && ` | ${new Date(sfSentData.sentAt).toLocaleDateString('es-MX')}`}
-                      <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleSendToSalesforce}
-                    disabled={sfSending}
-                    className={`px-5 py-3 rounded-lg flex items-center gap-2 transition-all ${
-                      sfSending
-                        ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
-                        : sfSyncPendiente
-                          ? 'bg-[#B86C00] text-white hover:bg-[#925600]'
-                          : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
-                    }`}
-                    style={{ fontSize: 14, fontWeight: 600 }}
-                  >
-                    {sfSyncPendiente ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                    {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : sfSyncPendiente ? 'Actualizar en Salesforce' : 'Enviar a Salesforce'}
-                  </button>
-                )
-              ) : (
-                <div className="relative group">
-                  <button
-                    disabled
-                    className="px-5 py-3 rounded-lg bg-[#D1D5DB] text-[#747474] cursor-not-allowed flex items-center gap-2"
-                    style={{ fontSize: 14, fontWeight: 600 }}
-                  >
-                    <Send className="w-4 h-4" />
-                    Enviar a Salesforce
-                  </button>
-                  <div
-                    className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                    style={{ fontSize: 11, fontWeight: 500 }}
-                  >
-                    Valida primero para enviar a Salesforce
-                    <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
-                  </div>
-                </div>
-              )}
-
-              {/* Validar button - only visible before validation */}
-              {!isAlreadyValidated && (
-                <div className="relative group">
-                  <button
-                    onClick={handleValidateByUser}
-                    disabled={!canValidate || validating}
-                    className={`px-6 py-3 rounded-lg transition-all flex items-center gap-2 ${
-                      canValidate && !validating
-                        ? 'bg-[#2E844A] text-white hover:bg-[#236B3B]'
-                        : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
-                    }`}
-                    style={{ fontSize: 14, fontWeight: 700 }}
-                  >
-                    <ShieldCheck className="w-4 h-4" />
-                    {validating ? 'Validando...' : 'Validado por el usuario'}
-                  </button>
-                  {!canValidate && (
-                    <div
-                      className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                      style={{ fontSize: 11, fontWeight: 500 }}
-                    >
-                      Resuelve todas las lineas pendientes para poder validar
-                      <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Generar PDF - only available after validation */}
-              {isAlreadyValidated && (
-                <div className="relative group">
-                  <button
-                    onClick={handleGeneratePDF}
-                    disabled={!canGeneratePDF}
-                    className={`px-7 py-3 rounded-lg transition-all flex items-center gap-2 ${
-                      canGeneratePDF
-                        ? 'bg-[#0176D3] text-white hover:bg-[#014486]'
-                        : 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed'
-                    }`}
-                    style={{ fontSize: 14, fontWeight: 700 }}
-                  >
-                    Generar PDF →
-                  </button>
-                  {!canGeneratePDF && (
-                    <div
-                      className="absolute bottom-full right-0 mb-2 px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                      style={{ fontSize: 11, fontWeight: 500 }}
-                    >
-                      Valida primero para poder generar el PDF
-                      <div className="absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1"></div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {onEditQuote && isAlreadyValidated && (
-                <button
-                  onClick={() => setShowEditConfirm(true)}
-                  className="px-5 py-3 rounded-lg border border-[#0176D3] text-[#0176D3] hover:bg-[#EAF5FE] transition-all flex items-center gap-2"
-                  style={{ fontSize: 14, fontWeight: 600 }}
-                >
-                  <PenSquare className="w-4 h-4" />
-                  Editar cotizacion
-                </button>
-              )}
-            </>
-          )}
+          {renderAccionesCotizacion('arriba')}
         </div>
       </div>
 
@@ -1960,6 +2271,76 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         onConfirm={handleEliminarConfirm}
         onCancel={() => setEliminarIndex(null)}
       />
+
+      {eliminarMasivo && (
+        <EliminarLineaModal
+          open
+          modo="eliminar"
+          lineaTexto={`${eliminarMasivo.length} ${eliminarMasivo.length === 1 ? 'línea seleccionada' : 'líneas seleccionadas'}`}
+          productoSugerido={null}
+          motivos={motivos}
+          motivoInicial={null}
+          comentarioInicial={null}
+          onConfirm={handleEliminarMasivoConfirm}
+          onCancel={() => setEliminarMasivo(null)}
+        />
+      )}
+
+      {comentarioMasivo && (
+        <ComentarioMasivoModal
+          cantidad={comentarioMasivo.length}
+          onConfirm={handleComentarioMasivoConfirm}
+          onCancel={() => setComentarioMasivo(null)}
+        />
+      )}
+
+      {confirmValidarMasivo && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setConfirmValidarMasivo(null)}>
+          <div
+            className="bg-white rounded-xl w-full max-w-md mx-4 border border-[#E5E5E5] p-6"
+            style={{ boxShadow: '0 12px 24px rgba(0,0,0,.15)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 mb-5">
+              <div className="w-10 h-10 rounded-full bg-[#EAF7EE] flex items-center justify-center flex-shrink-0">
+                <Check className="w-5 h-5 text-[#2E844A]" />
+              </div>
+              <div>
+                <h3 className="text-[#181818] mb-1" style={{ fontSize: 17, fontWeight: 700 }}>Validar líneas</h3>
+                <p className="text-[#444444]" style={{ fontSize: 13, lineHeight: 1.5 }}>
+                  Vas a validar <strong>{confirmValidarMasivo.length}</strong> {confirmValidarMasivo.length === 1 ? 'línea' : 'líneas'}. Confirma que ya revisaste cada una.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setConfirmValidarMasivo(null)}
+                className="px-4 py-2.5 text-[#444444] bg-[#F0F0F0] rounded-lg hover:bg-[#E5E5E5] transition-colors"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={ejecutarValidarMasivo}
+                className="px-5 py-2.5 text-white rounded-lg bg-[#2E844A] hover:bg-[#256E3D] transition-colors"
+                style={{ fontSize: 13, fontWeight: 600 }}
+              >
+                Validar {confirmValidarMasivo.length} {confirmValidarMasivo.length === 1 ? 'línea' : 'líneas'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {avisoMasivo && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-3 rounded-lg bg-[#032D60] text-white"
+          style={{ fontSize: 13, fontWeight: 600, boxShadow: '0 8px 20px rgba(0,0,0,.2)' }}
+          role="status"
+        >
+          {avisoMasivo}
+        </div>
+      )}
 
       {deleteConfirmIndex !== null && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">

@@ -163,6 +163,27 @@ export async function getMaxLineIndex(jobId: string): Promise<number> {
   return data[0].line_index;
 }
 
+export async function updateJobLinesCampos(
+  jobId: string,
+  lineIndexes: number[],
+  fields: Record<string, any> // incluye motivo_eliminacion_id / comentario_eliminacion, que no están en el tipo JobLine
+): Promise<boolean> {
+  let ok = true;
+  for (let i = 0; i < lineIndexes.length; i += 200) {
+    const lote = lineIndexes.slice(i, i + 200);
+    const { error } = await supabase
+      .from('job_lines')
+      .update({ ...fields, updated_at: new Date().toISOString() })
+      .eq('job_id', jobId)
+      .in('line_index', lote);
+    if (error) {
+      console.error('[jobLines] updateJobLinesCampos error:', error);
+      ok = false;
+    }
+  }
+  return ok;
+}
+
 export interface JobLineStat {
   productos: number;
   reconocidos: number;

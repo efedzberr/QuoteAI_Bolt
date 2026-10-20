@@ -66,6 +66,32 @@ interface QuoteReviewTableProps {
   onEditMotivo?: (index: number) => void;
   unidadAlertaByLineIndex?: Map<number, { cliente: string | null; catalogo: string | null }>;
   disponibilidadByCodigo?: Map<string, DisponibilidadArticulo>;
+  /** Posiciones (en `lines`) que se pintan, en orden. Si no viene, se pintan todas. */
+  visibles?: number[];
+  /** Posiciones seleccionadas con la casilla */
+  seleccion?: Set<number>;
+  onToggleSeleccion?: (index: number) => void;
+  /** Marca o desmarca todas las posiciones de `visibles` */
+  onToggleSeleccionVisibles?: (marcar: boolean) => void;
+}
+
+const CLASE_CASILLA = 'w-4 h-4 rounded border-[#C9C9C9] accent-[#0176D3] cursor-pointer';
+
+function CasillaEncabezado({ marcada, indeterminada, onChange }: { marcada: boolean; indeterminada: boolean; onChange: () => void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = indeterminada;
+  }, [indeterminada]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      checked={marcada}
+      onChange={onChange}
+      className={CLASE_CASILLA}
+      aria-label="Seleccionar las líneas de esta página"
+    />
+  );
 }
 
 function formatCurrency(value: number | null, currency: string): string {
@@ -194,7 +220,15 @@ export default function QuoteReviewTable({
   onEditMotivo,
   unidadAlertaByLineIndex,
   disponibilidadByCodigo,
+  visibles,
+  seleccion,
+  onToggleSeleccion,
+  onToggleSeleccionVisibles,
 }: QuoteReviewTableProps) {
+  const conCasillas = !readOnly && !!onToggleSeleccion;
+  const posiciones = visibles ?? lines.map((_, i) => i);
+  const marcadasVisibles = posiciones.filter((i) => seleccion?.has(i)).length;
+  const todasMarcadas = posiciones.length > 0 && marcadasVisibles === posiciones.length;
   const [commentingIndex, setCommentingIndex] = useState<number | null>(null);
   const [commentAnchorEl, setCommentAnchorEl] = useState<HTMLElement | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
@@ -226,6 +260,15 @@ export default function QuoteReviewTable({
                 className="bg-[#FAFAFA] border-b border-[#E5E5E5] text-left text-[#747474]"
                 style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}
               >
+                {conCasillas && (
+                  <th className="py-3 pl-4 pr-0 w-8">
+                    <CasillaEncabezado
+                      marcada={todasMarcadas}
+                      indeterminada={marcadasVisibles > 0 && !todasMarcadas}
+                      onChange={() => onToggleSeleccionVisibles?.(!todasMarcadas)}
+                    />
+                  </th>
+                )}
                 <th className="py-3 px-4 w-12">#</th>
                 <th className={`py-3 px-4 ${verInventario ? 'min-w-[160px]' : 'min-w-[200px]'}`}>Solicitud original</th>
                 <th className={`py-3 px-4 ${verInventario ? 'min-w-[190px]' : 'min-w-[220px]'}`}>Producto encontrado</th>
@@ -240,7 +283,10 @@ export default function QuoteReviewTable({
               </tr>
             </thead>
             <tbody>
-              {lines.map((line, index) => {
+              {posiciones.map((index) => {
+                const line = lines[index];
+                if (!line) return null;
+                const isSelected = conCasillas && seleccion?.has(index) === true;
                 const isFlagged = line.needs_review;
                 const isEditing = editingIndex === index;
                 const lineTotal =
@@ -261,6 +307,17 @@ export default function QuoteReviewTable({
                         borderLeft: isFlagged ? '3px solid #B86C00' : '3px solid #0176D3',
                       }}
                     >
+                      {conCasillas && (
+                        <td className="py-3.5 pl-4 pr-0 align-top">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => onToggleSeleccion?.(index)}
+                            className={CLASE_CASILLA}
+                            aria-label={`Seleccionar línea ${index + 1}`}
+                          />
+                        </td>
+                      )}
                       <td
                         className="py-4 px-4 align-top text-[#747474]"
                         style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 600 }}
@@ -369,6 +426,8 @@ export default function QuoteReviewTable({
                     className={`border-b border-[#F0F0F0] transition-colors ${
                       isIgnored
                         ? 'bg-[#FAFAFA] opacity-60'
+                        : isSelected
+                        ? 'bg-[#F3F9FF]'
                         : isFlagged
                         ? 'bg-[#FEF8EC] hover:bg-[#FEF1DC]'
                         : 'bg-white hover:bg-[#FAFBFC]'
@@ -377,6 +436,17 @@ export default function QuoteReviewTable({
                       borderLeft: isFlagged && !isIgnored ? '3px solid #B86C00' : 'none',
                     }}
                   >
+                    {conCasillas && (
+                      <td className="py-3.5 pl-4 pr-0 align-top">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => onToggleSeleccion?.(index)}
+                          className={CLASE_CASILLA}
+                          aria-label={`Seleccionar línea ${index + 1}`}
+                        />
+                      </td>
+                    )}
                     <td
                       className="py-3.5 px-4 text-[#747474]"
                       style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, fontWeight: 600 }}
@@ -813,7 +883,7 @@ export default function QuoteReviewTable({
                   {expandedRows.has(index) && verInventario && (() => {
                     const almacenes = line.inventario_almacenes?.filter(a => a.cantidad > 0) || [];
                     if (almacenes.length < 2) return null;
-                    const colCount = 8 + (verInventario ? 2 : 0) + (!readOnly ? 1 : 0);
+                    const colCount = 8 + (verInventario ? 2 : 0) + (!readOnly ? 1 : 0) + (conCasillas ? 1 : 0);
                     return (
                       <tr key={`${index}-expand`} className="bg-[#F8FBFE] border-b border-[#E5E5E5]">
                         <td colSpan={colCount} className="py-2 px-4 pl-12">
@@ -833,6 +903,7 @@ export default function QuoteReviewTable({
               })}
               {showInlineAddRow && onInlineAddProduct && onCancelInlineAdd && (
                 <InlineProductLineRow
+                  conCasilla={conCasillas}
                   onProductSelect={onInlineAddProduct}
                   onCancel={onCancelInlineAdd}
                 />

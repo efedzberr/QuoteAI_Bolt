@@ -4,11 +4,13 @@ import InlineProductSearch, { type SearchProduct } from './InlineProductSearch';
 interface InlineProductLineRowProps {
   onProductSelect: (product: SearchProduct) => void;
   onCancel: () => void;
+  conCasilla?: boolean;
 }
 
 export default function InlineProductLineRow({
   onProductSelect,
   onCancel,
+  conCasilla = false,
 }: InlineProductLineRowProps) {
   const handleSelect = (product: SearchProduct) => {
     onProductSelect(product);
@@ -16,6 +18,7 @@ export default function InlineProductLineRow({
 
   return (
     <tr className="border-b border-gray-100 bg-blue-50">
+      {conCasilla && <td className="py-4 px-3"></td>}
       <td className="py-4 px-3"></td>
       <td className="py-4 px-3"></td>
       <td className="py-4 px-3" colSpan={6}>
