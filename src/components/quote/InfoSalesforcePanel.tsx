@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, Check, Copy, Loader2 } from 'lucide-react';
+import { AlertTriangle, Check, Copy, ExternalLink, Loader2 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { urlRegistroSf } from '../../lib/sfEnvios';
 import {
   SF_OPP_DEFAULTS, ahoraMexico, formatoFecha, normalizarConfig, resolverPlantilla,
   type ClaveVariable, type ListaSf, type SfOportunidadConfig,
@@ -48,7 +49,7 @@ interface JobSf {
 
 interface ValorListaSimple { lista: ListaSf; valor: string; etiqueta: string | null; activo: boolean }
 
-interface Datos { job: JobSf; config: SfOportunidadConfig; listas: ValorListaSimple[] }
+interface Datos { job: JobSf; config: SfOportunidadConfig; listas: ValorListaSimple[]; sfInstanceUrl: string | null }
 
 const C = { azul: '#0176D3', marino: '#032D60', gris: '#747474', verde: '#2E844A', rojo: '#BA0517', ambar: '#B86C00' };
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -91,7 +92,7 @@ export default function InfoSalesforcePanel({ referencia, subtotal, refreshKey }
           .select('sf_ultimo_envio, sf_opportunity_id, sf_quote_id, sf_sent_at, cuenta_sf, cliente, no_cliente, grupo, nombre_proyecto, transporte, orden_compra, owner:user_profiles!jobs_owner_id_fkey(full_name, email)')
           .eq('referencia', referencia)
           .maybeSingle(),
-        supabase.from('app_settings').select('sf_oportunidad_config').eq('id', 1).maybeSingle(),
+        supabase.from('app_settings').select('sf_oportunidad_config, sf_instance_url').eq('id', 1).maybeSingle(),
         supabase.from('sf_listas_valores').select('lista, valor, etiqueta, activo'),
       ]);
       if (jobRes.error || cfgRes.error || listasRes.error || !jobRes.data) {
@@ -103,6 +104,7 @@ export default function InfoSalesforcePanel({ referencia, subtotal, refreshKey }
         job: jobRes.data as unknown as JobSf,
         config: normalizarConfig(cfgRes.data?.sf_oportunidad_config),
         listas: (listasRes.data || []) as ValorListaSimple[],
+        sfInstanceUrl: (cfgRes.data as { sf_instance_url?: string | null } | null)?.sf_instance_url ?? null,
       });
     } catch (e) {
       console.error('[InfoSalesforcePanel]', e);
@@ -149,7 +151,7 @@ export default function InfoSalesforcePanel({ referencia, subtotal, refreshKey }
     );
   }
 
-  const { job, config, listas } = datos;
+  const { job, config, listas, sfInstanceUrl } = datos;
   const envio = job.sf_ultimo_envio && typeof job.sf_ultimo_envio === 'object' ? job.sf_ultimo_envio : null;
   const opp = envio?.oportunidad;
   const hayEnvio = !!envio;
@@ -241,6 +243,18 @@ export default function InfoSalesforcePanel({ referencia, subtotal, refreshKey }
               ? <Check className="w-3.5 h-3.5" style={{ color: C.verde }} />
               : <Copy className="w-3.5 h-3.5" style={{ color: C.gris }} />}
           </button>
+          {urlRegistroSf(sfInstanceUrl, valor) && (
+            <a
+              href={urlRegistroSf(sfInstanceUrl, valor) as string}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-1 rounded hover:bg-[#EAF5FE] transition-colors flex-shrink-0"
+              title="Abrir en Salesforce"
+              aria-label={`Abrir ${etiqueta} en Salesforce`}
+            >
+              <ExternalLink className="w-3.5 h-3.5" style={{ color: C.azul }} />
+            </a>
+          )}
         </>
       ) : (
         <span style={{ fontSize: 12, color: '#A3A3A3' }}>—</span>

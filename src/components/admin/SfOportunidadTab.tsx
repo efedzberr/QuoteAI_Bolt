@@ -50,6 +50,9 @@ export default function SfOportunidadTab({ onToast }: Props) {
   const [borrador, setBorrador] = useState<SfOportunidadConfig>(SF_OPP_DEFAULTS);
   const [listas, setListas] = useState<ValorLista[]>([]);
   const [guardando, setGuardando] = useState(false);
+  const [instanceUrl, setInstanceUrl] = useState('');
+  const [instanceUrlGuardada, setInstanceUrlGuardada] = useState('');
+  const [guardandoUrl, setGuardandoUrl] = useState(false);
   const nombreRef = useRef<HTMLInputElement>(null);
 
   const cargarListas = useCallback(async () => {
@@ -67,7 +70,7 @@ export default function SfOportunidadTab({ onToast }: Props) {
     (async () => {
       try {
         const [{ data, error }] = await Promise.all([
-          supabase.from('app_settings').select('sf_oportunidad_config').eq('id', 1).maybeSingle(),
+          supabase.from('app_settings').select('sf_oportunidad_config, sf_instance_url').eq('id', 1).maybeSingle(),
           cargarListas(),
         ]);
         if (error) throw error;
@@ -75,6 +78,9 @@ export default function SfOportunidadTab({ onToast }: Props) {
         if (!vivo) return;
         setGuardada(config);
         setBorrador(config);
+        const url = (data as { sf_instance_url?: string | null } | null)?.sf_instance_url ?? '';
+        setInstanceUrl(url);
+        setInstanceUrlGuardada(url);
       } catch (e) {
         if (vivo) setErrorCarga(mensajeDe(e));
       } finally {
@@ -147,6 +153,27 @@ export default function SfOportunidadTab({ onToast }: Props) {
       onToast(`Error al guardar: ${mensajeDe(e)}`, 'error');
     } finally {
       setGuardando(false);
+    }
+  };
+
+  const guardarUrl = async () => {
+    const texto = instanceUrl.trim();
+    if (texto && !/^https:\/\//i.test(texto)) {
+      onToast('El enlace debe empezar con https://', 'error');
+      return;
+    }
+    const sf_instance_url = texto ? texto.replace(/\/+$/, '') : null;
+    setGuardandoUrl(true);
+    try {
+      const { error } = await supabase.from('app_settings').update({ sf_instance_url }).eq('id', 1);
+      if (error) throw error;
+      setInstanceUrl(sf_instance_url ?? '');
+      setInstanceUrlGuardada(sf_instance_url ?? '');
+      onToast('Enlace a Salesforce guardado', 'success');
+    } catch (e) {
+      onToast(`Error al guardar: ${mensajeDe(e)}`, 'error');
+    } finally {
+      setGuardandoUrl(false);
     }
   };
 
@@ -341,6 +368,31 @@ export default function SfOportunidadTab({ onToast }: Props) {
         onRecargar={recargarListas}
         onToast={onToast}
       />
+
+      <section className="bg-white rounded-card border border-rule shadow-sm">
+        <div className="px-5 py-4 border-b border-rule">
+          <h3 className="text-base font-bold text-ink">Enlace a Salesforce (opcional)</h3>
+          <p className="text-xs text-ink-faint mt-0.5">
+            URL de tu org, por ejemplo <code className="font-mono">https://impulsora.my.salesforce.com</code>. Con ella QuoteAI muestra enlaces para abrir la oportunidad y el quote con un clic.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 px-5 py-4">
+          <input
+            value={instanceUrl}
+            onChange={(e) => setInstanceUrl(e.target.value)}
+            placeholder="https://tu-org.my.salesforce.com"
+            className={`${claseCampo} flex-1 min-w-[260px] font-mono`}
+          />
+          <button
+            type="button"
+            onClick={guardarUrl}
+            disabled={guardandoUrl || instanceUrl.trim() === instanceUrlGuardada}
+            className={botonPrimario}
+          >
+            {guardandoUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />} Guardar enlace
+          </button>
+        </div>
+      </section>
     </div>
   );
 }

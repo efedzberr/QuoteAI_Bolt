@@ -28,7 +28,7 @@ const MENU: MenuSection[] = [
     ],
   },
   {
-    id: 'objects_fields', label: 'Objetos y campos', items: ADMIN_OBJECTS.map(o => ({ id: `obj_${o.id}` as AdminItemId, label: o.label, objectId: o.id })),
+    id: 'objects_fields', label: 'Objetos y campos', items: ADMIN_OBJECTS.map(o => ({ id: `obj_${o.id}` as AdminItemId, label: o.label, objectId: o.id, adminOnly: o.adminOnly })),
   },
   {
     id: 'configuration', label: 'Configuración', items: [

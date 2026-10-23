@@ -40,6 +40,7 @@ export interface AdminObjectDef {
   readOnly: boolean;
   allowCreate?: boolean;
   permObject: ObjetoSeguridad | null;   // objeto de perfil que controla crear/editar/eliminar
+  adminOnly?: boolean;        // visible solo para administradores (además de la RLS de la tabla)
   ownerField?: string;        // habilita "Mis registros"
   select: string;             // columnas para el select (incluye embeds)
   searchFields: string[];     // búsqueda rápida (ilike)
@@ -348,6 +349,53 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
       { key: 'created_at', label: 'Fecha de alta', dataType: 'datetime', notes: 'Primera vez que llegó de Salesforce' },
       { key: 'updated_at', label: 'Última modificación', dataType: 'datetime', notes: 'Última vez que cambió algún dato' },
       { key: 'consultado_at', label: 'Última consulta', dataType: 'datetime', notes: 'Última vez que Salesforce la regresó' },
+    ],
+  },
+  {
+    id: 'sf_envios', label: 'Monitor Salesforce', singular: 'envío', table: 'sf_envios_log', pk: 'id', pkIsGenerated: true,
+    readOnly: true, permObject: null, adminOnly: true,
+    select: '*, usuario:user_profiles!sf_envios_log_usuario_id_fkey(full_name, email), usuario_real:user_profiles!sf_envios_log_usuario_real_id_fkey(full_name, email)',
+    searchFields: ['referencia', 'cliente', 'no_cliente', 'nombre_proyecto', 'usuario_email', 'sf_opportunity_id', 'sf_quote_id', 'mensaje'],
+    systemViewId: 'b0000000-0000-0000-0000-000000005f01',
+    analisis: {
+      fecha: 'created_at',
+      presets: [
+        { nombre: 'Envíos por día', modo: 'fecha', campoFecha: 'created_at', granularidad: 'day' },
+        { nombre: 'Envíos por semana', modo: 'fecha', campoFecha: 'created_at', granularidad: 'week' },
+        { nombre: 'Por resultado', modo: 'campo', campoGrupo: 'resultado' },
+        { nombre: 'Errores por fase', modo: 'campo', campoGrupo: 'fase' },
+        { nombre: 'Por origen (automático / manual)', modo: 'campo', campoGrupo: 'origen' },
+        { nombre: 'Por usuario', modo: 'campo', campoGrupo: 'usuario_id' },
+        { nombre: 'Monto enviado por mes', modo: 'fecha', campoFecha: 'created_at', granularidad: 'month', medida: { tipo: 'suma', campo: 'total' } },
+        { nombre: 'Duración promedio (ms) por día', modo: 'fecha', campoFecha: 'created_at', granularidad: 'day', medida: { tipo: 'promedio', campo: 'duracion_ms' } },
+      ],
+    },
+    note: 'Cada intento de envío de QuoteAI a Salesforce (automático al validar o manual). Se registra solo; aquí únicamente se consulta.',
+    fields: [
+      { key: 'created_at', label: 'Fecha y hora', dataType: 'datetime' },
+      { key: 'resultado', label: 'Resultado', dataType: 'picklist', picklist: ['exito', 'exito_con_aviso', 'error'], notes: 'exito_con_aviso = la oportunidad se creó pero el PDF no se adjuntó' },
+      { key: 'origen', label: 'Origen', dataType: 'picklist', picklist: ['automatico', 'manual'], notes: 'automatico = al dar "Validado por el usuario"; manual = botón' },
+      { key: 'operacion', label: 'Operación', dataType: 'picklist', picklist: ['crear', 'actualizar'] },
+      { key: 'fase', label: 'Fase', dataType: 'picklist', picklist: ['productos', 'oportunidad', 'pdf'], notes: 'Paso donde terminó o falló la cadena' },
+      { key: 'referencia', label: 'Referencia', dataType: 'text' },
+      { key: 'nombre_proyecto', label: 'Proyecto', dataType: 'text' },
+      { key: 'cliente', label: 'Cliente', dataType: 'text' },
+      { key: 'no_cliente', label: 'No. cliente', dataType: 'text' },
+      { key: 'sf_account_id', label: 'Id de cuenta SF', dataType: 'text' },
+      { key: 'usuario_id', label: 'Usuario', dataType: 'user', sortable: false, embed: 'usuario' },
+      { key: 'usuario_email', label: 'Correo del usuario', dataType: 'text' },
+      { key: 'usuario_real_id', label: 'Operó realmente (Vista como)', dataType: 'user', sortable: false, embed: 'usuario_real', notes: 'Solo cuando un administrador usó "Vista como"' },
+      { key: 'lineas', label: 'Artículos', dataType: 'number', align: 'right' },
+      { key: 'total', label: 'Total', dataType: 'currency', align: 'right' },
+      { key: 'productos_nuevos', label: 'Productos nuevos creados', dataType: 'number', align: 'right' },
+      { key: 'intentos', label: 'Intentos', dataType: 'number', align: 'right' },
+      { key: 'http_status', label: 'HTTP', dataType: 'number', align: 'right' },
+      { key: 'mensaje', label: 'Respuesta de Salesforce', dataType: 'text' },
+      { key: 'sf_opportunity_id', label: 'Opportunity ID', dataType: 'text' },
+      { key: 'sf_quote_id', label: 'Quote ID', dataType: 'text' },
+      { key: 'pdf_adjuntado', label: 'PDF adjuntado', dataType: 'boolean' },
+      { key: 'duracion_ms', label: 'Duración (ms)', dataType: 'number', align: 'right' },
+      { key: 'respuesta_texto', label: 'Respuesta completa (JSON)', dataType: 'text', notes: 'Lo que regresó Railway/Salesforce, recortado a 4,000 caracteres' },
     ],
   },
 ];

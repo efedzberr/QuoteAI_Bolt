@@ -11,6 +11,7 @@ export interface AppSettings {
   pdfLogoHeightPx: number;
   confidenceThreshold: number;
   pdfConfig: PdfConfig;
+  sfInstanceUrl: string | null;
   loading: boolean;
   refresh: () => Promise<void>;
 }
@@ -24,6 +25,7 @@ const DEFAULTS = {
   pdfLogoHeightPx: 80,
   confidenceThreshold: 0.9,
   pdfConfig: resolverPdfConfig(null),
+  sfInstanceUrl: null as string | null,
 };
 
 export function useAppSettings(): AppSettings {
@@ -50,6 +52,7 @@ export function useAppSettings(): AppSettings {
       pdfLogoHeightPx: data.pdf_logo_height_px ?? DEFAULTS.pdfLogoHeightPx,
       confidenceThreshold: Number(data.confidence_threshold ?? DEFAULTS.confidenceThreshold),
       pdfConfig: resolverPdfConfig(data.pdf_config),
+      sfInstanceUrl: data.sf_instance_url ?? null,
       loading: false,
     });
   }, []);

@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw, Warehouse, Pencil, Lock, Plus, Minus, Cloud } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw, Warehouse, Pencil, Lock, Plus, Minus, Cloud, Loader2 } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
@@ -28,6 +28,8 @@ import { fetchInventarioArticulos, type InventarioArticulo } from '../lib/invent
 import CampoEncabezadoEditable from './quote/CampoEncabezadoEditable';
 import CambiarClienteModal from './quote/CambiarClienteModal';
 import InfoSalesforcePanel from './quote/InfoSalesforcePanel';
+import YaEnSalesforceModal from './quote/YaEnSalesforceModal';
+import { registrarEnvioSf, enviosEnCurso, payloadParaLog, type OrigenEnvioSf, type RegistroEnvioSf } from '../lib/sfEnvios';
 import {
   guardarCampoEncabezado,
   motivoBloqueoCliente,
@@ -94,7 +96,7 @@ function formatCurrency(value: number, currency: string): string {
 }
 
 export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, onEditQuote, onEncabezadoGuardado, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
-  const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig } = useAppSettings();
+  const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, sfInstanceUrl } = useAppSettings();
   const datosPdf = useDatosPdf(jobReferencia);
   const { verInventario, verInfoSalesforce } = usePermissions();
   const [infoSfAbierto, setInfoSfAbierto] = useState(false);
@@ -135,6 +137,9 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const [sfSyncPendiente, setSfSyncPendiente] = useState(false);
   const [jobStatus, setJobStatus] = useState<string>(quoteData.status || '');
   const [validating, setValidating] = useState(false);
+  const [autoEnvio, setAutoEnvio] = useState<'validando' | 'enviando' | null>(null);
+  const [autoEnvioFallo, setAutoEnvioFallo] = useState(false);
+  const [showYaEnSf, setShowYaEnSf] = useState(false);
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [jobNoCliente, setJobNoCliente] = useState<string | null>(null);
   const [jobGrupo, setJobGrupo] = useState<string | null>(null);
@@ -1094,19 +1099,6 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   const canValidate = isManualMode ? lines.length > 0 && flaggedCount === 0 : flaggedCount === 0;
   const isAlreadyValidated = jobStatus === 'completada' || jobStatus === 'completado' || jobStatus === 'pdf_generado';
 
-  const handleValidateByUser = useCallback(async () => {
-    if (!canValidate || !jobReferencia) return;
-    setValidating(true);
-    await updateJobStatus(jobReferencia, 'completada' as any);
-    setJobStatus('completada');
-    const freshJob = await getJobByReferencia(jobReferencia);
-    if (freshJob?.sf_sync_pendiente) setSfSyncPendiente(true);
-    if (freshJob?.sf_opportunity_id && !sfSentData) {
-      setSfSentData({ opportunityId: freshJob.sf_opportunity_id, quoteId: freshJob.sf_quote_id || undefined, sentAt: freshJob.sf_sent_at || '' });
-    }
-    setValidating(false);
-  }, [canValidate, jobReferencia]);
-
   const handleGeneratePDF = useCallback(() => {
     if (!canGeneratePDF) return;
     const approvedLines = lines.filter((l) => !l.ignored);
@@ -1116,236 +1108,360 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   // Cuenta para el envío a Salesforce: si el cliente se cambió en esta pantalla, la nueva; si no, la de la captura (como antes)
   const cuentaVigente = cuentaJob !== undefined ? cuentaJob : (salesforceAccount as CuentaSalesforce | undefined) ?? null;
 
-  const handleSendToSalesforce = useCallback(async () => {
-    if (sfSending) return;
-    setSfSending(true);
-    setSfResult(null);
+  const ejecutarEnvioSalesforce = useCallback(async (
+    origen: OrigenEnvioSf,
+    idsPrevios?: { opportunityId: string; quoteId?: string },
+  ): Promise<{ ok: boolean; opportunityId?: string; quoteId?: string }> => {
+    if (sfSending) return { ok: false };
+    const inicio = Date.now();
+    const ref = jobReferencia || activeQuoteData.quoteReference || '';
+    if (enviosEnCurso.has(ref)) return { ok: false };
+    enviosEnCurso.add(ref);
 
-    let hadNewProducts = false;
-
-    // --- STEP 1: Create new products in Salesforce ---
-    setSfSendingPhase('products');
-    try {
-      const newProductLines = lines.filter(
-        (l: any) => !l.ignored && l.badgeType === 'producto_nuevo' && l.matched_product_name
-      );
-
-      if (newProductLines.length > 0) {
-        const uniqueDescs = [...new Set(newProductLines.map((l) => l.matched_product_name!))];
-
-        const { data: pendingProducts } = await supabase
-          .from('productos_nuevos')
-          .select('id, descripcion_corta, codigo, marca, categoria, unidad_medida, precio_unitario')
-          .in('descripcion_corta', uniqueDescs)
-          .eq('sincronizado_sf', false);
-
-        if (pendingProducts && pendingProducts.length > 0) {
-          const seenIds = new Set<string>();
-          const productos = pendingProducts.filter((p) => {
-            if (seenIds.has(p.id)) return false;
-            seenIds.add(p.id);
-            return true;
-          }).map((p) => ({
-            id: p.id,
-            descripcion_corta: p.descripcion_corta,
-            codigo: p.codigo || '',
-            marca: p.marca || '',
-            categoria: p.categoria || '',
-            unidad_medida: p.unidad_medida,
-            precio_unitario: Number(p.precio_unitario),
-          }));
-
-          const createResp = await fetch('https://quoteai-production.up.railway.app/products/create-in-salesforce', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userEmail: userEmail || null, productos }),
-          });
-          const createData = await createResp.json();
-
-          if (!createData.success) {
-            setSfResult({
-              success: false,
-              message: `No se pudieron crear los productos nuevos en Salesforce: ${createData.message || 'error desconocido'}. No se creo la oportunidad.`,
-            });
-            setSfSending(false);
-            setSfSendingPhase(null);
-            return;
-          }
-
-          hadNewProducts = true;
-          if (createData.idsEnviados && createData.idsEnviados.length > 0) {
-            await supabase
-              .from('productos_nuevos')
-              .update({ sincronizado_sf: true })
-              .in('id', createData.idsEnviados);
-          }
-        }
-      }
-    } catch (err: any) {
-      setSfResult({
-        success: false,
-        message: `No se pudieron crear los productos nuevos en Salesforce: ${err.message || 'error de conexion'}. No se creo la oportunidad.`,
-      });
-      setSfSending(false);
-      setSfSendingPhase(null);
-      return;
-    }
-
-    // --- STEP 2: Create opportunity ---
-    setSfSendingPhase('opportunity');
-
-    // If new products were just created, wait 3s for Salesforce to index them
-    if (hadNewProducts) {
-      await new Promise((r) => setTimeout(r, 3000));
-    }
-
-    const validLines = lines
-      .filter((l) => !l.ignored && l.matched_product_code)
-      .map((l) => ({
-        producto_codigo: l.matched_product_code,
-        producto_descripcion: l.matched_product_name,
-        unidad_medida: l.matched_unit_of_measure,
-        cantidad: l.quantity,
-        precio_unitario: l.matched_unit_price,
-        total_linea: (l.quantity || 0) * (l.matched_unit_price || 0),
-      }));
-
-    const body: Record<string, any> = {
-      userEmail: userEmail || null,
-      referencia: jobReferencia || activeQuoteData.quoteReference || null,
-      salesforceAccountId: cuentaVigente?.id || null,
-      noCliente: cuentaVigente?.noCliente || null,
-      ownerId: cuentaVigente?.ownerId || null,
-      accountName: cuentaVigente?.name || clienteJob || activeQuoteData.customerName || null,
-      lineas: validLines,
-      pdfBase64: null,
-      opportunityId: sfSentData?.opportunityId || null,
-      quoteId: sfSentData?.quoteId || null,
+    const base: Omit<RegistroEnvioSf, 'resultado' | 'operacion'> = {
+      job_id: jobId ?? null,
+      referencia: ref,
+      nombre_proyecto: proyectoMostrado || null,
+      cliente: clienteMostrado || null,
+      no_cliente: jobNoCliente ?? cuentaVigente?.noCliente ?? null,
+      sf_account_id: cuentaVigente?.id || null,
+      origen,
+      lineas: 0,
+      total: subtotal,
+      productos_nuevos: 0,
+      intentos: 0,
     };
+    const opportunityIdPrevio = idsPrevios ? idsPrevios.opportunityId : sfSentData?.opportunityId;
+    const quoteIdPrevio = idsPrevios ? idsPrevios.quoteId : sfSentData?.quoteId;
+    const operacionPrevista: 'crear' | 'actualizar' = opportunityIdPrevio ? 'actualizar' : 'crear';
+
+    let productosNuevosCreados = 0;
+    let intentos = 0;
+    let httpStatus: number | null = null;
+    let respuestaCruda: unknown = null;
+    let bodyEnviado: Record<string, unknown> | null = null;
+    let productosEnviados: unknown[] | null = null;
+
+    const registrar = (r: Pick<RegistroEnvioSf, 'resultado' | 'operacion'> & Partial<RegistroEnvioSf>) =>
+      registrarEnvioSf({
+        ...base,
+        duracion_ms: Date.now() - inicio,
+        productos_nuevos: productosNuevosCreados,
+        intentos,
+        http_status: httpStatus,
+        payload_enviado: payloadParaLog(bodyEnviado) ?? (productosEnviados ? { productos: productosEnviados } : null),
+        respuesta_sf: respuestaCruda ?? null,
+        sf_opportunity_id: null,
+        sf_quote_id: null,
+        pdf_adjuntado: null,
+        ...r,
+      });
 
     try {
-      const MAX_ATTEMPTS = 3;
-      let lastData: any = null;
-      let succeeded = false;
+      setSfSending(true);
+      setSfResult(null);
 
-      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        const resp = await fetch('https://quoteai-production.up.railway.app/quotes/send-to-salesforce', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        lastData = await resp.json();
+      let hadNewProducts = false;
 
-        if (lastData.success && lastData.salesforce?.success) {
-          succeeded = true;
-          break;
+      // --- STEP 1: Create new products in Salesforce ---
+      setSfSendingPhase('products');
+      try {
+        const newProductLines = lines.filter(
+          (l: any) => !l.ignored && l.badgeType === 'producto_nuevo' && l.matched_product_name
+        );
+
+        if (newProductLines.length > 0) {
+          const uniqueDescs = [...new Set(newProductLines.map((l) => l.matched_product_name!))];
+
+          const { data: pendingProducts } = await supabase
+            .from('productos_nuevos')
+            .select('id, descripcion_corta, codigo, marca, categoria, unidad_medida, precio_unitario')
+            .in('descripcion_corta', uniqueDescs)
+            .eq('sincronizado_sf', false);
+
+          if (pendingProducts && pendingProducts.length > 0) {
+            const seenIds = new Set<string>();
+            const productos = pendingProducts.filter((p) => {
+              if (seenIds.has(p.id)) return false;
+              seenIds.add(p.id);
+              return true;
+            }).map((p) => ({
+              id: p.id,
+              descripcion_corta: p.descripcion_corta,
+              codigo: p.codigo || '',
+              marca: p.marca || '',
+              categoria: p.categoria || '',
+              unidad_medida: p.unidad_medida,
+              precio_unitario: Number(p.precio_unitario),
+            }));
+            productosEnviados = productos;
+
+            const createResp = await fetch('https://quoteai-production.up.railway.app/products/create-in-salesforce', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userEmail: userEmail || null, productos }),
+            });
+            const createData = await createResp.json();
+
+            if (!createData.success) {
+              const mensaje = `No se pudieron crear los productos nuevos en Salesforce: ${createData.message || 'error desconocido'}. No se creo la oportunidad.`;
+              if (origen === 'manual') setSfResult({ success: false, message: mensaje });
+              respuestaCruda = createData;
+              await registrar({ resultado: 'error', fase: 'productos', operacion: operacionPrevista, mensaje });
+              return { ok: false };
+            }
+
+            hadNewProducts = true;
+            productosNuevosCreados = productos.length;
+            if (createData.idsEnviados && createData.idsEnviados.length > 0) {
+              await supabase
+                .from('productos_nuevos')
+                .update({ sincronizado_sf: true })
+                .in('id', createData.idsEnviados);
+            }
+          }
         }
+      } catch (err: any) {
+        const mensaje = `No se pudieron crear los productos nuevos en Salesforce: ${err.message || 'error de conexion'}. No se creo la oportunidad.`;
+        if (origen === 'manual') setSfResult({ success: false, message: mensaje });
+        await registrar({ resultado: 'error', fase: 'productos', operacion: operacionPrevista, mensaje });
+        return { ok: false };
+      }
 
-        const errMsg = (lastData.salesforce?.message || lastData.message || '').toLowerCase();
-        const isProductsNotFound = errMsg.includes('product') && errMsg.includes('not found');
+      // --- STEP 2: Create opportunity ---
+      setSfSendingPhase('opportunity');
 
-        if (!isProductsNotFound || attempt === MAX_ATTEMPTS) {
-          break;
-        }
-
+      // If new products were just created, wait 3s for Salesforce to index them
+      if (hadNewProducts) {
         await new Promise((r) => setTimeout(r, 3000));
       }
 
-      if (succeeded) {
-        const data = lastData;
-        const operacion: string = data.salesforce.operacion || 'creada';
-        const oppId = data.salesforce.opportunityId || '';
-        const qId = data.salesforce.quoteId || '';
+      const validLines = lines
+        .filter((l) => !l.ignored && l.matched_product_code)
+        .map((l) => ({
+          producto_codigo: l.matched_product_code,
+          producto_descripcion: l.matched_product_name,
+          unidad_medida: l.matched_unit_of_measure,
+          cantidad: l.quantity,
+          precio_unitario: l.matched_unit_price,
+          total_linea: (l.quantity || 0) * (l.matched_unit_price || 0),
+        }));
+      base.lineas = validLines.length;
 
-        if (jobReferencia && oppId) {
-          await markJobSentToSalesforce(jobReferencia, oppId, qId);
-          setSfSentData({ opportunityId: oppId, quoteId: qId || undefined, sentAt: new Date().toISOString() });
-        }
-        setInfoSfRefresh((n) => n + 1);
+      const body: Record<string, any> = {
+        userEmail: userEmail || null,
+        referencia: jobReferencia || activeQuoteData.quoteReference || null,
+        salesforceAccountId: cuentaVigente?.id || null,
+        noCliente: cuentaVigente?.noCliente || null,
+        ownerId: cuentaVigente?.ownerId || null,
+        accountName: cuentaVigente?.name || clienteJob || activeQuoteData.customerName || null,
+        lineas: validLines,
+        pdfBase64: null,
+        opportunityId: opportunityIdPrevio || null,
+        quoteId: quoteIdPrevio || null,
+      };
+      bodyEnviado = body;
 
-        // --- STEP 3: Upload PDF ---
-        if (qId) {
-          setSfSendingPhase('pdf');
-          let pdfWarning: string | undefined;
+      try {
+        const MAX_ATTEMPTS = 3;
+        let lastData: any = null;
+        let succeeded = false;
 
-          try {
-            const activeLines = lines.filter((l) => !l.ignored);
-            const pdfQuoteData = { ...activeQuoteData, customerName: clienteMostrado, projectName: proyectoMostrado, lines: activeLines, totalLines: activeLines.length } as any;
-            // Marca, garantía y demás datos del catálogo, solo si alguna columna los usa
-            const catalogo = usaCatalogo(pdfConfig) ? await fetchCatalogoPdf(codigosCatalogo(activeLines)) : {};
-            // Se vuelven a leer: el ejecutivo pudo cambiar el encabezado después de abrir la pantalla
-            const datosVigentes = jobReferencia ? await fetchDatosPdf(jobReferencia) : datosPdf;
-            const blob = await pdf(
-              <QuoteDocument quoteData={pdfQuoteData} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={{ ...datosVigentes, catalogo }} />
-            ).toBlob();
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          intentos = attempt;
+          const resp = await fetch('https://quoteai-production.up.railway.app/quotes/send-to-salesforce', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          httpStatus = resp.status;
+          lastData = await resp.json();
+          respuestaCruda = lastData;
 
-            const MAX_PDF_BYTES = 4 * 1024 * 1024;
-            if (blob.size > MAX_PDF_BYTES) {
-              const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
-              pdfWarning = `La oportunidad se creo correctamente, pero el PDF pesa ${sizeMB} MB y supera el limite de 4 MB, por lo que no se adjunto.`;
-            } else {
-              const arrayBuffer = await blob.arrayBuffer();
-              const bytes = new Uint8Array(arrayBuffer);
-              let binary = '';
-              for (let i = 0; i < bytes.length; i++) {
-                binary += String.fromCharCode(bytes[i]);
-              }
-              const pdfBase64 = btoa(binary);
-
-              const uploadResp = await fetch('https://quoteai-production.up.railway.app/quotes/upload-pdf', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ quoteId: qId, pdfBase64 }),
-              });
-              const uploadData = await uploadResp.json();
-
-              if (!uploadData.success) {
-                if (uploadData.tooLarge) {
-                  pdfWarning = `La oportunidad se creo correctamente, pero el PDF supera el limite de tamano permitido por Salesforce y no se adjunto.`;
-                } else {
-                  pdfWarning = `La oportunidad se creo correctamente, pero el PDF no se pudo subir: ${uploadData.message || 'error desconocido'}.`;
-                }
-              }
-            }
-          } catch (pdfErr: any) {
-            pdfWarning = `La oportunidad se creo correctamente, pero el PDF no se pudo subir: ${pdfErr.message || 'error de conexion'}.`;
+          if (lastData.success && lastData.salesforce?.success) {
+            succeeded = true;
+            break;
           }
 
-          const successMsg = pdfWarning
-            ? pdfWarning
-            : hadNewProducts
-              ? `Productos creados, oportunidad ${operacion} y PDF adjuntado correctamente.`
-              : `Oportunidad ${operacion} y PDF adjuntado correctamente.`;
+          const errMsg = (lastData.salesforce?.message || lastData.message || '').toLowerCase();
+          const isProductsNotFound = errMsg.includes('product') && errMsg.includes('not found');
 
-          setSfResult({
-            success: true,
-            message: successMsg,
-            quoteId: qId,
-            opportunityId: oppId,
-            pdfWarning,
-          });
-        } else {
-          setSfResult({
-            success: true,
-            message: hadNewProducts
-              ? `Productos creados y oportunidad ${operacion} en Salesforce.`
-              : (data.salesforce.message || `Oportunidad ${operacion} en Salesforce`),
-            quoteId: qId,
-            opportunityId: oppId,
-          });
+          if (!isProductsNotFound || attempt === MAX_ATTEMPTS) {
+            break;
+          }
+
+          await new Promise((r) => setTimeout(r, 3000));
         }
-      } else {
+
+        if (succeeded) {
+          const data = lastData;
+          const operacion: string = data.salesforce.operacion || 'creada';
+          const operacionLog: 'crear' | 'actualizar' = data.salesforce.operacion === 'actualizar' ? 'actualizar' : 'crear';
+          const oppId = data.salesforce.opportunityId || '';
+          const qId = data.salesforce.quoteId || '';
+
+          if (jobReferencia && oppId) {
+            await markJobSentToSalesforce(jobReferencia, oppId, qId);
+            setSfSentData({ opportunityId: oppId, quoteId: qId || undefined, sentAt: new Date().toISOString() });
+          }
+          setInfoSfRefresh((n) => n + 1);
+          setSfSyncPendiente(false);
+          setAutoEnvioFallo(false);
+
+          // --- STEP 3: Upload PDF ---
+          if (qId) {
+            setSfSendingPhase('pdf');
+            let pdfWarning: string | undefined;
+
+            try {
+              const activeLines = lines.filter((l) => !l.ignored);
+              const pdfQuoteData = { ...activeQuoteData, customerName: clienteMostrado, projectName: proyectoMostrado, lines: activeLines, totalLines: activeLines.length } as any;
+              // Marca, garantía y demás datos del catálogo, solo si alguna columna los usa
+              const catalogo = usaCatalogo(pdfConfig) ? await fetchCatalogoPdf(codigosCatalogo(activeLines)) : {};
+              // Se vuelven a leer: el ejecutivo pudo cambiar el encabezado después de abrir la pantalla
+              const datosVigentes = jobReferencia ? await fetchDatosPdf(jobReferencia) : datosPdf;
+              const blob = await pdf(
+                <QuoteDocument quoteData={pdfQuoteData} pdfLogoUrl={pdfLogoUrl} pdfLogoWidthPx={pdfLogoWidthPx} pdfLogoHeightPx={pdfLogoHeightPx} config={pdfConfig} datos={{ ...datosVigentes, catalogo }} />
+              ).toBlob();
+
+              const MAX_PDF_BYTES = 4 * 1024 * 1024;
+              if (blob.size > MAX_PDF_BYTES) {
+                const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+                pdfWarning = `La oportunidad se creo correctamente, pero el PDF pesa ${sizeMB} MB y supera el limite de 4 MB, por lo que no se adjunto.`;
+              } else {
+                const arrayBuffer = await blob.arrayBuffer();
+                const bytes = new Uint8Array(arrayBuffer);
+                let binary = '';
+                for (let i = 0; i < bytes.length; i++) {
+                  binary += String.fromCharCode(bytes[i]);
+                }
+                const pdfBase64 = btoa(binary);
+
+                const uploadResp = await fetch('https://quoteai-production.up.railway.app/quotes/upload-pdf', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ quoteId: qId, pdfBase64 }),
+                });
+                const uploadData = await uploadResp.json();
+
+                if (!uploadData.success) {
+                  if (uploadData.tooLarge) {
+                    pdfWarning = `La oportunidad se creo correctamente, pero el PDF supera el limite de tamano permitido por Salesforce y no se adjunto.`;
+                  } else {
+                    pdfWarning = `La oportunidad se creo correctamente, pero el PDF no se pudo subir: ${uploadData.message || 'error desconocido'}.`;
+                  }
+                }
+              }
+            } catch (pdfErr: any) {
+              pdfWarning = `La oportunidad se creo correctamente, pero el PDF no se pudo subir: ${pdfErr.message || 'error de conexion'}.`;
+            }
+
+            const successMsg = pdfWarning
+              ? pdfWarning
+              : hadNewProducts
+                ? `Productos creados, oportunidad ${operacion} y PDF adjuntado correctamente.`
+                : `Oportunidad ${operacion} y PDF adjuntado correctamente.`;
+
+            if (origen === 'manual') {
+              setSfResult({
+                success: true,
+                message: successMsg,
+                quoteId: qId,
+                opportunityId: oppId,
+                pdfWarning,
+              });
+            }
+            await registrar({
+              resultado: pdfWarning ? 'exito_con_aviso' : 'exito',
+              fase: 'pdf',
+              operacion: operacionLog,
+              mensaje: successMsg,
+              sf_opportunity_id: oppId || null,
+              sf_quote_id: qId,
+              pdf_adjuntado: !pdfWarning,
+            });
+          } else {
+            const mensaje = hadNewProducts
+              ? `Productos creados y oportunidad ${operacion} en Salesforce.`
+              : (data.salesforce.message || `Oportunidad ${operacion} en Salesforce`);
+            if (origen === 'manual') {
+              setSfResult({
+                success: true,
+                message: mensaje,
+                quoteId: qId,
+                opportunityId: oppId,
+              });
+            }
+            await registrar({
+              resultado: 'exito',
+              fase: 'oportunidad',
+              operacion: operacionLog,
+              mensaje,
+              sf_opportunity_id: oppId || null,
+              sf_quote_id: null,
+              pdf_adjuntado: null,
+            });
+          }
+          return { ok: true, opportunityId: oppId, quoteId: qId || undefined };
+        }
+
         const errMsg = lastData?.salesforce?.message || lastData?.message || 'Error al enviar a Salesforce';
-        setSfResult({ success: false, message: errMsg });
+        if (origen === 'manual') setSfResult({ success: false, message: errMsg });
+        await registrar({
+          resultado: 'error',
+          fase: 'oportunidad',
+          operacion: operacionPrevista,
+          mensaje: errMsg,
+          sf_opportunity_id: lastData?.salesforce?.opportunityId || null,
+          sf_quote_id: lastData?.salesforce?.quoteId || null,
+        });
+        return { ok: false };
+      } catch (err: any) {
+        if (origen === 'manual') setSfResult({ success: false, message: 'No se pudo conectar al servidor. Intenta de nuevo.' });
+        await registrar({
+          resultado: 'error',
+          fase: 'oportunidad',
+          operacion: operacionPrevista,
+          mensaje: 'No se pudo conectar al servidor: ' + (err?.message || 'error de conexión'),
+        });
+        return { ok: false };
       }
-    } catch (err: any) {
-      setSfResult({ success: false, message: 'No se pudo conectar al servidor. Intenta de nuevo.' });
     } finally {
       setSfSending(false);
       setSfSendingPhase(null);
+      enviosEnCurso.delete(ref);
     }
-    setSfSyncPendiente(false);
-  }, [sfSending, lines, userEmail, jobReferencia, activeQuoteData, cuentaVigente, clienteJob, clienteMostrado, proyectoMostrado, sfSentData, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, datosPdf]);
+  }, [sfSending, lines, userEmail, jobReferencia, jobId, jobNoCliente, subtotal, activeQuoteData, cuentaVigente, clienteJob, clienteMostrado, proyectoMostrado, sfSentData, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, datosPdf]);
+
+  const handleSendToSalesforce = useCallback(() => { void ejecutarEnvioSalesforce('manual'); }, [ejecutarEnvioSalesforce]);
+
+  const handleValidateByUser = useCallback(async () => {
+    if (!canValidate || !jobReferencia) return;
+    setValidating(true);
+    setAutoEnvio('validando');
+    setAutoEnvioFallo(false);
+    await updateJobStatus(jobReferencia, 'completada' as any);
+    setJobStatus('completada');
+    const freshJob = await getJobByReferencia(jobReferencia);
+    const yaEnviada = !!freshJob?.sf_opportunity_id;
+    const pendienteSync = !!freshJob?.sf_sync_pendiente;
+    if (yaEnviada) {
+      setSfSentData({ opportunityId: freshJob!.sf_opportunity_id!, quoteId: freshJob!.sf_quote_id || undefined, sentAt: freshJob!.sf_sent_at || '' });
+    }
+    setSfSyncPendiente(pendienteSync);
+    setValidating(false);
+
+    // Envío automático y silencioso: solo si nunca se ha enviado, o si se editó después de enviarse (re-sincroniza con el mismo ID)
+    if (!yaEnviada || pendienteSync) {
+      setAutoEnvio('enviando');
+      const r = await ejecutarEnvioSalesforce(
+        'automatico',
+        yaEnviada ? { opportunityId: freshJob!.sf_opportunity_id!, quoteId: freshJob!.sf_quote_id || undefined } : undefined,
+      );
+      if (!r.ok) setAutoEnvioFallo(true);
+    }
+    setAutoEnvio(null);
+  }, [canValidate, jobReferencia, ejecutarEnvioSalesforce]);
 
   // ── Encabezado editable (QA_ENC1) ──
   // Se edita solo una cotización guardada, ya leída de la base y que no está en modo de solo lectura
@@ -1419,6 +1535,23 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     const tipFlecha = compacto
       ? 'absolute bottom-full right-4 w-2 h-2 bg-[#181818] rotate-45 translate-y-1'
       : 'absolute top-full right-4 w-2 h-2 bg-[#181818] rotate-45 -translate-y-1';
+    if (autoEnvio !== null) {
+      const texto =
+        autoEnvio === 'validando' ? 'Validando…'
+        : sfSendingPhase === 'products' ? 'Creando productos…'
+        : sfSendingPhase === 'pdf' ? 'Adjuntando PDF…'
+        : 'Enviando a Salesforce…';
+      return (
+        <button
+          disabled
+          className={`${pad6} rounded-lg bg-[#2E844A] text-white opacity-90 cursor-wait flex items-center gap-2`}
+          style={{ fontSize: fs, fontWeight: 700 }}
+        >
+          <Loader2 className="w-4 h-4 animate-spin" />
+          {texto}
+        </button>
+      );
+    }
     return (readOnly ? (
             <>
               {onEditQuote && isAlreadyValidated && (
@@ -1445,8 +1578,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                 sfSentData && !sfSyncPendiente ? (
                   <div className="relative group">
                     <button
-                      disabled
-                      className={`${pad5} rounded-lg bg-[#E5E7EB] text-[#6B7280] cursor-default flex items-center gap-2`}
+                      onClick={() => setShowYaEnSf(true)}
+                      className={`${pad5} rounded-lg bg-[#E5E7EB] text-[#6B7280] cursor-pointer hover:bg-[#D1D5DB] flex items-center gap-2`}
                       style={{ fontSize: fs, fontWeight: 600 }}
                     >
                       <Check className="w-4 h-4" />
@@ -1461,21 +1594,32 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                     </div>
                   </div>
                 ) : (
+                  <div className="relative group">
                   <button
                     onClick={handleSendToSalesforce}
                     disabled={sfSending}
                     className={`${pad5} rounded-lg flex items-center gap-2 transition-all ${
                       sfSending
                         ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
-                        : sfSyncPendiente
+                        : (sfSyncPendiente || autoEnvioFallo)
                           ? 'bg-[#B86C00] text-white hover:bg-[#925600]'
                           : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
                     }`}
                     style={{ fontSize: fs, fontWeight: 600 }}
                   >
-                    {sfSyncPendiente ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                    {(sfSyncPendiente || autoEnvioFallo) ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
                     {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : sfSyncPendiente ? 'Actualizar en Salesforce' : 'Enviar a Salesforce'}
                   </button>
+                  {autoEnvioFallo && !sfSending && (
+                    <div
+                      className={`${tipCaja} px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`}
+                      style={{ fontSize: 11, fontWeight: 500 }}
+                    >
+                      El envío automático no se completó. Haz clic para reintentar.
+                      <div className={tipFlecha}></div>
+                    </div>
+                  )}
+                  </div>
                 )
               )}
             </>
@@ -1486,8 +1630,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                 sfSentData && !sfSyncPendiente ? (
                   <div className="relative group">
                     <button
-                      disabled
-                      className={`${pad5} rounded-lg bg-[#E5E7EB] text-[#6B7280] cursor-default flex items-center gap-2`}
+                      onClick={() => setShowYaEnSf(true)}
+                      className={`${pad5} rounded-lg bg-[#E5E7EB] text-[#6B7280] cursor-pointer hover:bg-[#D1D5DB] flex items-center gap-2`}
                       style={{ fontSize: fs, fontWeight: 600 }}
                     >
                       <Check className="w-4 h-4" />
@@ -1502,21 +1646,32 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                     </div>
                   </div>
                 ) : (
+                  <div className="relative group">
                   <button
                     onClick={handleSendToSalesforce}
                     disabled={sfSending}
                     className={`${pad5} rounded-lg flex items-center gap-2 transition-all ${
                       sfSending
                         ? 'bg-[#D1D5DB] text-[#747474] cursor-wait'
-                        : sfSyncPendiente
+                        : (sfSyncPendiente || autoEnvioFallo)
                           ? 'bg-[#B86C00] text-white hover:bg-[#925600]'
                           : 'bg-[#00A1E0] text-white hover:bg-[#0082B4]'
                     }`}
                     style={{ fontSize: fs, fontWeight: 600 }}
                   >
-                    {sfSyncPendiente ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                    {(sfSyncPendiente || autoEnvioFallo) ? <RefreshCw className="w-4 h-4" /> : <Send className="w-4 h-4" />}
                     {sfSending ? (sfSendingPhase === 'pdf' ? 'Subiendo PDF...' : sfSendingPhase === 'products' ? 'Creando productos...' : 'Enviando a Salesforce...') : sfSyncPendiente ? 'Actualizar en Salesforce' : 'Enviar a Salesforce'}
                   </button>
+                  {autoEnvioFallo && !sfSending && (
+                    <div
+                      className={`${tipCaja} px-3 py-2 bg-[#181818] text-white rounded-md whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none`}
+                      style={{ fontSize: 11, fontWeight: 500 }}
+                    >
+                      El envío automático no se completó. Haz clic para reintentar.
+                      <div className={tipFlecha}></div>
+                    </div>
+                  )}
+                  </div>
                 )
               ) : (
                 <div className="relative group">
@@ -2095,6 +2250,16 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         </div>
       </div>
 
+      {showYaEnSf && sfSentData && (
+        <YaEnSalesforceModal
+          opportunityId={sfSentData.opportunityId}
+          quoteId={sfSentData.quoteId}
+          sentAt={sfSentData.sentAt}
+          instanceUrl={sfInstanceUrl}
+          onClose={() => setShowYaEnSf(false)}
+        />
+      )}
+
       {/* Salesforce result modal */}
       {sfResult && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setSfResult(null)}>
@@ -2408,7 +2573,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               Al terminar deberas generar el PDF nuevamente.
               {sfSentData && (
                 <span className="block mt-2 text-[#B86C00]">
-                  Esta cotizacion ya fue enviada a Salesforce. Si la reenvias, se actualizara la oportunidad existente.
+                  Esta cotización ya fue enviada a Salesforce. Al volver a validarla se actualizará la oportunidad existente en automático.
                 </span>
               )}
             </p>
