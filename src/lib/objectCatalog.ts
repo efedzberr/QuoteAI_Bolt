@@ -39,6 +39,7 @@ export interface AdminObjectDef {
   pkIsGenerated: boolean;     // true = la BD genera la llave (no se captura)
   readOnly: boolean;
   allowCreate?: boolean;
+  allowDelete?: boolean;      // false = nunca se ofrece eliminar, aunque el perfil lo permita
   permObject: ObjetoSeguridad | null;   // objeto de perfil que controla crear/editar/eliminar
   adminOnly?: boolean;        // visible solo para administradores (además de la RLS de la tabla)
   ownerField?: string;        // habilita "Mis registros"
@@ -427,7 +428,7 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
   },
   {
     id: 'unidades_medida', label: 'Unidades de medida', singular: 'unidad', table: 'unidades_medida',
-    pk: 'codigo', pkIsGenerated: false, readOnly: false, allowCreate: true, permObject: 'unidades', adminOnly: true,
+    pk: 'codigo', pkIsGenerated: false, readOnly: false, allowCreate: false, allowDelete: false, permObject: 'unidades', adminOnly: true,
     select: '*, creador:user_profiles!unidades_medida_created_by_fkey(full_name, email), actualizador:user_profiles!unidades_medida_updated_by_fkey(full_name, email)',
     searchFields: ['codigo', 'descripcion', 'familia', 'notas'],
     systemViewId: 'b0000000-0000-0000-0000-00000000c002',
@@ -439,13 +440,13 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
         { nombre: 'Activas e inactivas', modo: 'campo', campoGrupo: 'activo' },
       ],
     },
-    note: 'Unidades que QuoteAI reconoce en las solicitudes. Clase "unidad" y "familia" aparecen en la lista de selección del ejecutivo y son las únicas que la IA puede elegir. Clase "empaque" son códigos exactos de JDE (R1, K1…): no se eligen a mano, los resuelve la conversión según el producto y su familia.',
+    note: 'Unidades que QuoteAI reconoce en las solicitudes. La lista proviene de JD Edwards (catálogo de productos y conversiones): aquí no se crean ni se eliminan unidades; solo se activan o desactivan y se edita su descripción. Clase "unidad" y "familia" aparecen en la lista de selección del ejecutivo y son las únicas que la IA puede elegir. Clase "empaque" son códigos exactos de JDE (R1, K1…): los resuelve la conversión según el producto.',
     fields: [
-      { key: 'codigo', label: 'Código', dataType: 'text', required: true, editable: true, notes: 'En mayúsculas, sin espacios al inicio o al final' },
+      { key: 'codigo', label: 'Código', dataType: 'text', notes: 'Código de JD Edwards; no se puede cambiar' },
       { key: 'descripcion', label: 'Descripción', dataType: 'text', required: true, editable: true, notes: 'Es lo que ve el ejecutivo en la lista de selección' },
-      { key: 'clase', label: 'Clase', dataType: 'picklist', picklist: ['unidad', 'familia', 'empaque'], required: true, editable: true },
-      { key: 'familia', label: 'Familia', dataType: 'text', editable: true, notes: 'Solo para clase "empaque": ROLLO, CARRETE, CAJA, TRAMO, MASTER, TARIMA, PAQUETE o JUEGO' },
-      { key: 'activo', label: 'Activo', dataType: 'boolean', editable: true, notes: 'No = deja de reconocerse y de aparecer en la lista' },
+      { key: 'clase', label: 'Clase', dataType: 'picklist', picklist: ['unidad', 'familia', 'empaque'], notes: 'No se puede cambiar desde la aplicación' },
+      { key: 'familia', label: 'Familia', dataType: 'text', notes: 'Familia de empaque a la que pertenece el código; no se puede cambiar desde la aplicación' },
+      { key: 'activo', label: 'Activo', dataType: 'boolean', editable: true, notes: 'No = deja de reconocerse y de aparecer en la lista. Solo se puede activar una unidad que exista en JD Edwards' },
       { key: 'orden', label: 'Orden', dataType: 'number', editable: true, align: 'right', notes: 'Orden en la lista de selección (menor primero)' },
       { key: 'notas', label: 'Notas', dataType: 'text', editable: true },
       ...AUDIT_FIELDS,

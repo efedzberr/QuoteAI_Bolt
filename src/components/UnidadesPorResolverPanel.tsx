@@ -11,13 +11,11 @@ interface Props {
   onChange: (estado: EstadoUnidades) => void;
 }
 
-const NO_SE = '__NO_SE__';
-
 export default function UnidadesPorResolverPanel({ rows, onChange }: Props) {
   const [info, setInfo] = useState<Record<string, UnidadReconocida>>({});
   const [opciones, setOpciones] = useState<OpcionUnidad[]>([]);
-  // Elección del ejecutivo por texto: código, o null = "No sé / dejar como está"
-  const [elecciones, setElecciones] = useState<Record<string, string | null>>({});
+  // Elección del ejecutivo por texto: siempre un código de la lista
+  const [elecciones, setElecciones] = useState<Record<string, string>>({});
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState(false);
   const [disponible, setDisponible] = useState(true);
@@ -132,7 +130,7 @@ export default function UnidadesPorResolverPanel({ rows, onChange }: Props) {
     setElecciones((prev) => {
       const next = { ...prev };
       if (valor === '') delete next[texto];
-      else next[texto] = valor === NO_SE ? null : valor;
+      else next[texto] = valor;
       return next;
     });
   };
@@ -156,7 +154,7 @@ export default function UnidadesPorResolverPanel({ rows, onChange }: Props) {
         )}
       </div>
       <p className="px-5 pt-3 text-[#747474]" style={{ fontSize: 12, lineHeight: 1.5 }}>
-        Estas unidades no estaban en el diccionario. Revisa las que interpretó la IA y elige las que faltan. Cada elección aplica a todas las líneas que usan esa unidad.
+        Estas unidades no estaban en el diccionario. Revisa las que interpretó la IA y elige las que faltan: debes elegir una unidad de la lista para poder continuar. Cada elección aplica a todas las líneas que usan esa unidad.
       </p>
       <div className="px-5 py-3">
         <table className="w-full" style={{ fontSize: 13 }}>
@@ -172,7 +170,7 @@ export default function UnidadesPorResolverPanel({ rows, onChange }: Props) {
             {visibles.map((t) => {
               const u = info[t];
               const elegida = t in elecciones;
-              const valor = elegida ? (elecciones[t] === null ? NO_SE : (elecciones[t] as string)) : (u?.origen === 'ia' ? (u.codigo ?? '') : '');
+              const valor = elegida ? elecciones[t] : (u?.origen === 'ia' ? (u.codigo ?? '') : '');
               const falta = !elegida && u?.origen === 'sin_resolver';
               return (
                 <tr key={t}>
@@ -196,9 +194,6 @@ export default function UnidadesPorResolverPanel({ rows, onChange }: Props) {
                           {familias.map((o) => <option key={o.codigo} value={o.codigo}>{o.descripcion}</option>)}
                         </optgroup>
                       )}
-                      <optgroup label="Otra">
-                        <option value={NO_SE}>No sé / dejar como está</option>
-                      </optgroup>
                     </select>
                   </td>
                   <td className="py-2.5">
@@ -206,7 +201,7 @@ export default function UnidadesPorResolverPanel({ rows, onChange }: Props) {
                       <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#FEDED7', color: '#BA0517' }}>Falta elegir</span>
                     ) : elegida ? (
                       <span className="rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#DEF5E5', color: '#2E844A' }}>
-                        {elecciones[t] === null ? 'Se deja como está' : 'Elegida por ti'}
+                        Elegida por ti
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5" style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#EDE9FE', color: '#5B21B6' }}>

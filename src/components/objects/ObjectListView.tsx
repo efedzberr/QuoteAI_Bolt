@@ -77,7 +77,7 @@ export default function ObjectListView({ def, onToast }: Props) {
 
   const canCreate = !def.readOnly && def.allowCreate !== false && !!def.permObject && perms.can(def.permObject, 'crear');
   const canEdit = !def.readOnly && !!def.permObject && perms.can(def.permObject, 'editar');
-  const canDelete = !def.readOnly && !!def.permObject && perms.can(def.permObject, 'eliminar');
+  const canDelete = !def.readOnly && def.allowDelete !== false && !!def.permObject && perms.can(def.permObject, 'eliminar');
 
   const effCriteria = session?.criteria ?? criteria;
   const effLogic = session?.logic ?? logic;
