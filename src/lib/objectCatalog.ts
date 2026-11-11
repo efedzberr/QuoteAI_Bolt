@@ -398,6 +398,33 @@ export const ADMIN_OBJECTS: AdminObjectDef[] = [
       { key: 'respuesta_texto', label: 'Respuesta completa (JSON)', dataType: 'text', notes: 'Lo que regresó Railway/Salesforce, recortado a 4,000 caracteres' },
     ],
   },
+  {
+    id: 'conversion_um', label: 'Conversiones UM', singular: 'conversión', table: 'conversion_um',
+    pk: 'no_corto_art', pkFields: ['no_corto_art', 'um1', 'um2'], pkIsGenerated: false,
+    readOnly: true, permObject: null, adminOnly: true,
+    select: '*',
+    searchFields: ['um1', 'desc1', 'um2', 'desc2'],
+    systemViewId: 'b0000000-0000-0000-0000-00000000c001',
+    analisis: {
+      fecha: 'updated_at',
+      presets: [
+        { nombre: 'Por unidad 1', modo: 'campo', campoGrupo: 'um1' },
+        { nombre: 'Por unidad 2', modo: 'campo', campoGrupo: 'um2' },
+        { nombre: 'Actualizaciones por día', modo: 'fecha', campoFecha: 'updated_at', granularidad: 'day' },
+      ],
+    },
+    note: 'Conversiones de unidad de medida por artículo; llegan de JDE con la carga externa. Se lee: 1 Unidad 1 = Factor × Unidad 2. Cuando el cliente pide un producto en una unidad distinta a la del catálogo y existe la conversión, la cotización se convierte sola (siempre hacia arriba) y la línea queda por revisar.',
+    fields: [
+      { key: 'no_corto_art', label: 'No. corto', dataType: 'number', align: 'right', notes: 'Número corto del artículo en JDE (se liga al código por Precio grupo)' },
+      { key: 'um1', label: 'Unidad 1', dataType: 'text' },
+      { key: 'desc1', label: 'Descripción 1', dataType: 'text' },
+      { key: 'conv', label: 'Factor', dataType: 'number', align: 'right', notes: '1 Unidad 1 = Factor × Unidad 2' },
+      { key: 'um2', label: 'Unidad 2', dataType: 'text' },
+      { key: 'desc2', label: 'Descripción 2', dataType: 'text' },
+      { key: 'created_at', label: 'Creado', dataType: 'datetime' },
+      { key: 'updated_at', label: 'Actualizado', dataType: 'datetime' },
+    ],
+  },
 ];
 
 export function adminObjectFor(id: string): AdminObjectDef | undefined {

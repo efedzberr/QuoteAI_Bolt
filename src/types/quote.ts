@@ -10,6 +10,9 @@ export interface QuoteLine {
   needs_review: boolean;
   ignored?: boolean;
   comentario?: string | null;
+  cantidad_original?: number | null;
+  conv_factor?: number | null;
+  conv_unidad_cliente?: string | null;
 }
 
 export interface QuoteData {

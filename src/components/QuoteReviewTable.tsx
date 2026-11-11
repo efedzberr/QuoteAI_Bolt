@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react';
 import { createPortal } from 'react-dom';
-import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle, MessageSquare, ChevronDown, ChevronUp, Tag, Ruler } from 'lucide-react';
+import { Pencil, XCircle, RotateCcw, X, Trash2, Check, PackagePlus, PlusCircle, MessageSquare, ChevronDown, ChevronUp, Tag, Ruler, ArrowLeftRight } from 'lucide-react';
 import ConfidenceBadge from './ConfidenceBadge';
 import InlineProductSearch, { type SearchProduct } from './InlineProductSearch';
 import InlineProductLineRow from './InlineProductLineRow';
 import EspecialBadge from './EspecialBadge';
 import type { DisponibilidadArticulo } from '../lib/disponibilidad';
+import { factorDe, cantidadCliente, precioCliente, formatoCantidad, textoEquivalencia } from '../lib/conversionUm';
 
 export interface QuoteLine {
   original_text: string;
@@ -26,6 +27,9 @@ export interface QuoteLine {
   descuento_pct?: number | null;
   inventario_total?: number | null;
   inventario_almacenes?: { almacen_id: string; almacen_nombre: string; cantidad: number }[] | null;
+  cantidad_original?: number | null;
+  conv_factor?: number | null;
+  conv_unidad_cliente?: string | null;
   _lineIndex?: number;
 }
 
@@ -575,6 +579,35 @@ export default function QuoteReviewTable({
                               {line.comentario}
                             </div>
                           )}
+                          {(() => {
+                            const factor = factorDe(line);
+                            if (factor === null || isIgnored) return null;
+                            const uCliente = line.conv_unidad_cliente || '?';
+                            const uCatalogo = line.matched_unit_of_measure || '?';
+                            const cantCli = cantidadCliente(line.quantity, factor);
+                            const precioCli = precioCliente(line.matched_unit_price, factor);
+                            const pidio = line.cantidad_original !== null && line.cantidad_original !== undefined
+                              ? `${formatoCantidad(Number(line.cantidad_original))} ${uCliente}`
+                              : uCliente;
+                            const revisada = !!line.approved;
+                            return (
+                              <span
+                                className="inline-flex flex-wrap items-center gap-1 mt-1 rounded-md px-2 py-1"
+                                style={{
+                                  fontSize: 10, fontWeight: 700, lineHeight: 1.5,
+                                  backgroundColor: revisada ? '#F3F3F3' : '#FEF3C7',
+                                  color: revisada ? '#747474' : '#8C4B02',
+                                }}
+                                title={`${textoEquivalencia(factor, uCliente, uCatalogo)}. Se redondea siempre hacia arriba a ${uCatalogo} completos.`}
+                              >
+                                <ArrowLeftRight className="w-3 h-3" />
+                                {revisada ? 'Conversión revisada' : 'Conversión de unidad'} &middot; cliente pidió {pidio}
+                                &nbsp;&rarr;&nbsp;se cotizan {formatoCantidad(cantCli)} {uCliente}
+                                {precioCli !== null && <> a {formatCurrency(precioCli, currency)} por {uCliente}</>}
+                                &nbsp;({formatoCantidad(Number(line.quantity) || 0)} {uCatalogo})
+                              </span>
+                            );
+                          })()}
                           {(() => {
                             if (!unidadAlertaByLineIndex || line._lineIndex === undefined) return null;
                             const ua = unidadAlertaByLineIndex.get(line._lineIndex);

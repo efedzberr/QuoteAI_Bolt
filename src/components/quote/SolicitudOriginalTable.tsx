@@ -13,7 +13,7 @@ export default function SolicitudOriginalTable({ rows, fallbackLines }: Props) {
         codigo: fl.codigo_original ?? '',
         descripcion: fl.descripcion_original ?? '',
         unidad: fl.unidad_original ?? '',
-        cantidad: fl.cantidad ?? '',
+        cantidad: fl.cantidad_original ?? fl.cantidad ?? '',
       }))
     : rows.map((r, i) => ({
         _n: i + 1,

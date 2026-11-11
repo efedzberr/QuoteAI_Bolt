@@ -462,6 +462,9 @@ function App() {
             descuento_pct: jl.descuento_pct ?? null,
             inventario_total: jl.inventario_total ?? null,
             inventario_almacenes: jl.inventario_almacenes ?? null,
+            cantidad_original: jl.cantidad_original ?? null,
+            conv_factor: jl.conv_factor ?? null,
+            conv_unidad_cliente: jl.conv_unidad_cliente ?? null,
             _lineIndex: jl.line_index,
           }));
           const originalLines = jobLines.map((jl: JobLine) => ({
@@ -570,6 +573,9 @@ function App() {
           descuento_pct: jl.descuento_pct ?? null,
           inventario_total: jl.inventario_total ?? null,
           inventario_almacenes: jl.inventario_almacenes ?? null,
+          cantidad_original: jl.cantidad_original ?? null,
+          conv_factor: jl.conv_factor ?? null,
+          conv_unidad_cliente: jl.conv_unidad_cliente ?? null,
           _lineIndex: jl.line_index,
         }));
         const quoteData = {
@@ -617,6 +623,9 @@ function App() {
           descuento_pct: jl.descuento_pct ?? null,
           inventario_total: jl.inventario_total ?? null,
           inventario_almacenes: jl.inventario_almacenes ?? null,
+          cantidad_original: jl.cantidad_original ?? null,
+          conv_factor: jl.conv_factor ?? null,
+          conv_unidad_cliente: jl.conv_unidad_cliente ?? null,
           _lineIndex: jl.line_index,
         }));
 
@@ -698,6 +707,9 @@ function App() {
           descuento_pct: jl.descuento_pct ?? null,
           inventario_total: jl.inventario_total ?? null,
           inventario_almacenes: jl.inventario_almacenes ?? null,
+          cantidad_original: jl.cantidad_original ?? null,
+          conv_factor: jl.conv_factor ?? null,
+          conv_unidad_cliente: jl.conv_unidad_cliente ?? null,
           _lineIndex: jl.line_index,
         }));
         const quoteData = {
@@ -752,6 +764,9 @@ function App() {
           descuento_pct: jl.descuento_pct ?? null,
           inventario_total: jl.inventario_total ?? null,
           inventario_almacenes: jl.inventario_almacenes ?? null,
+          cantidad_original: jl.cantidad_original ?? null,
+          conv_factor: jl.conv_factor ?? null,
+          conv_unidad_cliente: jl.conv_unidad_cliente ?? null,
           _lineIndex: jl.line_index,
         }));
 

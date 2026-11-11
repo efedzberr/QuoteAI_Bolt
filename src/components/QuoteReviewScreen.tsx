@@ -30,6 +30,7 @@ import CambiarClienteModal from './quote/CambiarClienteModal';
 import InfoSalesforcePanel from './quote/InfoSalesforcePanel';
 import YaEnSalesforceModal from './quote/YaEnSalesforceModal';
 import { registrarEnvioSf, enviosEnCurso, payloadParaLog, type OrigenEnvioSf, type RegistroEnvioSf } from '../lib/sfEnvios';
+import { resolverConversionUm, cantidadCatalogoDesdeCliente, esLineaConvertida } from '../lib/conversionUm';
 import {
   guardarCampoEncabezado,
   motivoBloqueoCliente,
@@ -565,6 +566,51 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     }
   }, [recalculate, ensureEditedMode, jobId, updateProgreso, reservarLineIndex]);
 
+  const recalcularConversionLinea = useCallback(async (
+    arrayIdx: number,
+    lineaAnterior: QuoteLine | undefined,
+    codigoNuevo: string | null,
+    precioNuevo: number | null,
+  ) => {
+    if (!lineaAnterior) return;
+    const lineIndex = lineaAnterior._lineIndex ?? arrayIdx;
+    const meta = versionMetaByLineIndex.get(lineIndex);
+    const cantidadDelCliente = lineaAnterior.cantidad_original ?? meta?.cantidad_original ?? null;
+    const unidadDelCliente = meta?.unidad_original ?? lineaAnterior.conv_unidad_cliente ?? null;
+    const estabaConvertida = esLineaConvertida(lineaAnterior);
+
+    // Líneas agregadas a mano o anteriores a esta función: no hay solicitud del cliente contra la cual convertir
+    const conv = (cantidadDelCliente !== null && unidadDelCliente)
+      ? await resolverConversionUm(codigoNuevo, unidadDelCliente)
+      : null;
+
+    if (!conv && !estabaConvertida) return;
+
+    const nuevaCantidad = conv
+      ? cantidadCatalogoDesdeCliente(cantidadDelCliente, conv.factor)
+      : (cantidadDelCliente !== null ? Math.max(1, Math.round(Number(cantidadDelCliente))) : (lineaAnterior.quantity || 1));
+
+    setLines(prev => {
+      const updatedLines = [...prev];
+      if (!updatedLines[arrayIdx]) return prev;
+      updatedLines[arrayIdx] = {
+        ...updatedLines[arrayIdx],
+        quantity: nuevaCantidad,
+        conv_factor: conv ? conv.factor : null,
+        conv_unidad_cliente: conv ? conv.unidadCliente : null,
+      };
+      setTimeout(() => recalculate(updatedLines), 0);
+      return updatedLines;
+    });
+
+    persistLineAction(lineIndex, {
+      cantidad: nuevaCantidad,
+      conv_factor: conv ? conv.factor : null,
+      conv_unidad_cliente: conv ? conv.unidadCliente : null,
+      total_linea: precioNuevo !== null ? nuevaCantidad * precioNuevo : null,
+    });
+  }, [versionMetaByLineIndex, recalculate, persistLineAction]);
+
   const handleProductSelectInEdit = useCallback((product: SearchProduct) => {
     const idx = editingIndexRef.current ?? editingIndex;
     if (idx === null) return;
@@ -603,10 +649,12 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       inventario_almacenes: null,
     });
 
+    void recalcularConversionLinea(idx, lines[idx], product.CodigoArt, Number(product.Precio));
+
     editingIndexRef.current = null;
     setEditingIndex(null);
     setEditValues(EMPTY_EDIT);
-  }, [editingIndex, recalculate, ensureEditedMode, persistLineAction, getLineIndex, lines]);
+  }, [editingIndex, recalculate, ensureEditedMode, persistLineAction, getLineIndex, lines, recalcularConversionLinea]);
 
   const handleInlineProductSelect = useCallback(async (product: SearchProduct) => {
     ensureEditedMode();
@@ -728,8 +776,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     });
     updateProgreso(updatedLines);
 
+    void recalcularConversionLinea(replaceLineIndex, lines[replaceLineIndex], result.matched_product_code, result.matched_unit_price);
+
     setReplaceLineIndex(null);
-  }, [replaceLineIndex, lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso]);
+  }, [replaceLineIndex, lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex, updateProgreso, recalcularConversionLinea]);
 
   const handleDeleteLine = useCallback((index: number) => {
     setDeleteConfirmIndex(index);
