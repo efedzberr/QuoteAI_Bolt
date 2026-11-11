@@ -31,6 +31,7 @@ import InfoSalesforcePanel from './quote/InfoSalesforcePanel';
 import YaEnSalesforceModal from './quote/YaEnSalesforceModal';
 import { registrarEnvioSf, enviosEnCurso, payloadParaLog, type OrigenEnvioSf, type RegistroEnvioSf } from '../lib/sfEnvios';
 import { resolverConversionUm, cantidadCatalogoDesdeCliente, esLineaConvertida } from '../lib/conversionUm';
+import { aprenderUnidadesIa } from '../lib/unidadesMedida';
 import {
   guardarCampoEncabezado,
   motivoBloqueoCliente,
@@ -576,7 +577,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     const lineIndex = lineaAnterior._lineIndex ?? arrayIdx;
     const meta = versionMetaByLineIndex.get(lineIndex);
     const cantidadDelCliente = lineaAnterior.cantidad_original ?? meta?.cantidad_original ?? null;
-    const unidadDelCliente = meta?.unidad_original ?? lineaAnterior.conv_unidad_cliente ?? null;
+    // Primero el código reconocido antes del matching (KG, MT, ROLLO…); si no hay, el texto del cliente
+    const unidadDelCliente = meta?.unidad_cliente_codigo ?? meta?.unidad_original ?? lineaAnterior.conv_unidad_cliente ?? null;
     const estabaConvertida = esLineaConvertida(lineaAnterior);
 
     // Líneas agregadas a mano o anteriores a esta función: no hay solicitud del cliente contra la cual convertir
@@ -1492,6 +1494,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
     setAutoEnvioFallo(false);
     await updateJobStatus(jobReferencia, 'completada' as any);
     setJobStatus('completada');
+    // Las unidades que interpretó la IA y no se cambiaron pasan al diccionario (no bloquea ni muestra nada)
+    void aprenderUnidadesIa(jobReferencia);
     const freshJob = await getJobByReferencia(jobReferencia);
     const yaEnviada = !!freshJob?.sf_opportunity_id;
     const pendienteSync = !!freshJob?.sf_sync_pendiente;

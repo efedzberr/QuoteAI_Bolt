@@ -127,6 +127,7 @@ export interface JobLineVersionMeta {
   cantidad_original: number | null;
   conv_factor: number | null;
   conv_unidad_cliente: string | null;
+  unidad_cliente_codigo: string | null;
   motivo_eliminacion_id: number | null;
   comentario_eliminacion: string | null;
   eliminada_at: string | null;
@@ -135,7 +136,7 @@ export interface JobLineVersionMeta {
 export async function fetchJobLineVersionMeta(jobId: string): Promise<JobLineVersionMeta[]> {
   const { data, error } = await supabase
     .from('job_lines')
-    .select('line_index, codigo_original, descripcion_original, unidad_original, cantidad, ia_producto_codigo, ia_producto_descripcion, ia_unidad_medida, ia_precio_unitario, ia_confianza, ia_metodo, ia_capturado_at, unidad_medida, unidad_no_encontrada, cantidad_original, conv_factor, conv_unidad_cliente, motivo_eliminacion_id, comentario_eliminacion, eliminada_at')
+    .select('line_index, codigo_original, descripcion_original, unidad_original, cantidad, ia_producto_codigo, ia_producto_descripcion, ia_unidad_medida, ia_precio_unitario, ia_confianza, ia_metodo, ia_capturado_at, unidad_medida, unidad_no_encontrada, cantidad_original, conv_factor, conv_unidad_cliente, unidad_cliente_codigo, motivo_eliminacion_id, comentario_eliminacion, eliminada_at')
     .eq('job_id', jobId)
     .order('line_index', { ascending: true });
   if (error) {

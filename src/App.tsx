@@ -20,6 +20,7 @@ import MfaVerify from './components/MfaVerify';
 import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus, reopenJobForEdit, saveExtraccionOriginal, getJobByReferencia } from './lib/jobs';
 import { createJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 import type { Job } from './lib/jobs';
+import type { UnidadesResueltas } from './lib/unidadesMedida';
 
 const PROCESSING_RULES = [
   'If the row does not contain a clear product request with a quantity, it is likely a header, title, or section label. In that case return: { "original_text": "<the row text>", "quantity": null, "unit_of_measure": null, "product_code_hint": null, "description": null, "keywords": [], "attributes": { "material": null, "size": null, "color": null, "other": null }, "notes": "SKIP - this row is a header or label, not a product" }',
@@ -333,7 +334,7 @@ function App() {
     setCurrentScreen('review');
   }, []);
 
-  const handleConfirmSend = useCallback((editedRows: Record<string, any>[]) => {
+  const handleConfirmSend = useCallback((editedRows: Record<string, any>[], unidadesResueltas?: UnidadesResueltas) => {
     if (!uploadData) return;
 
     if (jobReferencia) {
@@ -354,6 +355,7 @@ function App() {
         projectName: projectName || '',
         noCliente: uploadData.salesforceAccount?.noCliente || null,
         rows: sanitizedRows,
+        unidadesResueltas: unidadesResueltas || {},
       }),
     }).catch((err) => {
       console.error('[match/start] Error:', err);

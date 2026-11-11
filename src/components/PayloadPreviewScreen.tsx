@@ -3,6 +3,8 @@ import { ArrowLeft, Send, ChevronDown, ChevronRight, Copy, Check, Table, Braces,
 import Header from './Header';
 import { updateJobPayloadDebounced } from '../lib/jobs';
 import { upsertJobLine, deleteJobLine as deleteJobLineApi } from '../lib/jobLines';
+import UnidadesPorResolverPanel from './UnidadesPorResolverPanel';
+import { aprenderUnidad, ESTADO_UNIDADES_VACIO, type EstadoUnidades, type UnidadesResueltas } from '../lib/unidadesMedida';
 
 interface PayloadPreviewScreenProps {
   customerName: string;
@@ -12,7 +14,7 @@ interface PayloadPreviewScreenProps {
   notice?: string;
   jobReferencia?: string;
   jobId?: string;
-  onConfirmSend: (editedRows: Record<string, any>[]) => void;
+  onConfirmSend: (editedRows: Record<string, any>[], unidadesResueltas?: UnidadesResueltas) => void;
   onBack: () => void;
 }
 
@@ -38,6 +40,7 @@ export default function PayloadPreviewScreen({
   const [editingCell, setEditingCell] = useState<{ row: number; col: string } | null>(null);
   const [editValue, setEditValue] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null);
+  const [unidades, setUnidades] = useState<EstadoUnidades>(ESTADO_UNIDADES_VACIO);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   const editableColumns = ['Codigo', 'Descripcion', 'Cant', 'Unid'];
@@ -181,9 +184,16 @@ export default function PayloadPreviewScreen({
     } catch { /* clipboard not available */ }
   };
 
+  const unidadesBloquean = unidades.cargando || unidades.pendientes > 0;
+
   const handleConfirm = () => {
+    if (unidadesBloquean) return;
+    // Lo que eligió el ejecutivo se aprende para todos los clientes (la RPC no pisa equivalencias existentes)
+    for (const [texto, r] of Object.entries(unidades.resueltas)) {
+      if (r.origen === 'ejecutivo' && r.codigo) void aprenderUnidad(texto, r.codigo);
+    }
     const cleanRows = editableRows.map(({ _lineIndex, ...rest }) => rest);
-    onConfirmSend(cleanRows);
+    onConfirmSend(cleanRows, unidades.resueltas);
   };
 
   return (
@@ -258,6 +268,8 @@ export default function PayloadPreviewScreen({
             </div>
           )}
         </div>
+
+        <UnidadesPorResolverPanel rows={editableRows} onChange={setUnidades} />
 
         {/* View toggle + copy */}
         <div className="flex items-center justify-between mb-4">
@@ -387,14 +399,25 @@ export default function PayloadPreviewScreen({
           >
             Volver
           </button>
-          <button
-            onClick={handleConfirm}
-            className="flex items-center gap-2 px-6 py-3 text-white bg-[#0176D3] hover:bg-[#014486] rounded-lg transition-all"
-            style={{ fontSize: 14, fontWeight: 700 }}
-          >
-            <Send className="w-4 h-4" />
-            Confirmar y enviar a procesamiento
-          </button>
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            {unidades.pendientes > 0 && (
+              <span className="text-[#BA0517]" style={{ fontSize: 12, fontWeight: 600 }}>
+                {unidades.pendientes === 1 ? 'Falta elegir 1 unidad de medida' : `Falta elegir ${unidades.pendientes} unidades de medida`}
+              </span>
+            )}
+            {unidades.cargando && unidades.pendientes === 0 && (
+              <span className="text-[#747474]" style={{ fontSize: 12, fontWeight: 600 }}>Reconociendo unidades…</span>
+            )}
+            <button
+              onClick={handleConfirm}
+              disabled={unidadesBloquean}
+              className={`flex items-center gap-2 px-6 py-3 rounded-lg transition-all ${unidadesBloquean ? 'bg-[#D1D5DB] text-[#747474] cursor-not-allowed' : 'text-white bg-[#0176D3] hover:bg-[#014486]'}`}
+              style={{ fontSize: 14, fontWeight: 700 }}
+            >
+              <Send className="w-4 h-4" />
+              Confirmar y enviar a procesamiento
+            </button>
+          </div>
         </div>
       </div>
 
