@@ -30,7 +30,7 @@ import CambiarClienteModal from './quote/CambiarClienteModal';
 import InfoSalesforcePanel from './quote/InfoSalesforcePanel';
 import YaEnSalesforceModal from './quote/YaEnSalesforceModal';
 import { registrarEnvioSf, enviosEnCurso, payloadParaLog, type OrigenEnvioSf, type RegistroEnvioSf } from '../lib/sfEnvios';
-import { resolverConversionUm, cantidadCatalogoDesdeCliente, esLineaConvertida } from '../lib/conversionUm';
+import { resolverConversionUm, cantidadCatalogoDesdeCliente, esLineaConvertida, unidadesConvertibles, type OpcionUnidadLinea } from '../lib/conversionUm';
 import { aprenderUnidadesIa } from '../lib/unidadesMedida';
 import {
   guardarCampoEncabezado,
@@ -110,6 +110,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
 
   const [lines, setLines] = useState<QuoteLine[]>(normalizeLines(activeQuoteData?.lines) || []);
   const [subtotal, setSubtotal] = useState<number>(activeQuoteData?.subtotal || 0);
+  const [unidadesPorCodigo, setUnidadesPorCodigo] = useState<Record<string, OpcionUnidadLinea[]>>({});
 
   useEffect(() => {
     const nextLines = normalizeLines(activeQuoteData?.lines) || [];
@@ -358,6 +359,23 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       }
     });
   }, [readOnly, grupoListo, jobGrupo, codigosDisponibilidadKey]);
+
+  // Unidades en las que se puede cotizar cada producto (catálogo + conversiones de JD Edwards)
+  const codigosUnidadesKey = useMemo(
+    () => Array.from(new Set(lines.filter((l) => !l.ignored && l.matched_product_code).map((l) => String(l.matched_product_code)))).sort().join('|'),
+    [lines]
+  );
+  useEffect(() => {
+    if (readOnly || !codigosUnidadesKey) return;
+    const faltantes = codigosUnidadesKey.split('|').filter((c) => !(c in unidadesPorCodigo));
+    if (faltantes.length === 0) return;
+    let vigente = true;
+    unidadesConvertibles(faltantes).then((r) => {
+      if (vigente) setUnidadesPorCodigo((prev) => ({ ...prev, ...r }));
+    });
+    return () => { vigente = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [codigosUnidadesKey, readOnly]);
 
   const esEspecial = useCallback(
     (l: QuoteLine) =>
@@ -809,6 +827,22 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       total_linea: newQty * price || null,
     });
   }, [lines, recalculate, ensureEditedMode, persistLineAction, getLineIndex]);
+
+  /** Cambia la unidad en que se presenta una línea. La cantidad de catálogo NO cambia: solo su equivalencia. */
+  const handleUnidadChange = useCallback((index: number, unidad: string) => {
+    const linea = lines[index];
+    if (!linea) return;
+    const opciones = unidadesPorCodigo[String(linea.matched_product_code || '')] || [];
+    const opcion = opciones.find((o) => o.unidad === unidad);
+    if (!opcion) return;
+    ensureEditedMode();
+    const conv_factor = opcion.esCatalogo ? null : opcion.factor;
+    const conv_unidad_cliente = opcion.esCatalogo ? null : opcion.unidad;
+    const updatedLines = [...lines];
+    updatedLines[index] = { ...updatedLines[index], conv_factor, conv_unidad_cliente };
+    setLines(updatedLines);
+    persistLineAction(getLineIndex(index), { conv_factor, conv_unidad_cliente });
+  }, [lines, unidadesPorCodigo, ensureEditedMode, persistLineAction, getLineIndex]);
 
   const handleEditStart = useCallback(
     (index: number) => {
@@ -2196,6 +2230,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               onRestore={handleRestore}
               onDeleteLine={handleDeleteLine}
               onQuantityChange={handleQuantityChange}
+              unidadesPorCodigo={readOnly ? undefined : unidadesPorCodigo}
+              onUnidadChange={readOnly ? undefined : handleUnidadChange}
               onProductSelect={handleProductSelectInEdit}
               onApprove={handleApprove}
               onReplaceLine={readOnly ? undefined : (index) => setReplaceLineIndex(index)}

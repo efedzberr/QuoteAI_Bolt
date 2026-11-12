@@ -6,7 +6,7 @@ import InlineProductSearch, { type SearchProduct } from './InlineProductSearch';
 import InlineProductLineRow from './InlineProductLineRow';
 import EspecialBadge from './EspecialBadge';
 import type { DisponibilidadArticulo } from '../lib/disponibilidad';
-import { factorDe, cantidadCliente, precioCliente, formatoCantidad, textoEquivalencia } from '../lib/conversionUm';
+import { factorDe, cantidadCliente, precioCliente, cantidadCatalogoDesdeCliente, formatoCantidad, textoEquivalencia, type OpcionUnidadLinea } from '../lib/conversionUm';
 
 export interface QuoteLine {
   original_text: string;
@@ -57,6 +57,8 @@ interface QuoteReviewTableProps {
   onRestore: (index: number) => void;
   onDeleteLine?: (index: number) => void;
   onQuantityChange?: (index: number, qty: number) => void;
+  unidadesPorCodigo?: Record<string, OpcionUnidadLinea[]>;
+  onUnidadChange?: (index: number, unidad: string) => void;
   onProductSelect?: (product: SearchProduct) => void;
   onApprove?: (index: number) => void;
   onReplaceLine?: (index: number) => void;
@@ -210,6 +212,8 @@ export default function QuoteReviewTable({
   onRestore,
   onDeleteLine,
   onQuantityChange,
+  unidadesPorCodigo,
+  onUnidadChange,
   onProductSelect,
   onApprove,
   onReplaceLine,
@@ -234,6 +238,15 @@ export default function QuoteReviewTable({
   const marcadasVisibles = posiciones.filter((i) => seleccion?.has(i)).length;
   const todasMarcadas = posiciones.length > 0 && marcadasVisibles === posiciones.length;
   const [commentingIndex, setCommentingIndex] = useState<number | null>(null);
+  // Texto de la cantidad en unidad del cliente mientras se edita una línea convertida
+  const [cantClienteTxt, setCantClienteTxt] = useState('');
+  useEffect(() => {
+    if (editingIndex === null || editingIndex === undefined) { setCantClienteTxt(''); return; }
+    const l = lines[editingIndex];
+    const f = l ? factorDe(l) : null;
+    setCantClienteTxt(l && f !== null ? String(cantidadCliente(l.quantity, f)) : '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingIndex]);
   const [commentAnchorEl, setCommentAnchorEl] = useState<HTMLElement | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
 
@@ -361,6 +374,43 @@ export default function QuoteReviewTable({
                               onCancel={onEditCancel}
                             />
                           </div>
+                          {factorDe(line) !== null && (() => {
+                            const f = factorDe(line) as number;
+                            const uCli = line.conv_unidad_cliente || '';
+                            const uCat = line.matched_unit_of_measure || '';
+                            return (
+                              <div className="w-[170px]">
+                                <label
+                                  className="block uppercase text-[#747474] mb-1.5"
+                                  style={{ fontSize: 10, fontWeight: 700, letterSpacing: '0.06em' }}
+                                >
+                                  Cantidad ({uCli})
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="any"
+                                  value={cantClienteTxt}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    setCantClienteTxt(raw);
+                                    const n = parseFloat(raw);
+                                    if (isFinite(n) && n > 0) onEditChange('quantity', String(cantidadCatalogoDesdeCliente(n, f)));
+                                  }}
+                                  onBlur={() => {
+                                    const cat = parseFloat(editValues.quantity);
+                                    setCantClienteTxt(String(cantidadCliente(isFinite(cat) && cat > 0 ? cat : 1, f)));
+                                  }}
+                                  className="w-full px-3 py-2 border border-[#E5E5E5] rounded-md focus:outline-none focus:border-[#0176D3] focus:ring-[3px] focus:ring-[#EAF5FE] transition-all"
+                                  style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}
+                                />
+                                <p className="mt-1 text-[#747474]" style={{ fontSize: 10, lineHeight: 1.4 }}>
+                                  = {editValues.quantity || '1'} {uCat} (siempre hacia arriba)
+                                </p>
+                              </div>
+                            );
+                          })()}
+                          {factorDe(line) === null && (
                           <div className="w-[90px]">
                             <label
                               className="block uppercase text-[#747474] mb-1.5"
@@ -398,6 +448,7 @@ export default function QuoteReviewTable({
                               style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}
                             />
                           </div>
+                          )}
                           <div className="flex gap-2 pb-0.5">
                             <button
                               onClick={onEditSave}
@@ -584,8 +635,6 @@ export default function QuoteReviewTable({
                             if (factor === null || isIgnored) return null;
                             const uCliente = line.conv_unidad_cliente || '?';
                             const uCatalogo = line.matched_unit_of_measure || '?';
-                            const cantCli = cantidadCliente(line.quantity, factor);
-                            const precioCli = precioCliente(line.matched_unit_price, factor);
                             const pidio = line.cantidad_original !== null && line.cantidad_original !== undefined
                               ? `${formatoCantidad(Number(line.cantidad_original))} ${uCliente}`
                               : uCliente;
@@ -601,10 +650,11 @@ export default function QuoteReviewTable({
                                 title={`${textoEquivalencia(factor, uCliente, uCatalogo)}. Se redondea siempre hacia arriba a ${uCatalogo} completos.`}
                               >
                                 <ArrowLeftRight className="w-3 h-3" />
-                                {revisada ? 'Conversión revisada' : 'Conversión de unidad'} &middot; cliente pidió {pidio}
-                                &nbsp;&rarr;&nbsp;se cotizan {formatoCantidad(cantCli)} {uCliente}
-                                {precioCli !== null && <> a {formatCurrency(precioCli, currency)} por {uCliente}</>}
-                                &nbsp;({formatoCantidad(Number(line.quantity) || 0)} {uCatalogo})
+                                {revisada ? 'Conversión revisada' : 'Conversión de unidad'}
+                                {line.cantidad_original !== null && line.cantidad_original !== undefined && <> &middot; cliente pidió {pidio}</>}
+                                &nbsp;&middot; equivale a {formatoCantidad(Number(line.quantity) || 0)} {uCatalogo}
+                                {line.matched_unit_price !== null && line.matched_unit_price !== undefined && <> a {formatCurrency(line.matched_unit_price, currency)} por {uCatalogo}</>}
+                                &nbsp;&middot; {textoEquivalencia(factor, uCliente, uCatalogo)}
                               </span>
                             );
                           })()}
@@ -666,7 +716,7 @@ export default function QuoteReviewTable({
                       style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}
                     >
                       {!isIgnored && (
-                        isManualMode && line.original_text === 'Agregado manualmente' && onQuantityChange ? (
+                        isManualMode && line.original_text === 'Agregado manualmente' && onQuantityChange && factorDe(line) === null ? (
                           <input
                             type="number"
                             min="1"
@@ -692,7 +742,9 @@ export default function QuoteReviewTable({
                             style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums' }}
                           />
                         ) : (
-                          typeof line.quantity === 'number' ? String(line.quantity) : line.quantity
+                          factorDe(line) !== null
+                            ? formatoCantidad(cantidadCliente(line.quantity, factorDe(line) as number))
+                            : (typeof line.quantity === 'number' ? String(line.quantity) : line.quantity)
                         )
                       )}
                     </td>
@@ -700,13 +752,36 @@ export default function QuoteReviewTable({
                       className="py-3.5 px-4 text-center text-[#444444]"
                       style={{ fontSize: 12 }}
                     >
-                      {!isIgnored && line.matched_unit_of_measure}
+                      {!isIgnored && (() => {
+                        const factor = factorDe(line);
+                        const actual = factor !== null && line.conv_unidad_cliente ? line.conv_unidad_cliente : (line.matched_unit_of_measure || '');
+                        const opciones = unidadesPorCodigo?.[String(line.matched_product_code || '')] || [];
+                        if (!onUnidadChange || opciones.length < 2) return actual;
+                        return (
+                          <select
+                            value={actual}
+                            onChange={(e) => onUnidadChange(index, e.target.value)}
+                            className="border border-[#E5E5E5] rounded-md py-1 pl-1.5 pr-1 bg-white text-[#181818] focus:outline-none focus:border-[#0176D3] focus:ring-[3px] focus:ring-[#EAF5FE]"
+                            style={{ fontSize: 12, fontWeight: 600 }}
+                            aria-label="Unidad de la línea"
+                            title="Cambiar la unidad: la cantidad y el precio se convierten solos"
+                          >
+                            {!opciones.some((o) => o.unidad === actual) && <option value={actual}>{actual}</option>}
+                            {opciones.map((o) => (
+                              <option key={o.unidad} value={o.unidad} title={o.descripcion}>{o.unidad}</option>
+                            ))}
+                          </select>
+                        );
+                      })()}
                     </td>
                     <td
                       className="py-3.5 px-4 text-right text-[#444444]"
                       style={{ fontVariantNumeric: 'tabular-nums' }}
                     >
-                      {!isIgnored && formatCurrency(line.matched_unit_price, currency)}
+                      {!isIgnored && formatCurrency(
+                        factorDe(line) !== null ? precioCliente(line.matched_unit_price, factorDe(line) as number) : line.matched_unit_price,
+                        currency
+                      )}
                     </td>
                     <td
                       className="py-3.5 px-4 text-right text-[#181818]"

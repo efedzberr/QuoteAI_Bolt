@@ -76,3 +76,41 @@ export async function resolverConversionUm(codigoArt: string | null | undefined,
     return null;
   }
 }
+
+/** Unidad en la que se puede cotizar un artículo. factor = unidades de catálogo por 1 de esta unidad. */
+export interface OpcionUnidadLinea {
+  unidad: string;
+  descripcion: string;
+  factor: number;
+  esCatalogo: boolean;
+}
+
+/** Unidades disponibles por código de artículo (catálogo + conversiones de JD Edwards). NUNCA lanza. */
+export async function unidadesConvertibles(codigos: string[]): Promise<Record<string, OpcionUnidadLinea[]>> {
+  const out: Record<string, OpcionUnidadLinea[]> = {};
+  const unicos = Array.from(new Set(codigos.map((c) => (c || '').trim()).filter(Boolean)));
+  for (let i = 0; i < unicos.length; i += 150) {
+    const lote = unicos.slice(i, i + 150);
+    try {
+      const { data, error } = await supabase.rpc('conversion_um_unidades_lote', { p_codigos: lote });
+      if (error) { console.error('[conversionUm] conversion_um_unidades_lote:', error); continue; }
+      for (const c of lote) out[c] = out[c] || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const fila of (data as any[]) || []) {
+        const factor = num(fila?.factor);
+        const codigo = String(fila?.codigo_art || '').trim();
+        if (!codigo || factor === null || factor <= 0) continue;
+        (out[codigo] = out[codigo] || []).push({
+          unidad: String(fila.unidad || '').toUpperCase(),
+          descripcion: String(fila.descripcion || fila.unidad || ''),
+          factor,
+          esCatalogo: fila.es_catalogo === true,
+        });
+      }
+    } catch (e) {
+      console.error('[conversionUm] conversion_um_unidades_lote:', e);
+    }
+  }
+  for (const c of Object.keys(out)) out[c].sort((a, b) => Number(b.esCatalogo) - Number(a.esCatalogo) || a.unidad.localeCompare(b.unidad));
+  return out;
+}
