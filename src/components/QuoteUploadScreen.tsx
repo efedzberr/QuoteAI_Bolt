@@ -31,7 +31,7 @@ interface ParsedData {
 interface QuoteUploadScreenProps {
   onFileReady: (data: ParsedData) => void;
   onExtractionComplete?: (rows: any[], customerName: string, projectName: string) => void;
-  onCreateManualQuote: (customerName: string, projectName: string) => void;
+  onCreateManualQuote: (customerName: string, projectName: string, salesforceAccount?: SalesforceAccount) => void;
   onOpenAdmin?: () => void;
   onBackToHome?: () => void;
   initialRows?: any[];
@@ -357,7 +357,7 @@ export default function QuoteUploadScreen({ onFileReady, onExtractionComplete, o
       return;
     }
     setManualError(null);
-    onCreateManualQuote(customerName.trim(), projectName.trim());
+    onCreateManualQuote(customerName.trim(), projectName.trim(), selectedAccount || undefined);
   };
 
   const handleSubmit = async () => {

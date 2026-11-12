@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, type ComponentProps } from 'react';
 import HomeDashboard from './components/HomeDashboard';
 import QuoteUploadScreen from './components/QuoteUploadScreen';
 import PayloadPreviewScreen from './components/PayloadPreviewScreen';
@@ -21,6 +21,7 @@ import { createJob, updateJobPayload, updateJobPayloadDebounced, updateJobStatus
 import { createJobLines, fetchJobLines, type JobLine } from './lib/jobLines';
 import type { Job } from './lib/jobs';
 import type { UnidadesResueltas } from './lib/unidadesMedida';
+import { cambiarClienteCotizacion, type CuentaSalesforce } from './lib/encabezadoCotizacion';
 
 const PROCESSING_RULES = [
   'If the row does not contain a clear product request with a quantity, it is likely a header, title, or section label. In that case return: { "original_text": "<the row text>", "quantity": null, "unit_of_measure": null, "product_code_hint": null, "description": null, "keywords": [], "attributes": { "material": null, "size": null, "color": null, "other": null }, "notes": "SKIP - this row is a header or label, not a product" }',
@@ -181,6 +182,8 @@ function App() {
   const [approvedData, setApprovedData] = useState<{ lines: any[]; quoteData: any } | null>(null);
   const [editedQuoteData, setEditedQuoteData] = useState<any>(null);
   const [manualQuoteData, setManualQuoteData] = useState<any>(null);
+  const [manualAccount, setManualAccount] = useState<CuentaSalesforce | null>(null);
+  const creandoManualRef = useRef(false);
   const [reexecJob, setReexecJob] = useState<any>(null);
   const [resumeExtraction, setResumeExtraction] = useState<{ rows: any[]; customerName: string } | null>(null);
   const [jobReferencia, setJobReferencia] = useState<string | null>(null);
@@ -315,23 +318,51 @@ function App() {
     }
   }, [jobReferencia]);
 
-  const handleCreateManualQuote = useCallback((customerName: string, projectNameArg: string) => {
-    const upperCustomer = customerName.toLocaleUpperCase('es-MX');
-    setProjectName(projectNameArg);
-    const emptyQuoteData = {
-      status: 'manual',
-      quoteReference: `QAI-MANUAL-${Date.now()}`,
-      customerName: upperCustomer,
-      projectName: projectNameArg,
-      generatedDate: new Date().toLocaleDateString('es-MX'),
-      totalLines: 0,
-      flaggedLines: 0,
-      subtotal: 0,
-      currency: 'MXN',
-      lines: [],
-    };
-    setManualQuoteData(emptyQuoteData);
-    setCurrentScreen('review');
+  const handleCreateManualQuote = useCallback(async (customerName: string, projectNameArg: string, cuentaElegida?: object) => {
+    if (creandoManualRef.current) return; // evita dos cotizaciones por doble clic
+    creandoManualRef.current = true;
+    try {
+      const cuenta = (cuentaElegida as CuentaSalesforce | undefined) ?? null;
+      const upperCustomer = customerName.toLocaleUpperCase('es-MX');
+      const ref = `QAI-MANUAL-${Date.now()}`;
+
+      // 1) La cotización manual se guarda como cualquier otra: sin job no se puede validar ni guardar líneas
+      const job = await createJob(ref, upperCustomer, projectNameArg || undefined);
+      if (!job) {
+        window.alert('No se pudo crear la cotización manual. Revisa tu conexión e inténtalo de nuevo.');
+        return;
+      }
+
+      // 2) Cliente, número de cliente, grupo de precios y cuenta de Salesforce (misma función que "Cambiar cliente")
+      const { error: errorCliente } = await cambiarClienteCotizacion(ref, upperCustomer, cuenta, true);
+      if (errorCliente) {
+        console.error('[manual] no se pudo asignar el cliente a la cotización manual:', errorCliente);
+        if (cuenta) await guardarCuentaCotizacion(ref, cuenta);
+      }
+
+      // 3) La cotización manual entra directo a la etapa de validación
+      await updateJobStatus(ref, 'validacion');
+
+      setProjectName(projectNameArg);
+      setJobReferencia(ref);
+      setJobId(job.id);
+      setManualAccount(cuenta);
+      setManualQuoteData({
+        status: 'manual',
+        quoteReference: ref,
+        customerName: upperCustomer,
+        projectName: projectNameArg,
+        generatedDate: new Date().toLocaleDateString('es-MX'),
+        totalLines: 0,
+        flaggedLines: 0,
+        subtotal: 0,
+        currency: 'MXN',
+        lines: [],
+      });
+      setCurrentScreen('review');
+    } finally {
+      creandoManualRef.current = false;
+    }
   }, []);
 
   const handleConfirmSend = useCallback((editedRows: Record<string, any>[], unidadesResueltas?: UnidadesResueltas) => {
@@ -1074,6 +1105,10 @@ function App() {
           rawResponse=""
           onApproved={handleApproved}
           onBack={handleBackToUpload}
+          jobId={jobId || undefined}
+          jobReferencia={jobReferencia || undefined}
+          userEmail={auth.user?.email || ''}
+          salesforceAccount={(manualAccount || undefined) as ComponentProps<typeof QuoteReviewScreen>['salesforceAccount']}
         />
       </AppLayout>
     );
