@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { escapeIlikeTerm } from '../lib/productDatabase';
 import { fetchDisponibilidadArticulos, type MapaDisponibilidad } from '../lib/disponibilidad';
 import EspecialBadge from './EspecialBadge';
+import { preciosEfectivos } from '../lib/preciosGrupo';
 
 export interface SearchProduct {
   CodigoArt: string;
@@ -287,7 +288,11 @@ export default function InlineProductSearch({
       const { data, error } = await query;
       if (myId !== reqIdRef.current) return;
       if (error) console.error('Search error:', error);
-      const items = (data as SearchProduct[]) || [];
+      const crudos = (data as SearchProduct[]) || [];
+      // Precio del grupo de la cotización (no el de lista de products)
+      const precios = await preciosEfectivos(crudos.map((p) => p.CodigoArt));
+      if (myId !== reqIdRef.current) return;
+      const items = crudos.map((p) => (precios[p.CodigoArt] !== undefined ? { ...p, Precio: precios[p.CodigoArt] } : p));
       setResults(items);
       setResultCount(items.length);
       setShowDropdown(true);

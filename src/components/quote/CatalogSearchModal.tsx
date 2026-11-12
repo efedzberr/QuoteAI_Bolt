@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Search, X, Loader2 } from 'lucide-react';
 import type { CatalogProduct } from '../../types/quote';
 import { searchProducts } from '../../lib/productDatabase';
+import { preciosEfectivos } from '../../lib/preciosGrupo';
 
 async function searchCatalog(query: string): Promise<CatalogProduct[]> {
   const products = await searchProducts(query, 'ALL', 'ALL');
+  // Precio del grupo de la cotización (no el de lista de products)
+  const precios = await preciosEfectivos(products.map((p) => p.ProductCode));
   return products.map((p) => ({
     codigoArt: p.ProductCode,
     descCortaArt: p.ProductName,
@@ -12,7 +15,7 @@ async function searchCatalog(query: string): Promise<CatalogProduct[]> {
     ump: p.UnitOfMeasure,
     deptoArt: p.Department,
     categoriaArt: p.Category,
-    precio: p.UnitPrice,
+    precio: precios[p.ProductCode] ?? p.UnitPrice,
   }));
 }
 

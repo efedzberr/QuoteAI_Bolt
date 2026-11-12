@@ -5,6 +5,7 @@ import { escapeIlikeTerm } from '../../lib/productDatabase';
 import CreateProductModal, { type NewProductData, type PrefillData } from './CreateProductModal';
 import { fetchDisponibilidadArticulos, type MapaDisponibilidad } from '../../lib/disponibilidad';
 import EspecialBadge from '../EspecialBadge';
+import { preciosEfectivos } from '../../lib/preciosGrupo';
 
 export interface AddLineResult {
   matched_product_code: string;
@@ -93,12 +94,15 @@ export default function AddLineModal({ open, onClose, onLineAdded, title = 'Agre
       if (myId !== reqIdRef.current) return;
 
       if (catData) {
+        // Precio del grupo de la cotización (no el de lista de products)
+        const precios = await preciosEfectivos(catData.map((r) => r.CodigoArt));
+        if (myId !== reqIdRef.current) return;
         catData.forEach((r) => {
           allResults.push({
             codigo: r.CodigoArt,
             descripcion: r.DescCortaArt,
             marca: r.Marca || '',
-            precio: Number(r.Precio) || 0,
+            precio: precios[r.CodigoArt] ?? (Number(r.Precio) || 0),
             unidad: r.UMP || 'PZ',
             source: 'catalogo',
           });

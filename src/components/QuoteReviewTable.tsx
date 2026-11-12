@@ -608,7 +608,7 @@ export default function QuoteReviewTable({
                                   style={{ fontSize: 10, fontWeight: 700, backgroundColor: '#FEF1DC', color: '#B86C00' }}
                                   title={`IA sugiri\u00f3: ${ia.codigo ?? 'Sin coincidencia'}`}
                                 >
-                                  Cambi\u00f3 vs IA
+                                  Cambió vs IA
                                 </span>
                               );
                             }

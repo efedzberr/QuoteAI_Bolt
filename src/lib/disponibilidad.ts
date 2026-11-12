@@ -22,6 +22,11 @@ export function fijarGrupoCotizacion(grupo: string | null): void {
   grupoCotizacion = grupo && grupo.trim() ? grupo.trim() : null;
 }
 
+/** Grupo de precios de la cotización abierta (o null si no tiene). */
+export function obtenerGrupoCotizacion(): string | null {
+  return grupoCotizacion;
+}
+
 /**
  * Disponibilidad de una lista de códigos de artículo en un grupo de precios. Devuelve un mapa
  * codigo -> disponibilidad solo con los artículos que tienen precio en ese grupo.
