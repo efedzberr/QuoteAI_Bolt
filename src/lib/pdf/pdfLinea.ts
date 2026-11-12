@@ -4,12 +4,14 @@ import type { QuoteLine } from '../../types/quote';
 import type { AlineacionPdf, ColumnaPdf, PdfConfig } from './pdfConfig';
 import { combinarDatos, esTextoCombinado, type CatalogoPdf, type ProductoCatalogo } from './pdfDatos';
 import { factorDe, cantidadCliente, formatoCantidad } from '../conversionUm';
+import { prefijoMonedaPdf } from '../monedas';
 
 /** Partida tal como llega al PDF: la de la cotización más lo que guarda job_lines. */
 export type LineaPdf = QuoteLine & {
   precio_lista?: number | null;
   inventario_total?: number | null;
   tc_aplicado?: number | null;
+  moneda_aplicada?: string;
 };
 
 export type GrupoLinea = 'Partida' | 'Solicitud del cliente' | 'Precios y descuentos' | 'Catálogo' | 'Disponibilidad';
@@ -77,6 +79,13 @@ export function camposDeColumna(col: ColumnaPdf): string[] {
   return col.campo ? [col.campo] : [];
 }
 
+const CAMPOS_DE_DINERO = new Set(['precio', 'importe', 'precio_lista', 'precio_iva', 'importe_iva']);
+
+/** true si la columna imprime un importe en dinero (precio, importe y sus variantes). */
+export function esColumnaDeDinero(col: ColumnaPdf): boolean {
+  return camposDeColumna(col).some((c) => CAMPOS_DE_DINERO.has(c));
+}
+
 const CAMPOS_DEL_CATALOGO = new Set(CAMPOS_LINEA.filter((c) => c.catalogo).map((c) => c.clave));
 
 /** true si alguna columna visible usa datos del catálogo: al generar el PDF hay que consultar los artículos. */
@@ -139,20 +148,22 @@ export function valorLinea(campo: string, ctx: ContextoLinea): string {
   // Línea convertida: cantidad, unidad y precios se imprimen en la unidad del cliente; el importe no cambia
   const factor = factorDe(linea);
   const f = factor ?? 1;
+  // Propuesta en otra moneda: cada importe lleva su prefijo (US$). En pesos queda vacío y el PDF no cambia.
+  const pm = prefijoMonedaPdf(linea.moneda_aplicada);
   switch (campo) {
     case 'partida': return String(ctx.indice + 1);
     case 'clave': return limpio(linea.matched_product_code) || 'Especial';
     case 'descripcion': return limpio(linea.matched_product_name);
     case 'um': return (factor !== null && limpio(linea.conv_unidad_cliente)) || limpio(linea.matched_unit_of_measure) || 'PZ';
     case 'cantidad': return factor !== null ? formatoCantidad(cantidadCliente(cantidad, factor)) : limpio(linea.quantity);
-    case 'precio': return moneda((precio ?? 0) * f);
-    case 'importe': return moneda(cantidad * (precio ?? 0));
+    case 'precio': return pm + moneda((precio ?? 0) * f);
+    case 'importe': return pm + moneda(cantidad * (precio ?? 0));
     case 'comentario': return limpio(linea.comentario);
     case 'codigo_cliente': return limpio(linea.original_code);
     case 'descripcion_cliente': return limpio(linea.original_text);
     case 'precio_lista': {
       const lista = precioLista(ctx);
-      return lista === null ? '' : moneda(lista * f);
+      return lista === null ? '' : pm + moneda(lista * f);
     }
     case 'descuento_pct': {
       // Se calcula con el precio que se cotiza: sigue siendo correcto si el ejecutivo cambió el precio
@@ -161,8 +172,8 @@ export function valorLinea(campo: string, ctx: ContextoLinea): string {
       const pct = Math.max(0, (1 - precio / lista) * 100);
       return `${Math.round(pct * 100) / 100}%`;
     }
-    case 'precio_iva': return moneda((precio ?? 0) * f * (1 + ctx.tasaIva));
-    case 'importe_iva': return moneda(cantidad * (precio ?? 0) * (1 + ctx.tasaIva));
+    case 'precio_iva': return pm + moneda((precio ?? 0) * f * (1 + ctx.tasaIva));
+    case 'importe_iva': return pm + moneda(cantidad * (precio ?? 0) * (1 + ctx.tasaIva));
     case 'marca': return limpio(productoDe(ctx)?.marca);
     case 'descripcion_larga': return limpio(productoDe(ctx)?.descripcionLarga);
     case 'garantia': return limpio(productoDe(ctx)?.garantia);

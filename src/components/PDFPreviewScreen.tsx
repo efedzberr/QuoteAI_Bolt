@@ -7,6 +7,7 @@ import { normalizeLines } from '../lib/normalizeLines';
 import type { QuoteData } from '../types/quote';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { useCatalogoPdf, useDatosPdf } from '../lib/pdf/pdfCotizacion';
+import { subtotalEnMoneda, formatoImporte } from '../lib/monedas';
 
 interface PDFPreviewScreenProps {
   quoteData: QuoteData;
@@ -41,12 +42,15 @@ export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreen
   const datos = { ...datosPdf, catalogo };
   const datosListos = datosPdf.listo === true;
   const cargandoDatos = cargandoPlantilla || cargandoCatalogo || !datosListos;
-  const subtotal = activeLines.reduce(
-    (sum, line) => sum + (line.quantity || 0) * (line.matched_unit_price || 0),
-    0
-  );
-  const iva = subtotal * 0.16;
-  const total = subtotal + iva;
+  // Misma moneda y mismo cálculo que el PDF: precio convertido y redondeado por partida
+  const monedaBarra = datosPdf.moneda && datosPdf.moneda !== 'MXN' && datosPdf.tipoCambio ? String(datosPdf.moneda) : 'MXN';
+  const tcBarra = monedaBarra === 'MXN' ? null : Number(datosPdf.tipoCambio);
+  const subtotal = tcBarra
+    ? subtotalEnMoneda(activeLines, tcBarra)
+    : activeLines.reduce((sum, line) => sum + (line.quantity || 0) * (line.matched_unit_price || 0), 0);
+  const tasaIvaBarra = pdfConfig?.totales?.tasaIva ?? 0.16;
+  const iva = Math.round(subtotal * tasaIvaBarra * 100) / 100;
+  const total = Math.round((subtotal + iva) * 100) / 100;
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
@@ -75,10 +79,10 @@ export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreen
                 <span className="font-medium text-gray-700">{activeLines.length}</span> partidas
               </span>
               <span>
-                Subtotal: <span className="font-medium text-gray-700">${subtotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                Subtotal: <span className="font-medium text-gray-700">{formatoImporte(subtotal, monedaBarra)}</span>
               </span>
               <span>
-                Total c/IVA: <span className="font-bold text-gray-900">${total.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                Total c/IVA: <span className="font-bold text-gray-900">{formatoImporte(total, monedaBarra)}</span>
               </span>
             </div>
 
@@ -140,7 +144,7 @@ export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreen
 
         <div className="mt-4 flex items-center gap-6 text-xs text-gray-400">
           <span>Archivo: {fileName}</span>
-          <span>IVA: ${iva.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+          <span>IVA: {formatoImporte(iva, monedaBarra)}</span>
         </div>
       </div>
     </div>

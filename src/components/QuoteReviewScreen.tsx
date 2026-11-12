@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw, Warehouse, Pencil, Lock, Plus, Minus, Cloud, Loader2 } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Bug, PlusCircle, CloudOff, Check, Send, ShieldCheck, SquarePen as PenSquare, RefreshCw, Warehouse, Pencil, Lock, Plus, Minus, Cloud, Loader2, Coins } from 'lucide-react';
 import { pdf } from '@react-pdf/renderer';
 import Header from './Header';
 import QuoteReviewTable from './QuoteReviewTable';
@@ -34,7 +34,7 @@ import { resolverConversionUm, cantidadCatalogoDesdeCliente, esLineaConvertida, 
 import { aprenderUnidadesIa } from '../lib/unidadesMedida';
 import SelectorMoneda from './quote/SelectorMoneda';
 import AvisoTipoCambioModal from './quote/AvisoTipoCambioModal';
-import { cargarMonedasActivas, fijarMonedaCotizacion, lineasEnMoneda, subtotalEnMoneda, variacionTc, MONEDA_PROPUESTA_BASE, type Moneda, type MonedaPropuesta } from '../lib/monedas';
+import { cargarMonedasActivas, fijarMonedaCotizacion, lineasEnMoneda, subtotalEnMoneda, variacionTc, formatoImporte, nombreFuenteTc, fechaTc, MONEDA_PROPUESTA_BASE, type Moneda, type MonedaPropuesta } from '../lib/monedas';
 import {
   guardarCampoEncabezado,
   motivoBloqueoCliente,
@@ -92,12 +92,7 @@ interface QuoteReviewScreenProps {
 type ViewMode = 'original' | 'edited';
 
 function formatCurrency(value: number, currency: string): string {
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency || 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+  return formatoImporte(value, currency || 'MXN');
 }
 
 export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, onEditQuote, onEncabezadoGuardado, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
@@ -2251,6 +2246,26 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       </div>
 
       <div className="flex-1 pt-5 bg-[#F3F3F3]">
+        {tcVista !== null && (
+          <div className="max-w-[1480px] mx-auto px-7 pb-4">
+            <div
+              className="flex items-center gap-3 px-4 py-3 rounded-lg border"
+              style={{ backgroundColor: '#ECFDF5', borderColor: '#6EE7B7' }}
+              role="status"
+            >
+              <Coins className="w-5 h-5 flex-shrink-0" style={{ color: '#047857' }} />
+              <p className="text-[#065F46]" style={{ fontSize: 13, fontWeight: 600, lineHeight: 1.5 }}>
+                Propuesta en {monedaVista}: todos los importes de esta pantalla y del PDF están en {monedaVista}.
+                <span style={{ fontWeight: 500 }}>
+                  {' '}Tipo de cambio: 1 {monedaVista} = {tcVista.toFixed(4)} MXN
+                  {monedaJob.fuente ? ` · ${nombreFuenteTc(monedaJob.fuente)}` : ''}
+                  {monedaJob.fecha ? ` · ${fechaTc(monedaJob.fecha)}` : ''}
+                  {' '}· A Salesforce se envía en pesos.
+                </span>
+              </p>
+            </div>
+          </div>
+        )}
         {lines.length > 0 && (
           <div className="max-w-[1480px] mx-auto px-7 pb-4">
             <ChipsFiltroLineas activo={filtro} conteos={conteosFiltro} onCambiar={cambiarFiltro} />

@@ -200,3 +200,24 @@ export async function actualizarTiposDeCambioAhora(): Promise<{ updated: number;
   const { ok, json } = await llamarExchangeRates({ action: 'auto' });
   return ok ? { updated: Number(json?.updated) || 0, failed: Number(json?.failed) || 0 } : null;
 }
+
+/** Prefijo con que se escribe un importe: MX$ para pesos, US$ para dólares; otras monedas, su código. */
+export function prefijoMoneda(codigo: string | null | undefined): string {
+  const c = (codigo || 'MXN').toUpperCase();
+  if (c === 'MXN') return 'MX$';
+  if (c === 'USD') return 'US$';
+  return `${c} `;
+}
+
+/** Importe con el prefijo de su moneda y 2 decimales: "US$1,721.38", "MX$426.50", "EUR 98.10". */
+export function formatoImporte(valor: number | null | undefined, codigo: string | null | undefined): string {
+  const n = Number(valor);
+  const numero = (Number.isFinite(n) ? Math.abs(n) : 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${Number.isFinite(n) && n < 0 ? '-' : ''}${prefijoMoneda(codigo)}${numero}`;
+}
+
+/** Prefijo para el PDF: vacío en pesos (el PDF en pesos no cambia), "US$" en dólares, código en las demás. */
+export function prefijoMonedaPdf(codigo: string | null | undefined): string {
+  const c = (codigo || 'MXN').toUpperCase();
+  return c === 'MXN' ? '' : prefijoMoneda(c);
+}

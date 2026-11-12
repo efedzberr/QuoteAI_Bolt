@@ -6,8 +6,8 @@ import { resolverPdfConfig, type AlineacionPdf, type PdfConfig, type CeldaPdf, t
 import { DATOS_PDF_VACIOS, valorCampo, valorCelda, type DatosPdf } from '../../lib/pdf/pdfDatos';
 import { importeConLetra } from '../../lib/pdf/numeroALetras';
 import { codigo128 } from '../../lib/pdf/codigoBarras';
-import { columnaDelComentario, valorColumna, type ContextoLinea } from '../../lib/pdf/pdfLinea';
-import { lineasEnMoneda, nombreFuenteTc, fechaTc, formatoTc } from '../../lib/monedas';
+import { columnaDelComentario, esColumnaDeDinero, valorColumna, type ContextoLinea, type LineaPdf } from '../../lib/pdf/pdfLinea';
+import { lineasEnMoneda, nombreFuenteTc, fechaTc, prefijoMonedaPdf } from '../../lib/monedas';
 
 interface QuoteDocumentProps {
   quoteData: QuoteData;
@@ -235,12 +235,14 @@ function estiloColumna(col: ColumnaPdf, ultima: boolean) {
   };
 }
 
-function TableHeaderRow({ columnas }: { columnas: ColumnaPdf[] }) {
+function TableHeaderRow({ columnas, moneda }: { columnas: ColumnaPdf[]; moneda?: string }) {
   return (
     <View style={styles.tableHeader} fixed>
       {columnas.map((col, i) => (
         <View key={i} style={estiloColumna(col, i === columnas.length - 1)}>
-          <Text style={styles.colHeaderText}>{col.etiqueta}</Text>
+          <Text style={styles.colHeaderText}>
+            {col.etiqueta}{moneda && moneda !== 'MXN' && esColumnaDeDinero(col) ? ` ${moneda}` : ''}
+          </Text>
         </View>
       ))}
     </View>
@@ -269,12 +271,14 @@ function TableRow({
   const rowStyle = index % 2 === 1 && !sinFondo ? styles.tableRowAlt : styles.tableRow;
   const comentario = line.comentario;
   const contexto: ContextoLinea = { linea: line, indice: index, tasaIva, catalogo: datos.catalogo };
+  // Con el prefijo US$ las celdas de dinero bajan un punto para no partirse; en pesos no cambia nada
+  const conPrefijo = !!(line as LineaPdf).moneda_aplicada;
 
   return (
     <View style={rowStyle} wrap={false}>
       {columnas.map((col, i) => (
         <View key={i} style={estiloColumna(col, i === columnas.length - 1)}>
-          <Text>{valorColumna(col, contexto)}</Text>
+          <Text style={conPrefijo && esColumnaDeDinero(col) ? { fontSize: 6 } : undefined}>{valorColumna(col, contexto)}</Text>
           {i === columnaComentario && comentario ? (
             <Text style={{ fontSize: 6, color: '#6B7280', marginTop: 2 }}>{comentario}</Text>
           ) : null}
@@ -315,6 +319,10 @@ function TotalsSection({
   config: PdfConfig;
 }) {
   const t = config.totales;
+  const monedaTotales = datos.moneda && datos.moneda !== 'MXN' && datos.tipoCambio ? String(datos.moneda) : 'MXN';
+  // En pesos se conserva el "$" de siempre; en otra moneda, su prefijo (US$)
+  const simbolo = prefijoMonedaPdf(monedaTotales) || '$';
+  const sufijo = monedaTotales !== 'MXN' ? ` ${monedaTotales}` : '';
   const descuentos = 0;
   const total = subtotal - descuentos;
   const iva = total * t.tasaIva;
@@ -342,7 +350,7 @@ function TotalsSection({
         ) : null}
         {datos.moneda && datos.moneda !== 'MXN' && datos.tipoCambio ? (
           <Text style={extra.totalArticulos}>
-            Moneda: {datos.moneda} · Tipo de cambio {formatoTc(datos.tipoCambio)} MXN
+            Moneda: {datos.moneda} · Tipo de cambio: 1 {datos.moneda} = {Number(datos.tipoCambio).toFixed(4)} MXN
             {datos.tcFuente ? ` (${nombreFuenteTc(datos.tcFuente)}${datos.tcFecha ? `, ${fechaTc(datos.tcFecha)}` : ''})` : ''}
           </Text>
         ) : null}
@@ -351,12 +359,12 @@ function TotalsSection({
         {filas.map((f, i) => (
           <View key={i} style={styles.totalsRow}>
             <Text style={styles.totalsLabel}>{f.etiqueta}</Text>
-            <Text style={styles.totalsValue}>${formatNumber(f.valor)}</Text>
+            <Text style={styles.totalsValue}>{simbolo}{formatNumber(f.valor)}</Text>
           </View>
         ))}
         <View style={styles.totalsRowLast}>
-          <Text style={styles.totalsLabelBold}>{t.etiquetaTotalFinal}</Text>
-          <Text style={styles.totalsValueBold}>${formatNumber(totalFinal)}</Text>
+          <Text style={styles.totalsLabelBold}>{t.etiquetaTotalFinal}{sufijo}</Text>
+          <Text style={styles.totalsValueBold}>{simbolo}{formatNumber(totalFinal)}</Text>
         </View>
       </View>
     </View>
@@ -381,7 +389,9 @@ export default function QuoteDocument({ quoteData, pdfLogoUrl, pdfLogoWidthPx, p
   const dat = datos ?? DATOS_PDF_VACIOS;
   const tcPdf = dat.moneda && dat.moneda !== 'MXN' && dat.tipoCambio ? dat.tipoCambio : null;
   const quoteDataMoneda: QuoteData = tcPdf ? { ...quoteData, currency: dat.moneda as string } : quoteData;
-  const normalizedLinesList = lineasEnMoneda(normalizeLines(quoteData.lines), tcPdf);
+  const monedaPdf = tcPdf ? String(dat.moneda) : 'MXN';
+  const normalizedLinesList = lineasEnMoneda(normalizeLines(quoteData.lines), tcPdf)
+    .map((l) => (tcPdf ? ({ ...l, moneda_aplicada: monedaPdf } as typeof l) : l));
   const activeLines = normalizedLinesList.filter((l) => !l.ignored);
   const subtotal = activeLines.reduce((sum, line) => {
     return sum + (line.quantity || 0) * (line.matched_unit_price || 0);
@@ -414,7 +424,7 @@ export default function QuoteDocument({ quoteData, pdfLogoUrl, pdfLogoWidthPx, p
 
         {columnas.length > 0 && (
           <View style={styles.tableContainer}>
-            <TableHeaderRow columnas={columnas} />
+            <TableHeaderRow columnas={columnas} moneda={monedaPdf} />
             {activeLines.map((line, index) => (
               <TableRow
                 key={index}

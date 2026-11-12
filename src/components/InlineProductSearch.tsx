@@ -522,7 +522,7 @@ export default function InlineProductSearch({
                     <span>&middot;</span>
                     <span>{product.Marca}</span>
                     <span>&middot;</span>
-                    <span>${Number(product.Precio).toFixed(2)}</span>
+                    <span>MX${Number(product.Precio).toFixed(2)}</span>
                     <span>{product.UMP}</span>
                   </div>
                 </button>

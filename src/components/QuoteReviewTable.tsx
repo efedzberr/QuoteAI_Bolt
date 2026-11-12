@@ -7,6 +7,7 @@ import InlineProductLineRow from './InlineProductLineRow';
 import EspecialBadge from './EspecialBadge';
 import type { DisponibilidadArticulo } from '../lib/disponibilidad';
 import { factorDe, cantidadCliente, precioCliente, cantidadCatalogoDesdeCliente, formatoCantidad, textoEquivalencia, type OpcionUnidadLinea } from '../lib/conversionUm';
+import { formatoImporte } from '../lib/monedas';
 
 export interface QuoteLine {
   original_text: string;
@@ -102,12 +103,7 @@ function CasillaEncabezado({ marcada, indeterminada, onChange }: { marcada: bool
 
 function formatCurrency(value: number | null, currency: string): string {
   if (value === null || value === undefined) return '\u2014';
-  return new Intl.NumberFormat('en-US', {
-    style: 'currency',
-    currency: currency || 'USD',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(value);
+  return formatoImporte(value, currency || 'MXN');
 }
 
 function formatCantidad(value: number | string): string {
@@ -292,8 +288,8 @@ export default function QuoteReviewTable({
                 <th className="py-3 px-4 w-28 text-center">Confianza</th>
                 <th className="py-3 px-4 w-16 text-center">Cant.</th>
                 <th className="py-3 px-4 w-20 text-center">U.M.</th>
-                <th className="py-3 px-4 w-28 text-right">Precio unit.</th>
-                <th className="py-3 px-4 w-28 text-right">Total linea</th>
+                <th className="py-3 px-4 w-32 text-right">Precio unit.{currency && currency !== 'MXN' ? ` (${currency})` : ''}</th>
+                <th className="py-3 px-4 w-32 text-right">Total linea{currency && currency !== 'MXN' ? ` (${currency})` : ''}</th>
                 {verInventario && <th className="py-3 px-4 w-28 text-right">Disponib.</th>}
                 {verInventario && <th className="py-3 px-4 w-36">Almacen</th>}
                 {!readOnly && <th className="py-3 px-4 w-36 text-center">Acciones</th>}
