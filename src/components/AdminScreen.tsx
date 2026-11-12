@@ -4,6 +4,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import GeneralSettingsTab from './admin/GeneralSettingsTab';
 import PdfConfigTab from './admin/PdfConfigTab';
 import SfOportunidadTab from './admin/SfOportunidadTab';
+import MonedasTab from './admin/MonedasTab';
 import UsersTab from './admin/UsersTab';
 import PerfilesTab from './admin/PerfilesTab';
 import RolesTab from './admin/RolesTab';
@@ -14,7 +15,7 @@ interface AdminScreenProps {
   onBack: () => void;
 }
 
-type AdminItemId = 'users' | 'profiles' | 'roles' | 'general' | 'pdf' | 'sf_oportunidad' | `obj_${string}`;
+type AdminItemId = 'users' | 'profiles' | 'roles' | 'general' | 'pdf' | 'sf_oportunidad' | 'monedas' | `obj_${string}`;
 
 interface MenuItem { id: AdminItemId; label: string; adminOnly?: boolean; soon?: boolean; objectId?: string }
 interface MenuSection { id: string; label: string; items: MenuItem[] }
@@ -35,6 +36,7 @@ const MENU: MenuSection[] = [
       { id: 'general', label: 'Configuración general' },
       { id: 'pdf', label: 'PDF de cotización', adminOnly: true },
       { id: 'sf_oportunidad', label: 'Salesforce · Oportunidad', adminOnly: true },
+      { id: 'monedas', label: 'Monedas y tipo de cambio', adminOnly: true },
     ],
   },
 ];
@@ -178,6 +180,7 @@ export default function AdminScreen(_props: AdminScreenProps) {
               {active === 'general' && <GeneralSettingsTab />}
               {active === 'pdf' && isAdmin && <PdfConfigTab onToast={handleToast} />}
               {active === 'sf_oportunidad' && isAdmin && <SfOportunidadTab onToast={handleToast} />}
+              {active === 'monedas' && isAdmin && <MonedasTab onToast={handleToast} />}
               {active === 'users' && isAdmin && <UsersTab onToast={handleToast} />}
               {active === 'profiles' && isAdmin && <PerfilesTab onToast={handleToast} />}
               {active === 'roles' && isAdmin && <RolesTab onToast={handleToast} />}

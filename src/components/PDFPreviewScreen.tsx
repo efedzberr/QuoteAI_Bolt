@@ -39,7 +39,8 @@ export default function PDFPreviewScreen({ quoteData, onBack }: PDFPreviewScreen
   // El PDF espera a tener la plantilla y esos datos para no salir incompleto.
   const { catalogo, cargando: cargandoCatalogo } = useCatalogoPdf(activeLines, pdfConfig);
   const datos = { ...datosPdf, catalogo };
-  const cargandoDatos = cargandoPlantilla || cargandoCatalogo;
+  const datosListos = datosPdf.listo === true;
+  const cargandoDatos = cargandoPlantilla || cargandoCatalogo || !datosListos;
   const subtotal = activeLines.reduce(
     (sum, line) => sum + (line.quantity || 0) * (line.matched_unit_price || 0),
     0

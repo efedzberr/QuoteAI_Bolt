@@ -32,6 +32,9 @@ import YaEnSalesforceModal from './quote/YaEnSalesforceModal';
 import { registrarEnvioSf, enviosEnCurso, payloadParaLog, type OrigenEnvioSf, type RegistroEnvioSf } from '../lib/sfEnvios';
 import { resolverConversionUm, cantidadCatalogoDesdeCliente, esLineaConvertida, unidadesConvertibles, type OpcionUnidadLinea } from '../lib/conversionUm';
 import { aprenderUnidadesIa } from '../lib/unidadesMedida';
+import SelectorMoneda from './quote/SelectorMoneda';
+import AvisoTipoCambioModal from './quote/AvisoTipoCambioModal';
+import { cargarMonedasActivas, fijarMonedaCotizacion, lineasEnMoneda, subtotalEnMoneda, variacionTc, MONEDA_PROPUESTA_BASE, type Moneda, type MonedaPropuesta } from '../lib/monedas';
 import {
   guardarCampoEncabezado,
   motivoBloqueoCliente,
@@ -98,7 +101,7 @@ function formatCurrency(value: number, currency: string): string {
 }
 
 export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawResponse, onApproved, onBack, onBackToPreview, onGoToPdf, onEditQuote, onEncabezadoGuardado, jobId, jobReferencia, readOnly, userEmail, salesforceAccount }: QuoteReviewScreenProps) {
-  const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, sfInstanceUrl } = useAppSettings();
+  const { confidenceThreshold, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, sfInstanceUrl, tcUmbralAvisoPct } = useAppSettings();
   const datosPdf = useDatosPdf(jobReferencia);
   const { verInventario, verInfoSalesforce } = usePermissions();
   const [infoSfAbierto, setInfoSfAbierto] = useState(false);
@@ -154,6 +157,11 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
   // undefined = no se ha cambiado: el envío a Salesforce usa la cuenta que llegó por props, igual que antes.
   const [cuentaJob, setCuentaJob] = useState<CuentaSalesforce | null | undefined>(undefined);
   const [pdfGeneradoAt, setPdfGeneradoAt] = useState<string | null>(null);
+  const [monedaJob, setMonedaJob] = useState<MonedaPropuesta>(MONEDA_PROPUESTA_BASE);
+  const [monedasActivas, setMonedasActivas] = useState<Moneda[]>([]);
+  const [guardandoMoneda, setGuardandoMoneda] = useState(false);
+  const [avisoTc, setAvisoTc] = useState<{ anterior: number; vigente: number; fuente: string | null; fecha: string | null } | null>(null);
+  const avisoTcDescartado = useRef<string>('');
   const [showCambiarCliente, setShowCambiarCliente] = useState(false);
   const [avisoEncabezado, setAvisoEncabezado] = useState<string | null>(null);
   // Lo que se muestra y lo que se imprime: lo guardado en la cotización; mientras se lee, lo que llegó por props
@@ -228,6 +236,12 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         });
         setClienteJob(job.cliente || null);
         setPdfGeneradoAt(job.pdf_generado_at ?? null);
+        setMonedaJob({
+          moneda: job.moneda || 'MXN',
+          tipoCambio: job.tipo_cambio === null || job.tipo_cambio === undefined ? null : Number(job.tipo_cambio),
+          fuente: job.tc_fuente ?? null,
+          fecha: job.tc_fecha ?? null,
+        });
       }
       fijarGrupoCotizacion(job?.grupo ?? null);
       setGrupoListo(true);
@@ -236,6 +250,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
 
   // Al salir de la cotización, los buscadores dejan de usar su grupo
   useEffect(() => () => fijarGrupoCotizacion(null), []);
+
+  useEffect(() => { cargarMonedasActivas().then(setMonedasActivas); }, []);
 
   const persistLineAction = useCallback((lineIndex: number, fields: Record<string, any>) => {
     if (!jobId) return;
@@ -454,6 +470,33 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         : l;
     });
   }, [inventarioVisible, linesWithReview, inventarioVivo]);
+
+  // Moneda de la propuesta: solo cambia lo que se MUESTRA. `lines` y `subtotal` siguen en pesos.
+  const monedaVista = monedaJob.moneda !== 'MXN' && monedaJob.tipoCambio && monedaJob.tipoCambio > 0 ? monedaJob.moneda : 'MXN';
+  const tcVista = monedaVista === 'MXN' ? null : Number(monedaJob.tipoCambio);
+  const lineasTablaMoneda = useMemo(() => lineasEnMoneda(lineasTabla, tcVista), [lineasTabla, tcVista]);
+  const subtotalVista = useMemo(() => (tcVista ? subtotalEnMoneda(lines, tcVista) : subtotal), [lines, subtotal, tcVista]);
+
+  const handleCambiarMoneda = useCallback(async (codigo: string) => {
+    if (!jobReferencia) return;
+    setGuardandoMoneda(true);
+    const r = await fijarMonedaCotizacion(jobReferencia, codigo);
+    setGuardandoMoneda(false);
+    if (r.error || !r.data) { window.alert(r.error || 'No se pudo cambiar la moneda.'); return; }
+    setMonedaJob(r.data);
+    setAvisoTc(null);
+  }, [jobReferencia]);
+
+  // Aviso: el tipo de cambio vigente ya no es el de la propuesta (solo si la propuesta se puede editar)
+  useEffect(() => {
+    if (readOnly || monedaJob.moneda === 'MXN' || !monedaJob.tipoCambio) { setAvisoTc(null); return; }
+    const vigente = monedasActivas.find((m) => m.codigo === monedaJob.moneda);
+    if (!vigente || !vigente.tipo_cambio) return;
+    const variacion = Math.abs(variacionTc(monedaJob.tipoCambio, vigente.tipo_cambio));
+    const clave = `${monedaJob.moneda}:${monedaJob.tipoCambio}:${vigente.tipo_cambio}`;
+    if (variacion < tcUmbralAvisoPct || variacion === 0 || avisoTcDescartado.current === clave) return;
+    setAvisoTc({ anterior: monedaJob.tipoCambio, vigente: vigente.tipo_cambio, fuente: vigente.tc_fuente, fecha: vigente.tc_fecha });
+  }, [readOnly, monedaJob, monedasActivas, tcUmbralAvisoPct]);
 
   const flaggedCount = linesWithReview.filter(
     (l: any) => l.needs_review && !l.ignored && !l.approved
@@ -1345,6 +1388,8 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
         pdfBase64: null,
         opportunityId: opportunityIdPrevio || null,
         quoteId: quoteIdPrevio || null,
+        monedaPropuesta: monedaVista,
+        tipoCambioPropuesta: tcVista,
       };
       bodyEnviado = body;
 
@@ -1517,7 +1562,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
       setSfSendingPhase(null);
       enviosEnCurso.delete(ref);
     }
-  }, [sfSending, lines, userEmail, jobReferencia, jobId, jobNoCliente, subtotal, activeQuoteData, cuentaVigente, clienteJob, clienteMostrado, proyectoMostrado, sfSentData, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, datosPdf]);
+  }, [sfSending, lines, userEmail, jobReferencia, jobId, jobNoCliente, subtotal, activeQuoteData, cuentaVigente, clienteJob, clienteMostrado, proyectoMostrado, sfSentData, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, pdfConfig, datosPdf, monedaVista, tcVista]);
 
   const handleSendToSalesforce = useCallback(() => { void ejecutarEnvioSalesforce('manual'); }, [ejecutarEnvioSalesforce]);
 
@@ -1939,6 +1984,15 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             )}
           </div>
 
+          {jobId && jobReferencia && (
+            <SelectorMoneda
+              valor={monedaJob}
+              monedas={monedasActivas}
+              editable={puedeEditarEncabezado}
+              guardando={guardandoMoneda}
+              onChange={handleCambiarMoneda}
+            />
+          )}
           {jobId && encabezado && (
             <>
               <CampoEncabezadoEditable
@@ -2082,7 +2136,14 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
               </span>
             </div>
           )}
-          <SummaryField label="Subtotal" value={formatCurrency(subtotal, activeQuoteData.currency)} />
+          <div className="flex flex-col">
+            <SummaryField label="Subtotal" value={formatCurrency(subtotalVista, monedaVista)} />
+            {tcVista !== null && (
+              <span className="mt-0.5 text-[#747474]" style={{ fontSize: 11, lineHeight: 1.4 }}>
+                {formatCurrency(subtotal, 'MXN')} · TC {tcVista.toFixed(4)}
+              </span>
+            )}
+          </div>
           {verInfoSalesforce && jobReferencia && (
             <button
               type="button"
@@ -2142,7 +2203,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           <div className="flex items-baseline gap-2" style={{ fontVariantNumeric: 'tabular-nums' }}>
             <span className="text-[#747474]" style={{ fontSize: 12, fontWeight: 600 }}>Subtotal</span>
             <span className="text-[#181818]" style={{ fontSize: 15, fontWeight: 700 }}>
-              {formatCurrency(subtotal, activeQuoteData.currency)}
+              {formatCurrency(subtotalVista, monedaVista)}
             </span>
             {flaggedCount > 0 && (
               <span className="text-[#B86C00]" style={{ fontSize: 12, fontWeight: 600 }}>
@@ -2207,12 +2268,12 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
             </div>
           ) : lines.length > 0 || showInlineAddRow ? (
             <QuoteReviewTable
-              lines={lineasTabla}
+              lines={lineasTablaMoneda}
               visibles={posicionesPagina}
               seleccion={readOnly ? undefined : seleccion}
               onToggleSeleccion={readOnly ? undefined : toggleSeleccion}
               onToggleSeleccionVisibles={readOnly ? undefined : toggleSeleccionVisibles}
-              currency={activeQuoteData.currency}
+              currency={monedaVista}
               editingIndex={readOnly ? null : editingIndex}
               editValues={editValues}
               isManualMode={isManualMode}
@@ -2297,7 +2358,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           <div className="w-72 border-t-2 border-[#E5E5E5] pt-4">
             <div className="flex justify-between items-center">
               <span className="text-[#747474]" style={{ fontSize: 13, fontWeight: 500 }}>
-                Subtotal ({activeQuoteData.currency})
+                Subtotal ({monedaVista})
               </span>
               <span
                 className="text-[#181818]"
@@ -2308,7 +2369,7 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                {formatCurrency(subtotal, activeQuoteData.currency)}
+                {formatCurrency(subtotalVista, monedaVista)}
               </span>
             </div>
           </div>
@@ -2339,6 +2400,24 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           {renderAccionesCotizacion('arriba')}
         </div>
       </div>
+
+      {avisoTc && !readOnly && (
+        <AvisoTipoCambioModal
+          moneda={monedaJob.moneda}
+          anterior={avisoTc.anterior}
+          vigente={avisoTc.vigente}
+          fuente={avisoTc.fuente}
+          fecha={avisoTc.fecha}
+          subtotalActual={formatCurrency(subtotalEnMoneda(lines, avisoTc.anterior), monedaJob.moneda)}
+          subtotalNuevo={formatCurrency(subtotalEnMoneda(lines, avisoTc.vigente), monedaJob.moneda)}
+          guardando={guardandoMoneda}
+          onActualizar={() => handleCambiarMoneda(monedaJob.moneda)}
+          onConservar={() => {
+            avisoTcDescartado.current = `${monedaJob.moneda}:${avisoTc.anterior}:${avisoTc.vigente}`;
+            setAvisoTc(null);
+          }}
+        />
+      )}
 
       {showYaEnSf && sfSentData && (
         <YaEnSalesforceModal

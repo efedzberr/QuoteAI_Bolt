@@ -36,6 +36,11 @@ export interface Job {
   orden_compra?: string | null;
   /** Primera vez que se generó el PDF. Con valor, el cliente ya no se puede cambiar. */
   pdf_generado_at?: string | null;
+  moneda?: string | null;
+  tipo_cambio?: number | null;
+  tc_fuente?: string | null;
+  tc_fecha?: string | null;
+  tc_fijado_at?: string | null;
 }
 
 export async function reassignJobOwner(jobId: string, ownerId: string): Promise<boolean> {

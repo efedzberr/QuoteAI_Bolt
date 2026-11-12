@@ -7,6 +7,7 @@ import { DATOS_PDF_VACIOS, valorCampo, valorCelda, type DatosPdf } from '../../l
 import { importeConLetra } from '../../lib/pdf/numeroALetras';
 import { codigo128 } from '../../lib/pdf/codigoBarras';
 import { columnaDelComentario, valorColumna, type ContextoLinea } from '../../lib/pdf/pdfLinea';
+import { lineasEnMoneda, nombreFuenteTc, fechaTc, formatoTc } from '../../lib/monedas';
 
 interface QuoteDocumentProps {
   quoteData: QuoteData;
@@ -339,6 +340,12 @@ function TotalsSection({
         {t.importeConLetra ? (
           <Text style={extra.importeLetra}>({importeConLetra(totalFinal, quoteData.currency)})</Text>
         ) : null}
+        {datos.moneda && datos.moneda !== 'MXN' && datos.tipoCambio ? (
+          <Text style={extra.totalArticulos}>
+            Moneda: {datos.moneda} · Tipo de cambio {formatoTc(datos.tipoCambio)} MXN
+            {datos.tcFuente ? ` (${nombreFuenteTc(datos.tcFuente)}${datos.tcFecha ? `, ${fechaTc(datos.tcFecha)}` : ''})` : ''}
+          </Text>
+        ) : null}
       </View>
       <View style={styles.totalsBox}>
         {filas.map((f, i) => (
@@ -372,7 +379,9 @@ function Pie({ config }: { config: PdfConfig }) {
 export default function QuoteDocument({ quoteData, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, config, datos }: QuoteDocumentProps) {
   const cfg = config ?? resolverPdfConfig(null);
   const dat = datos ?? DATOS_PDF_VACIOS;
-  const normalizedLinesList = normalizeLines(quoteData.lines);
+  const tcPdf = dat.moneda && dat.moneda !== 'MXN' && dat.tipoCambio ? dat.tipoCambio : null;
+  const quoteDataMoneda: QuoteData = tcPdf ? { ...quoteData, currency: dat.moneda as string } : quoteData;
+  const normalizedLinesList = lineasEnMoneda(normalizeLines(quoteData.lines), tcPdf);
   const activeLines = normalizedLinesList.filter((l) => !l.ignored);
   const subtotal = activeLines.reduce((sum, line) => {
     return sum + (line.quantity || 0) * (line.matched_unit_price || 0);
@@ -421,7 +430,7 @@ export default function QuoteDocument({ quoteData, pdfLogoUrl, pdfLogoWidthPx, p
           </View>
         )}
 
-        <TotalsSection subtotal={subtotal} articulos={articulos} quoteData={quoteData} datos={dat} config={cfg} />
+        <TotalsSection subtotal={subtotal} articulos={articulos} quoteData={quoteDataMoneda} datos={dat} config={cfg} />
 
         <Pie config={cfg} />
       </Page>

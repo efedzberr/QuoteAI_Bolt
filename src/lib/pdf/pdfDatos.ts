@@ -34,6 +34,11 @@ export interface DatosPdf {
   ordenCompra: string;
   /** Solo se consulta cuando alguna columna de la tabla usa datos del catálogo. */
   catalogo?: CatalogoPdf;
+  moneda?: string;
+  tipoCambio?: number | null;
+  tcFuente?: string;
+  tcFecha?: string;
+  listo?: boolean;
 }
 
 export const DATOS_PDF_VACIOS: DatosPdf = { cuenta: null, elaboro: '', elaboroCorreo: '', transporte: '', ordenCompra: '' };

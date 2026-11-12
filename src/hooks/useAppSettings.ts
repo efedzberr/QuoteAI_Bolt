@@ -12,6 +12,8 @@ export interface AppSettings {
   confidenceThreshold: number;
   pdfConfig: PdfConfig;
   sfInstanceUrl: string | null;
+  tcAutoHabilitado: boolean;
+  tcUmbralAvisoPct: number;
   loading: boolean;
   refresh: () => Promise<void>;
 }
@@ -26,6 +28,8 @@ const DEFAULTS = {
   confidenceThreshold: 0.9,
   pdfConfig: resolverPdfConfig(null),
   sfInstanceUrl: null as string | null,
+  tcAutoHabilitado: true,
+  tcUmbralAvisoPct: 0.5,
 };
 
 export function useAppSettings(): AppSettings {
@@ -53,6 +57,8 @@ export function useAppSettings(): AppSettings {
       confidenceThreshold: Number(data.confidence_threshold ?? DEFAULTS.confidenceThreshold),
       pdfConfig: resolverPdfConfig(data.pdf_config),
       sfInstanceUrl: data.sf_instance_url ?? null,
+      tcAutoHabilitado: data.tc_auto_habilitado !== false,
+      tcUmbralAvisoPct: Number(data.tc_umbral_aviso_pct ?? 0.5),
       loading: false,
     });
   }, []);

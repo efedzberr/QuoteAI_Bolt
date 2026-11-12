@@ -1,0 +1,17 @@
+{
+  "projectId": "63909037",
+  "functions": {
+    "admin-users": {
+      "hasChanged": false,
+      "hash": "240467ead7dd4cef6b2d6feb7f9d483ec61f1d3c340fcae7bcd764eccfae354d"
+    },
+    "extract-products": {
+      "hasChanged": false,
+      "hash": "7bf13d3974e5697464905af44d898e1db50b45e0dbb55f0418d029805cbcadf4"
+    },
+    "exchange-rates": {
+      "hasChanged": false,
+      "hash": "f395391926b3af2e503302e25f1da58485bc2e08f73a754afcae19c21421831e"
+    }
+  }
+}

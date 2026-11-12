@@ -9,6 +9,7 @@ import { factorDe, cantidadCliente, formatoCantidad } from '../conversionUm';
 export type LineaPdf = QuoteLine & {
   precio_lista?: number | null;
   inventario_total?: number | null;
+  tc_aplicado?: number | null;
 };
 
 export type GrupoLinea = 'Partida' | 'Solicitud del cliente' | 'Precios y descuentos' | 'Catálogo' | 'Disponibilidad';
@@ -124,7 +125,10 @@ function precioLista(ctx: ContextoLinea): number | null {
   const guardado = numero(ctx.linea.precio_lista);
   if (guardado !== null && guardado > 0) return guardado;
   const delCatalogo = productoDe(ctx)?.precio ?? null;
-  return delCatalogo !== null && delCatalogo > 0 ? delCatalogo : null;
+  if (delCatalogo === null || delCatalogo <= 0) return null;
+  // El catálogo está en pesos; el precio guardado ya llega convertido
+  const tc = numero(ctx.linea.tc_aplicado);
+  return tc && tc > 0 ? Math.round((delCatalogo / tc) * 100) / 100 : delCatalogo;
 }
 
 /** Valor de un dato de CAMPOS_LINEA en una partida. Un dato desconocido o sin valor devuelve cadena vacía. */
