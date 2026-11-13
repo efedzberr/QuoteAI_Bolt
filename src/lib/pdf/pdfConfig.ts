@@ -69,6 +69,12 @@ export interface PdfConfig {
     importeConLetra: boolean;
     totalArticulos: boolean;
     etiquetaTotalArticulos: string;
+    /** Leyenda de moneda bajo el importe con letra. Solo se imprime cuando la propuesta NO es en pesos. */
+    leyendaMoneda: boolean;
+    leyendaMonedaCodigo: boolean;
+    leyendaMonedaTipoCambio: boolean;
+    leyendaMonedaFuente: boolean;
+    leyendaMonedaFecha: boolean;
   };
   codigoBarras: { visible: boolean; campo: string; mostrarTexto: boolean; alto: number };
   /** Imagen de fondo en todas las páginas, detrás del contenido. Sin imagen no se dibuja. */
@@ -165,6 +171,11 @@ export function configInicialPdf(): PdfConfig {
       importeConLetra: true,
       totalArticulos: true,
       etiquetaTotalArticulos: 'Total de artículos',
+      leyendaMoneda: true,
+      leyendaMonedaCodigo: true,
+      leyendaMonedaTipoCambio: true,
+      leyendaMonedaFuente: true,
+      leyendaMonedaFecha: true,
     },
     codigoBarras: { visible: true, campo: 'folio_sin_espacio', mostrarTexto: true, alto: 26 },
     marcaAgua: { visible: false, url: '', opacidad: 1, anchoPct: 100 },

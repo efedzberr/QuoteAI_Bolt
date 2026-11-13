@@ -101,3 +101,12 @@ export const DATOS_MUESTRA: DatosPdf = {
     'TC-34-PG': articulo('OTRA MARCA', 'Tubo conduit galvanizado pared gruesa de 3/4"', '', '7501000000066', 'Canalización', 'Tubería', ['3/4"']),
   },
 };
+
+/** Los mismos datos de ejemplo, como si la propuesta fuera en dólares. */
+export const DATOS_MUESTRA_USD: DatosPdf = {
+  ...DATOS_MUESTRA,
+  moneda: 'USD',
+  tipoCambio: 18.6188,
+  tcFuente: 'banxico',
+  tcFecha: '2026-11-12',
+};

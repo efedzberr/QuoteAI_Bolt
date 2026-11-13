@@ -3,7 +3,7 @@ import { pdf } from '@react-pdf/renderer';
 import { Loader2 } from 'lucide-react';
 import QuoteDocument from '../../pdf/QuoteDocument';
 import type { PdfConfig } from '../../../lib/pdf/pdfConfig';
-import { COTIZACION_MUESTRA, DATOS_MUESTRA } from '../../../lib/pdf/pdfMuestra';
+import { COTIZACION_MUESTRA, DATOS_MUESTRA, DATOS_MUESTRA_USD } from '../../../lib/pdf/pdfMuestra';
 
 interface Props {
   config: PdfConfig;
@@ -12,6 +12,8 @@ interface Props {
   pdfLogoHeightPx: number;
   /** 'pagina' muestra la hoja completa; 'ancho' la ajusta al ancho disponible (se lee mejor, con desplazamiento). */
   ajuste: 'pagina' | 'ancho';
+  /** Moneda del ejemplo: 'MXN' muestra la plantilla en pesos; 'USD', como saldría una propuesta en dólares. */
+  moneda?: 'MXN' | 'USD';
 }
 
 // Parámetros del visor de PDF del navegador: sin barra de herramientas y con el ajuste elegido
@@ -21,19 +23,19 @@ const VISOR = {
 };
 
 /** Vista previa del PDF con datos de ejemplo. Se vuelve a generar cada vez que cambia la plantilla. */
-export default function PdfVistaPrevia({ config, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, ajuste }: Props) {
+export default function PdfVistaPrevia({ config, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, ajuste, moneda = 'MXN' }: Props) {
   const documento = useMemo(
     () => (
       <QuoteDocument
         quoteData={COTIZACION_MUESTRA}
-        datos={DATOS_MUESTRA}
+        datos={moneda === 'USD' ? DATOS_MUESTRA_USD : DATOS_MUESTRA}
         config={config}
         pdfLogoUrl={pdfLogoUrl}
         pdfLogoWidthPx={pdfLogoWidthPx}
         pdfLogoHeightPx={pdfLogoHeightPx}
       />
     ),
-    [config, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx]
+    [config, pdfLogoUrl, pdfLogoWidthPx, pdfLogoHeightPx, moneda]
   );
   const [url, setUrl] = useState<string | null>(null);
   const [generando, setGenerando] = useState(true);

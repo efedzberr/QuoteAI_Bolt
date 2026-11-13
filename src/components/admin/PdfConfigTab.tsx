@@ -64,6 +64,7 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
   const [preparando, setPreparando] = useState(false);
   // Vista previa en grande: ocupa todo el ancho y el editor se oculta mientras tanto
   const [amplia, setAmplia] = useState(false);
+  const [monedaVistaPrevia, setMonedaVistaPrevia] = useState<'MXN' | 'USD'>('MXN');
   const archivoRef = useRef<HTMLInputElement>(null);
   const logoRef = useRef<HTMLInputElement>(null);
   const [preparandoLogo, setPreparandoLogo] = useState(false);
@@ -434,7 +435,7 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
 
           <Seccion
             titulo="Totales"
-            resumen="IVA, descuentos, importe con letra y total de artículos"
+            resumen="IVA, descuentos, importe con letra, total de artículos y leyenda de moneda"
             abierta={abierta === 'totales'}
             onAlternar={() => alternar('totales')}
           >
@@ -493,6 +494,20 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
                   className={claseCampo}
                 />
               </Campo>
+            )}
+            <Interruptor
+              activo={totales.leyendaMoneda}
+              onCambio={(v) => setTotales({ leyendaMoneda: v })}
+              etiqueta="Mostrar la leyenda de moneda"
+              ayuda="Solo se imprime cuando la propuesta no es en pesos. Usa el selector Pesos / Dólares de la vista previa para verla."
+            />
+            {totales.leyendaMoneda && (
+              <div className="pl-4 border-l-2 border-rule space-y-3">
+                <Interruptor activo={totales.leyendaMonedaCodigo} onCambio={(v) => setTotales({ leyendaMonedaCodigo: v })} etiqueta="Moneda (Moneda: USD)" />
+                <Interruptor activo={totales.leyendaMonedaTipoCambio} onCambio={(v) => setTotales({ leyendaMonedaTipoCambio: v })} etiqueta="Tipo de cambio (1 USD = 18.6188 MXN)" />
+                <Interruptor activo={totales.leyendaMonedaFuente} onCambio={(v) => setTotales({ leyendaMonedaFuente: v })} etiqueta="Fuente (Banxico FIX)" />
+                <Interruptor activo={totales.leyendaMonedaFecha} onCambio={(v) => setTotales({ leyendaMonedaFecha: v })} etiqueta="Fecha del tipo de cambio" />
+              </div>
             )}
           </Seccion>
 
@@ -638,6 +653,20 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
               {hayCambios ? 'Hay cambios sin guardar' : 'Sin cambios pendientes'}
             </span>
             <div className="flex items-center gap-2">
+              <div className="inline-flex h-9 rounded-lg border border-rule overflow-hidden" role="group" aria-label="Moneda del ejemplo">
+                {(['MXN', 'USD'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setMonedaVistaPrevia(m)}
+                    aria-pressed={monedaVistaPrevia === m}
+                    className={`px-3 text-sm font-semibold transition-colors ${monedaVistaPrevia === m ? 'bg-[#0176D3] text-white' : 'bg-white text-ink hover:bg-[#F3F3F3]'}`}
+                    title={m === 'MXN' ? 'Ver el ejemplo como una propuesta en pesos' : 'Ver el ejemplo como una propuesta en dólares'}
+                  >
+                    {m === 'MXN' ? 'Pesos' : 'Dólares'}
+                  </button>
+                ))}
+              </div>
               <button type="button" onClick={() => setAmplia((a) => !a)} className={botonSecundario}>
                 {amplia ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />} {amplia ? 'Volver a editar' : 'Ampliar'}
               </button>
@@ -656,9 +685,12 @@ export default function PdfConfigTab({ onToast }: PdfConfigTabProps) {
               pdfLogoWidthPx={logoVista.ancho}
               pdfLogoHeightPx={logoVista.alto}
               ajuste={amplia ? 'ancho' : 'pagina'}
+              moneda={monedaVistaPrevia}
             />
           </div>
-          <p className="mt-2 text-xs text-ink-faint">Vista previa con datos de ejemplo.</p>
+          <p className="mt-2 text-xs text-ink-faint">
+            Vista previa con datos de ejemplo{monedaVistaPrevia === 'USD' ? ' en dólares (tipo de cambio de muestra 18.6188)' : ' en pesos'}.
+          </p>
         </div>
       </div>
     </div>

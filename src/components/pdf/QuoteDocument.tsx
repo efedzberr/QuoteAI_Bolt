@@ -3,11 +3,11 @@ import { styles, BORDER_COLOR } from './styles';
 import { normalizeLines } from '../../lib/normalizeLines';
 import type { QuoteData } from '../../types/quote';
 import { resolverPdfConfig, type AlineacionPdf, type PdfConfig, type CeldaPdf, type ColumnaPdf } from '../../lib/pdf/pdfConfig';
-import { DATOS_PDF_VACIOS, valorCampo, valorCelda, type DatosPdf } from '../../lib/pdf/pdfDatos';
+import { DATOS_PDF_VACIOS, leyendaMoneda, valorCampo, valorCelda, type DatosPdf } from '../../lib/pdf/pdfDatos';
 import { importeConLetra } from '../../lib/pdf/numeroALetras';
 import { codigo128 } from '../../lib/pdf/codigoBarras';
 import { columnaDelComentario, esColumnaDeDinero, valorColumna, type ContextoLinea, type LineaPdf } from '../../lib/pdf/pdfLinea';
-import { lineasEnMoneda, nombreFuenteTc, fechaTc, prefijoMonedaPdf } from '../../lib/monedas';
+import { lineasEnMoneda, prefijoMonedaPdf } from '../../lib/monedas';
 
 interface QuoteDocumentProps {
   quoteData: QuoteData;
@@ -323,6 +323,7 @@ function TotalsSection({
   // En pesos se conserva el "$" de siempre; en otra moneda, su prefijo (US$)
   const simbolo = prefijoMonedaPdf(monedaTotales) || '$';
   const sufijo = monedaTotales !== 'MXN' ? ` ${monedaTotales}` : '';
+  const textoLeyendaMoneda = leyendaMoneda(datos, t);
   const descuentos = 0;
   const total = subtotal - descuentos;
   const iva = total * t.tasaIva;
@@ -348,11 +349,8 @@ function TotalsSection({
         {t.importeConLetra ? (
           <Text style={extra.importeLetra}>({importeConLetra(totalFinal, quoteData.currency)})</Text>
         ) : null}
-        {datos.moneda && datos.moneda !== 'MXN' && datos.tipoCambio ? (
-          <Text style={extra.totalArticulos}>
-            Moneda: {datos.moneda} · Tipo de cambio: 1 {datos.moneda} = {Number(datos.tipoCambio).toFixed(4)} MXN
-            {datos.tcFuente ? ` (${nombreFuenteTc(datos.tcFuente)}${datos.tcFecha ? `, ${fechaTc(datos.tcFecha)}` : ''})` : ''}
-          </Text>
+        {textoLeyendaMoneda ? (
+          <Text style={extra.importeLetra}>{textoLeyendaMoneda}</Text>
         ) : null}
       </View>
       <View style={styles.totalsBox}>

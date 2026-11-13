@@ -1,5 +1,6 @@
 import type { QuoteData } from '../../types/quote';
 import type { CeldaPdf } from './pdfConfig';
+import { nombreFuenteTc, fechaTc } from '../monedas';
 
 /** Copia de la cuenta de Salesforce guardada con la cotización (jobs.cuenta_sf). */
 export type CuentaPdf = Record<string, unknown>;
@@ -43,6 +44,36 @@ export interface DatosPdf {
 
 export const DATOS_PDF_VACIOS: DatosPdf = { cuenta: null, elaboro: '', elaboroCorreo: '', transporte: '', ordenCompra: '' };
 
+/** Opciones de la leyenda de moneda (son las de PdfConfig['totales']). */
+export interface OpcionesLeyendaMoneda {
+  leyendaMoneda?: boolean;
+  leyendaMonedaCodigo?: boolean;
+  leyendaMonedaTipoCambio?: boolean;
+  leyendaMonedaFuente?: boolean;
+  leyendaMonedaFecha?: boolean;
+}
+
+/**
+ * Leyenda de moneda del PDF según lo que el administrador encendió.
+ * Devuelve cadena vacía si la propuesta es en pesos, si la leyenda está apagada o si no queda ninguna pieza.
+ */
+export function leyendaMoneda(datos: DatosPdf, op: OpcionesLeyendaMoneda): string {
+  const moneda = (datos.moneda || 'MXN').toUpperCase();
+  const tc = Number(datos.tipoCambio);
+  if (moneda === 'MXN' || !(tc > 0) || op.leyendaMoneda === false) return '';
+  const fuente = op.leyendaMonedaFuente !== false && datos.tcFuente ? nombreFuenteTc(datos.tcFuente) : '';
+  const fecha = op.leyendaMonedaFecha !== false && datos.tcFecha ? fechaTc(datos.tcFecha) : '';
+  const origen = [fuente, fecha].filter(Boolean).join(', ');
+  const piezas: string[] = [];
+  if (op.leyendaMonedaCodigo !== false) piezas.push(`Moneda: ${moneda}`);
+  if (op.leyendaMonedaTipoCambio !== false) {
+    piezas.push(`Tipo de cambio: 1 ${moneda} = ${tc.toFixed(4)} MXN${origen ? ` (${origen})` : ''}`);
+  } else if (origen) {
+    piezas.push(`Tipo de cambio de ${origen}`);
+  }
+  return piezas.join(' · ');
+}
+
 export interface CampoPdf {
   clave: string;
   etiqueta: string;
@@ -65,6 +96,10 @@ export const CAMPOS_PDF: CampoPdf[] = [
   { clave: 'proyecto', etiqueta: 'Proyecto', grupo: 'Cotización', disponible: true },
   { clave: 'orden_compra', etiqueta: 'Orden de compra del cliente', grupo: 'Cotización', disponible: true },
   { clave: 'transporte', etiqueta: 'Transporte', grupo: 'Cotización', disponible: true },
+  { clave: 'moneda', etiqueta: 'Moneda de la propuesta (MXN, USD…)', grupo: 'Cotización', disponible: true },
+  { clave: 'tipo_cambio', etiqueta: 'Tipo de cambio (vacío si es en pesos)', grupo: 'Cotización', disponible: true },
+  { clave: 'tc_fuente', etiqueta: 'Fuente del tipo de cambio', grupo: 'Cotización', disponible: true },
+  { clave: 'tc_fecha', etiqueta: 'Fecha del tipo de cambio', grupo: 'Cotización', disponible: true },
   { clave: 'cliente', etiqueta: 'Cliente (como se capturó)', grupo: 'Cliente', disponible: true },
   { clave: 'cliente_nombre', etiqueta: 'Nombre de la cuenta', grupo: 'Cliente', propiedadCuenta: 'name', disponible: true },
   { clave: 'cliente_numero', etiqueta: 'Número de cliente', grupo: 'Cliente', propiedadCuenta: 'noCliente', disponible: true },
@@ -113,6 +148,13 @@ export function valorCampo(campo: string, quoteData: QuoteData, datos: DatosPdf)
     case 'proyecto': return limpio(quoteData.projectName);
     case 'orden_compra': return limpio(datos.ordenCompra);
     case 'transporte': return limpio(datos.transporte);
+    case 'moneda': return (datos.moneda || 'MXN').toUpperCase();
+    case 'tipo_cambio': {
+      const tc = Number(datos.tipoCambio);
+      return (datos.moneda || 'MXN').toUpperCase() !== 'MXN' && tc > 0 ? tc.toFixed(4) : '';
+    }
+    case 'tc_fuente': return (datos.moneda || 'MXN').toUpperCase() !== 'MXN' && datos.tcFuente ? nombreFuenteTc(datos.tcFuente) : '';
+    case 'tc_fecha': return (datos.moneda || 'MXN').toUpperCase() !== 'MXN' && datos.tcFecha ? fechaTc(datos.tcFecha) : '';
     case 'cliente': return limpio(quoteData.customerName);
     case 'elaboro': return limpio(datos.elaboro);
     case 'elaboro_correo': return limpio(datos.elaboroCorreo);
