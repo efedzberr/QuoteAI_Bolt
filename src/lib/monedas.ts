@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
-export type FuenteTc = 'banxico' | 'ecb' | 'market';
-export const FUENTES_TC: FuenteTc[] = ['banxico', 'ecb', 'market'];
+export type FuenteTc = 'banxico' | 'dof' | 'ecb' | 'market';
+export const FUENTES_TC: FuenteTc[] = ['banxico', 'dof', 'ecb', 'market'];
 
 export interface Moneda {
   codigo: string;
@@ -56,6 +56,7 @@ export async function cargarMonedasActivas(): Promise<Moneda[]> {
 export function nombreFuenteTc(fuente: string | null | undefined): string {
   switch ((fuente || '').toLowerCase()) {
     case 'banxico': return 'Banxico FIX';
+    case 'dof': return 'Diario Oficial (DOF)';
     case 'ecb': return 'Banco Central Europeo';
     case 'market': return 'Mercado';
     case 'manual': return 'Manual';

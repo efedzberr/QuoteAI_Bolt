@@ -2426,9 +2426,10 @@ export default function QuoteReviewScreen({ quoteData, editedQuoteData, rawRespo
           subtotalActual={formatCurrency(subtotalEnMoneda(lines, avisoTc.anterior), monedaJob.moneda)}
           subtotalNuevo={formatCurrency(subtotalEnMoneda(lines, avisoTc.vigente), monedaJob.moneda)}
           guardando={guardandoMoneda}
-          onActualizar={() => handleCambiarMoneda(monedaJob.moneda)}
-          onConservar={() => {
+          onAceptar={async () => {
+            // Si la actualización falla, no se deja al ejecutivo atrapado en el aviso: se cierra por esta sesión
             avisoTcDescartado.current = `${monedaJob.moneda}:${avisoTc.anterior}:${avisoTc.vigente}`;
+            await handleCambiarMoneda(monedaJob.moneda);
             setAvisoTc(null);
           }}
         />

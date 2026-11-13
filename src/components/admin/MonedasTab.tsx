@@ -126,7 +126,7 @@ export default function MonedasTab({ onToast }: Props) {
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-ink mb-1">Avisar al ejecutivo cuando el tipo de cambio varíe más de (%)</label>
+            <label className="block text-sm font-semibold text-ink mb-1">Actualizar la propuesta cuando el tipo de cambio varíe (%) o más</label>
             <div className="flex items-center gap-2 max-w-xs">
               <input type="number" min="0" max="20" step="0.01" value={umbral} onChange={(e) => setUmbral(e.target.value)} className={claseCampo} />
               <button onClick={guardarUmbral} disabled={!umbralValido || guardandoUmbral || Number(umbral) === tcUmbralAvisoPct} className={botonPrimario}>
@@ -135,7 +135,7 @@ export default function MonedasTab({ onToast }: Props) {
             </div>
             {umbral.trim() !== '' && !umbralValido && <p className="text-xs text-warn mt-1">Escribe un valor entre 0 y 20, con hasta 2 decimales.</p>}
             <p className="text-xs text-ink-faint mt-1 max-w-2xl">
-              Al abrir una propuesta en otra moneda que aún no tiene PDF, si el tipo de cambio vigente difiere más que este porcentaje del que tiene la propuesta, se le pregunta al ejecutivo si quiere actualizarlo.
+              Al abrir una propuesta en otra moneda que aún no tiene PDF, si el tipo de cambio vigente difiere en este porcentaje o más del que tiene la propuesta, se le avisa al ejecutivo y se actualiza al dar OK. Diferencias menores no cambian la propuesta.
             </p>
           </div>
 
@@ -223,6 +223,9 @@ export default function MonedasTab({ onToast }: Props) {
                             </div>
                             {m.auto_fuente === 'banxico' && m.codigo !== 'USD' && m.codigo !== 'EUR' && (
                               <p className="text-xs text-ink-faint max-w-[220px]">Banxico solo publica USD y EUR; se usará Mercado</p>
+                            )}
+                            {m.auto_fuente === 'dof' && m.codigo !== 'USD' && (
+                              <p className="text-xs text-ink-faint max-w-[220px]">El DOF solo publica el dólar; se usará Mercado</p>
                             )}
                           </div>
                         )}
